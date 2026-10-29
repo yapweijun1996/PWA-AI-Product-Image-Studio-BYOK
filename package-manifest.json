@@ -152,8 +152,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 8891,
-      "sha256": "4dd416fc28d9aae037c4a2e704bf1e276c9a5297fc6e528949cbbd0f997cc13c"
+      "bytes": 10628,
+      "sha256": "218e1276e0523f4052be96307d1e2de0695b38c69052c0e0ce29e3e1b1996d6e"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -292,8 +292,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 32450,
-      "sha256": "b13eca400a840f55fe545c6fb7dfc4c5827565926991849f1be5c2ed30443003"
+      "bytes": 34403,
+      "sha256": "30eb3a161b2b4d4b63dc9463a0c284e2f8f5a0a327a7b27bf62306c4da8a1166"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -322,8 +322,8 @@
     },
     {
       "path": "docs/09-research/PI_OPENAI_SPIKE.md",
-      "bytes": 5570,
-      "sha256": "29597cc2ced238d9a4c87817805b1bc716f8b54ad2db7c234d58f683f8eff15e"
+      "bytes": 5707,
+      "sha256": "f63acbb1641798a1cadfcc120710f7c61b57ec7a8c734a85bd1794bec55cbd6f"
     },
     {
       "path": "docs/09-research/SOURCES.md",
