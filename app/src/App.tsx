@@ -107,11 +107,11 @@ export function App() {
       <header className="topbar"><span>PRODUCT IMAGE STUDIO</span><span className="network" role="status"><span className={online ? 'network-dot' : 'network-dot offline'} aria-hidden="true"/>{online ? 'Browser online' : 'Browser offline'}</span></header>
       {update.state !== 'idle' && <section className="update-notice" aria-label="Application update" aria-live="polite">
         <div>
-          <strong>{update.state === 'activating' ? 'Updating application…' : update.state === 'error' ? 'Update unavailable' : 'New version available'}</strong>
-          <p>{update.blockedByDraft ? 'Save or discard your changes before updating.' : update.state === 'activating' ? 'Please keep this page open.' : update.state === 'error' ? 'The update could not be completed. Save your work, check your connection and reload when ready.' : 'Save any work before updating. This page will reload only when you choose to update.'}</p>
+          <strong>{update.state === 'activating' ? 'Updating application…' : update.state === 'error' ? 'Update unavailable' : update.state === 'activated-elsewhere' ? 'New version active' : 'New version available'}</strong>
+          <p>{update.blockedByDraft ? 'Save or discard your changes before reloading.' : update.state === 'activating' ? 'Please keep this page open.' : update.state === 'error' ? 'The update could not be completed. Save your work, check your connection and reload when ready.' : update.state === 'activated-elsewhere' ? 'Save any work, then reload when ready to use the new version.' : 'Save any work before updating. This page will reload only when you choose to update.'}</p>
         </div>
         {update.state === 'activating' && <span className="update-spinner" aria-hidden="true" />}
-        {update.state !== 'activating' && (update.state === 'error'
+        {update.state !== 'activating' && (update.state === 'error' || update.state === 'activated-elsewhere'
           ? <button type="button" onClick={update.updateNow}>Reload when ready</button>
           : <button type="button" onClick={update.updateNow}>Update now</button>)}
       </section>}

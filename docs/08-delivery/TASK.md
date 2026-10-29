@@ -10,7 +10,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
 | T-003 | EP-07 | Reconcile current architecture and task status across project docs | T-001 | VERIFIED for the scoped source-backed documentation audit and static validation; runtime security, device and release gates remain open. See T-003 record below. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
-| T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — synthetic Chromium update and unsaved-mask guards exercised; real installed-device and full no-loss acceptance remain open. See T-050 record below. |
+| T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — synthetic Chromium update, unsaved-mask and late-draft guards exercised; installed-device and in-flight transaction no-loss acceptance remain open. See T-011 follow-up record below. |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU, facts and source persistence exercised; actual quota exhaustion and generation-dependent fact filtering remain open. |
 | T-021 | EP-01 | Upload MIME/EXIF/resize/provenance; original immutable Blob | T-020 | VERIFIED for synthetic Chromium input and local persistence; physical-device and real quota gates remain open. See T-021 record below. |
 | T-022 | EP-01 | Portable backup ZIP/import and version migration | T-020 | IMPLEMENTED_UNVERIFIED — product/fact/original/mask subset exercised; jobs, outputs, QA, receipts and historical migrations remain open. See T-022 and T-050 records below. |
@@ -125,6 +125,12 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Open acceptance at T-011:** No actual product draft, pending transaction or mask editor existed at this stage. The initiating tab's injected unsaved control was lost after its explicit update; the warning alone was not automatic draft preservation. See the later T-020 form-protection evidence; mask and pending-transaction protection remain open.
 - **Limits:** Chromium localhost is not an installed iPhone test. First-load offline is not supported. Hosting must revalidate the worker and HTML. No provider request or real key was used.
 - **Rollback:** Revert the worker, build plugin, update UI and related documentation; preserve local data and review active browser caches before any release rollback.
+
+## T-011 update-race follow-up — 2026-10-30
+
+- **Change:** Recheck for unsaved work both before requesting waiting-worker activation and when the controller changes. If a draft appears during activation, retain it and expose a user-controlled reload after the new worker becomes active; do not leave a canceled reload behind an indefinite loader.
+- **Evidence:** In Chromium, a synthetic update was delayed after the user clicked Update. A newly entered product draft remained intact after the new worker took control, with an actionable reload notice; clearing the draft and choosing reload loaded the new version. A second test entered a draft before the activation message, which remained blocked until the draft was cleared. The normal update then loaded the next synthetic version. `npm run build` and all 23 application tests passed; this is not a real-device result.
+- **Limits and rollback:** Installed iOS, in-flight IndexedDB transaction behavior during a real update and all cross-tab update cases remain open. Revert the update hook and notice together; retain the versioned cache and all user data.
 
 ## T-020 product persistence record — 2026-10-30
 

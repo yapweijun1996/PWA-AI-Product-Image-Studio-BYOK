@@ -21,8 +21,15 @@ export function useServiceWorker() {
     const onControllerChange = () => {
       if (requestedUpdate.current) {
         if (timeout.current !== null) window.clearTimeout(timeout.current);
-        window.location.reload();
+        requestedUpdate.current = false;
+        if (hasUnsavedChanges()) {
+          setBlockedByDraft(true);
+          setState('activated-elsewhere');
+        } else {
+          window.location.reload();
+        }
       } else if (hadController) {
+        setBlockedByDraft(hasUnsavedChanges());
         setState('activated-elsewhere');
       }
       hadController = true;
@@ -94,7 +101,15 @@ export function useServiceWorker() {
       setState('error');
     }, 15000);
     window.setTimeout(() => {
-      if (requestedUpdate.current) worker.postMessage('SKIP_WAITING');
+      if (!requestedUpdate.current) return;
+      if (hasUnsavedChanges()) {
+        requestedUpdate.current = false;
+        if (timeout.current !== null) window.clearTimeout(timeout.current);
+        setBlockedByDraft(true);
+        setState('waiting');
+        return;
+      }
+      worker.postMessage('SKIP_WAITING');
     }, 100);
   }
 
