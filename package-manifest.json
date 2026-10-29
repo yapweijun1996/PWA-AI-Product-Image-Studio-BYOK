@@ -5,6 +5,7 @@
   "status": "DOCUMENTATION_ONLY_NOT_IMPLEMENTED",
   "source": "user-confirmed repo name + KB-MCP skills + official reference documentation",
   "appTestsRun": false,
+  "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
   "fileCountHashed": 129,
@@ -26,8 +27,8 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 3236,
-      "sha256": "9e3773108597a239888014b00c5ea02ee11a527e7c1e089a110dfa61758e6692"
+      "bytes": 3381,
+      "sha256": "39afae0288c54fbe384aad446937318849d385661da278c9621e791c35da48da"
     },
     {
       "path": "DESIGN.md",
@@ -56,8 +57,8 @@
     },
     {
       "path": "START_HERE_中文.md",
-      "bytes": 3041,
-      "sha256": "15ff3b430eff4f8bba2591b2c1821e0d18afa8530f1588e696f05b5266a037bd"
+      "bytes": 3199,
+      "sha256": "1e581d509a81f8eeb412c3c3358811e7b741aff9be606578709089dab7d3cb86"
     },
     {
       "path": "TASK.md",
@@ -66,8 +67,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 17360,
-      "sha256": "5a898f7ebacc1ee1cfb088c02d40afa1539473fad803f09d4f62a8f36f5f4359"
+      "bytes": 17392,
+      "sha256": "c1efb86d4da82089ed1d267d14046ab354bd26f629c8bea920f387bf4333937d"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -206,8 +207,8 @@
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
-      "bytes": 3547,
-      "sha256": "e7c6a9c32626d195461b86fc2c74d158fe61a8a7dcd3ab94ed438436fd26f70b"
+      "bytes": 3856,
+      "sha256": "a3f8280da85236192137b0c7d2cc3ceeb4419b08ea057ae5538854fb636d429a"
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
@@ -286,18 +287,18 @@
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 2353,
-      "sha256": "260c0e6d4a6929f1def8bced59b3587395442c85691e788b99a5f6c48d5fbae4"
+      "bytes": 2408,
+      "sha256": "0f8ce804afd41b876e7392912bc09f6489e0b3f100b8914d5d00d71cd75c3511"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 26921,
-      "sha256": "90ad4357578ed0cebcfcbf3e31837e5e933951e0e10b6d9255262666e85f0917"
+      "bytes": 28212,
+      "sha256": "c6198ebf8d855cd4536c45df587b33ddcad8a43905b0e967857af54598fdb236"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
-      "bytes": 16140,
-      "sha256": "9cfe8847ce235b2de44a8d0108ab4b536bd109e48eea0c4c16a3886e5f079c89"
+      "bytes": 16210,
+      "sha256": "445a52c1d1257704ecf347c8ce6af59df0eb90d13f9df544f71c13a4aed3f1fe"
     },
     {
       "path": "docs/09-research/COMPETITION.md",
@@ -311,8 +312,8 @@
     },
     {
       "path": "docs/09-research/PERSONA_REVIEW_2026-10-30.md",
-      "bytes": 7334,
-      "sha256": "099326c90a39893385c17473b8d403ac35167493b0cdf1b53fbf92e1b80ddc2a"
+      "bytes": 7400,
+      "sha256": "0bc898c043f29a79293fc9954e06b3f3ddf861e811aefd569fd2d58e7813a598"
     },
     {
       "path": "docs/09-research/PILOT_EXPERIMENT.md",
@@ -331,8 +332,8 @@
     },
     {
       "path": "docs/09-research/SPIKE_TEST_PLAN.md",
-      "bytes": 21937,
-      "sha256": "9952aab04c103f50147b92dbf17fba93e59cb48f31a1ecdb34b9fd81db0a4237"
+      "bytes": 22003,
+      "sha256": "cec2c679c0d1efeee5176c350af4169865c3e5466292f10776ecf01947e339fb"
     },
     {
       "path": "docs/09-research/UI_UX_LAYOUT_RESEARCH.md",

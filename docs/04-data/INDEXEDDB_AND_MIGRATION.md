@@ -18,7 +18,7 @@ Use browser IndexedDB for source photos, masks, generated result Blobs, QA and j
 | userSettings | key | none | strictly non-secret prefs |
 | migrations | version | appliedAt | diagnostic record |
 
-Current implementation creates these stores in IndexedDB version 1. `products.sku` is a unique index on the trimmed, case-sensitive SKU; product records are checked against the canonical product JSON Schema on writes and reads using a build-time-generated validator compatible with a no-`unsafe-eval` CSP. SKU creation, confirmed facts and original-image Blob writes are implemented; product metadata and Blob commit atomically. Actual quota exhaustion, backup and later migrations remain unverified.
+Current implementation creates these stores in IndexedDB version 1. `products.sku` is a unique index on the trimmed, case-sensitive SKU; product records are checked against the canonical product JSON Schema on writes and reads using a build-time-generated validator compatible with a no-`unsafe-eval` CSP. SKU creation, confirmed facts and original-image Blob writes are implemented; product metadata and Blob commit atomically. Current product/fact/original backup and add-only restore have scoped Chromium evidence; masks, jobs, generated outputs, QA, receipts and historical schema migrations are not supported. Actual quota exhaustion remains unverified. See [the backup contract](EXPORT_IMPORT.md) and [task ledger](../08-delivery/TASK.md).
 
 ## Transaction semantics
 
@@ -29,7 +29,7 @@ Current implementation creates these stores in IndexedDB version 1. `products.sk
 
 ## Storage limits / eviction
 
-Use `navigator.storage.estimate()` to show approximate remaining capacity and `navigator.storage.persist()` where supported. Treat its outcome as advisory. Over quota: stop write, preserve original, display size and cleanup options. Provide ZIP backup as the reliable portability mechanism; explain user owns backups and browser can evict origin data.
+Target: use `navigator.storage.estimate()` to show approximate remaining capacity and `navigator.storage.persist()` where supported. Treat its outcome as advisory. Over quota: stop write, preserve original, display size and cleanup options. The current ZIP backup covers only the supported local product and originals subset; full portability is pending. Explain user owns backups and browser can evict origin data.
 
 ## Migration protocol
 

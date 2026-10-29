@@ -34,7 +34,7 @@ Official 2026-10 documentation: both GPT Image 2.5 models list Standard rates of
 
 ## API-key isolation
 
-Bearer authorization is only set by trusted backend from server-resolved user vault. No frontend direct `api.openai.com` calls in public production and no user-provided base URL that could redirect authorization to attacker server.
+For the initial self-hosted path, only the trusted gateway reads the owner-configured server secret and sets provider authorization. The browser and isolated Pi host must not receive the provider key. Disconnect revokes the provider authorization session; removing the server secret and revoking the key at OpenAI are separate owner actions. Do not send provider credentials to a user-supplied base URL. See [ADR-002 and ADR-006](../02-architecture/ADR.md) and [BYOK security](../03-security/BYOK_SECURITY.md); runtime implementation and isolation remain unverified.
 
 ## Error taxonomy
 

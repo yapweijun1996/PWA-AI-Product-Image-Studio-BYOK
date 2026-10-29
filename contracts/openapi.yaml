@@ -448,7 +448,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     Unauthorized:
-      description: Missing user or BYOK session
+      description: Missing authenticated user session or provider authorization
       content:
         application/json:
           schema:

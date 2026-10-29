@@ -28,7 +28,7 @@
 
 ## 安全警告
 
-正式公开站点 **不要在浏览器 localStorage、IndexedDB、Service Worker 或 URL 保存 API Key**。使用 HTTPS + 受信任的后端临时会话（加密服务端密钥）或用户自托管代理；采用限流、认证、审计和明确清除机制。不要把 Key 写入 GitHub。
+目前选定的方向是用户自行托管 Gateway，并在自己的服务器配置 API Key；浏览器不输入、接收或保存 Key。认证、密钥保存与轮换、HTTPS、限流和部署仍需安全审查。断开应用会话不等于删除服务器密钥或在 OpenAI 撤销密钥；这三项是独立操作。公开站点代管用户密钥需要另行批准。不要把 Key 写入 GitHub、浏览器存储、Service Worker、URL 或备份。
 
 ## 文档包验证
 

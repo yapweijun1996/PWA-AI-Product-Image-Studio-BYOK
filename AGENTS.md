@@ -13,6 +13,6 @@
 9. Run validators; use sample/dummy data only, redaction and security scans; update task/ADR with evidence and rollback notes.
 10. For ambiguous decisions, choose safest compatible default for a reversible implementation, but require user approval before public API key custody or destructive actions.
 
-**Ready-to-code order:** `[T-001]` decision preflight → `[T-002]` documentation validator → `[T-010]` shell → `[T-011]` update lifecycle → `[T-020]` SKU → `[T-030]` BYOK session → `[T-040]` one style → `[T-050]` STRICT compositor → `[T-060]` QA → `[T-070]` seven-style production → `[T-080]` release gates. Follow explicit dependencies in the task ledger.
+**Ready-to-code order:** `[T-001]` decision preflight → `[T-002]` documentation validator → `[T-003]` documentation sync → `[T-010]` shell → `[T-011]` update lifecycle → `[T-020]` SKU → `[T-021]` source image → `[T-022]` portable backup → `[T-030]` secure gateway → `[T-040]` one style → `[T-050]` STRICT compositor → `[T-060]` QA → `[T-070]` seven-style production → `[T-080]` release gates. Partial tasks retain their open acceptance criteria; follow explicit dependencies in the task ledger.
 
 **Definition of Done:** requirements traced to a code path, automated tests, browser evidence, security/privacy validation and owner-approved release evidence. Passing documentation validation alone is not application success.

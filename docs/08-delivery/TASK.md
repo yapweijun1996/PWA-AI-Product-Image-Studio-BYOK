@@ -8,7 +8,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 |---|---|---|---|---|
 | T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
-| T-003 | EP-07 | Reconcile current architecture and task status across project docs | T-001 | PENDING — source-backed current-state audit; correct remaining server-key/vault and outdated implementation claims without rewriting dated history; doc links and checksum validation |
+| T-003 | EP-07 | Reconcile current architecture and task status across project docs | T-001 | VERIFIED for the scoped source-backed documentation audit and static validation; runtime security, device and release gates remain open. See T-003 record below. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — shell update verified; real draft/mask flush and no-loss acceptance require T-020/T-050 integration. See T-011 record below. |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU, facts and source persistence exercised; actual quota exhaustion and generation-dependent fact filtering remain open. |
@@ -102,6 +102,13 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Evidence:** Five deterministic synthetic-package regression tests cover metadata and secret-file exclusion, unchanged existing reports, unexpected and changed files, missing files, symlink rejection and explicit reports. Full dependency-enabled checkout and isolated-package documentation checks are recorded in the task commit; they do not verify application behavior or provider security.
 - **Security:** No owner `.env` contents were read, changed or included in a commit. Environment files are not scanned; `.env.example` remains part of the checksummed package.
 - **Rollback:** Revert the validator, regression test, documentation, manifest and checksum entries together; the earlier isolated-package invocation in the preceding task commit remains available.
+
+## T-003 documentation sync record — 2026-10-30
+
+- **Change:** Reconciled current local-product/backup status and self-hosted server-key guidance across the task ledger, roadmap, data guide, setup notes and proposed API description. Preserved dated historical findings, the existing research/reviewer changes and their limitations. Updated the documentation-package inventory; its status fields do not describe the separate application tree.
+- **Evidence:** Audited current `app/src/products.ts` and `app/src/backup.ts`, their scoped T-020–T-022 tests and Chromium observations, ADR-002, the proposed OpenAPI contract and the task ledger. The documentation validator checks links, schemas and checksum metadata; its result is not proof of gateway security, complete image generation or deployment.
+- **Limits:** Full-project backup, migrations, gateway authentication and key isolation, physical devices, real-brand QA, consenting seller research and production release remain open. The reviewer personas are a simulation, not interviews. The historical direct provider spike does not establish Pi-to-image integration.
+- **Rollback:** Revert the affected documentation, API-description and matching checksum updates together. Preserve user-managed environment files, local product data and research history.
 
 ## T-010 shell record — 2026-10-30
 

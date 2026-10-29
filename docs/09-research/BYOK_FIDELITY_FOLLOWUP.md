@@ -12,7 +12,7 @@
 4. Shopee and Lazada Singapore product image rules could not be verified with sufficient detail from accessible official results in this pass. Do not add fixed platform-specific thresholds or a compliance badge based on speculation.
 5. Competitor fidelity tools already exist; our combination of user-controlled workflow and source comparison is a testable positioning hypothesis, not a demonstrated unique capability.
 
-## 1. Current project and evidence boundaries
+## 1. Project and evidence boundaries at the research date
 
 - The inspected `main` commit is `4aefa36`; the working tree contains untracked documentation, proposed contracts, fixtures and a documentation validator, with no application runtime established.
 - The product spec proposes OpenAI BYOK, seven independent style jobs, source comparison and manual review. React, Cloudflare Pages/Workers, server-side custody, identity and local data retention are proposed rather than approved or deployed.
@@ -22,14 +22,14 @@
 
 | Candidate | Secret handling and trust | Device/operational questions | Evidence status |
 |---|---|---|---|
-| Hosted authenticated gateway | User supplies key to first-party backend; encrypted server session may reduce at-rest exposure but operator and deployed code are trusted. | Authentication, principal binding, encryption key lifecycle, deletion, request caps, incident response and public custody approval are required. | Proposed in current architecture; no implementation or security test. |
-| User-hosted gateway | User operates backend and secret store. Hosting operator and server remain in trust boundary. | Deployment, authentication, updates, access control, costs and cross-origin connectivity require owner setup. | Proposed alternative, not tested. |
+| Hosted authenticated gateway | User supplies key to first-party backend; encrypted server session may reduce at-rest exposure but operator and deployed code are trusted. | Authentication, principal binding, encryption key lifecycle, deletion, request caps, incident response and public custody approval are required. | Proposed at research time; not the subsequently selected initial path. No implementation or security test. |
+| User-hosted gateway | User operates backend and secret store. Hosting operator and server remain in trust boundary. | Deployment, authentication, updates, access control, costs and cross-origin connectivity require owner setup. | Alternative at research time; subsequently selected as the initial direction. Runtime remains untested. |
 | Local companion | User-controlled process holds provider key and exposes narrowly scoped local actions. Browser still has authority to invoke actions and sends images/prompts to the companion. | Exact-origin allowlist, one-time pairing/session authentication, DNS rebinding and hostile-site protection, revocation, local network permission and process updates. A phone-to-desktop setup involves LAN reachability and cross-device security. | Research alternative, not an approved design or tested implementation. |
 | Browser-direct | Running app JavaScript accesses the key for the request. Memory-only avoids persistent browser storage but does not eliminate access by compromised same-origin code or malicious updates. | Simplest static distribution, but increased key exposure and potential spend. OpenAI recommends keeping API keys in secure server-side storage. | Do not treat as equivalent security or assume acceptable for public launch. [OpenAI key safety](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety). |
 
 Chrome describes separate permissions for access to local and loopback address spaces, plus standard CORS considerations. The exact features, permission names and mixed-content behavior vary by browser and version; make a user-initiated connection, show denied/recovery states, and verify real Chrome, Safari and installed iOS/Android rather than assuming uniform support. [Chrome Local Network Access guidance](https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access); [Chrome LNA permission overview](https://developer.chrome.com/blog/local-network-access).
 
-**Decision implication:** preserve existing OPEN-001 to OPEN-004. Evaluate a local companion as an additional option without quietly replacing the existing proposed hosted gateway or claiming that an owner decision has been made. A production key must not be persisted in the frontend under the current project contract.
+**Decision implication at research time:** preserve existing OPEN-001 to OPEN-004 and evaluate a local companion without assuming an owner decision. The later self-hosted direction is recorded above and in ADR-002. A production key must not be persisted in the frontend.
 
 ## 3. Image fidelity and mask limitations
 
