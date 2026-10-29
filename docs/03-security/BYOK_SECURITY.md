@@ -1,6 +1,6 @@
 # BYOK Security and Key-Custody Contract
 
-**Risk class:** Security-critical. **Status:** proposed design; NOT reviewed or deployed. Official OpenAI guidance forbids placing long-lived API Keys in public browser bundles.
+**Risk class:** Security-critical. **Status:** a loopback-only development session subset exists; the complete design is NOT independently reviewed or deployed. Official OpenAI guidance forbids placing long-lived API Keys in public browser bundles.
 
 ## Trust models
 
@@ -15,7 +15,7 @@
 3. After explicit cost approval, the gateway validates and sends an allowlisted provider request. The restricted Pi host must not receive the key or gain general shell, filesystem or arbitrary network access.
 4. Disconnect revokes the provider authorization session. Removing the server configuration and revoking the key at OpenAI are separate owner actions.
 
-The proposed `/api/v2` contract describes this flow; no implementation or security verification is claimed. The prior hosted encrypted-vault sequence is not the selected initial path.
+The `/api/v2` contract describes this flow. The local development gateway implements app/provider session controls with synthetic tests but makes no provider calls; it is not a production security verification. The prior hosted encrypted-vault sequence is not the selected initial path.
 
 ## MUST controls
 

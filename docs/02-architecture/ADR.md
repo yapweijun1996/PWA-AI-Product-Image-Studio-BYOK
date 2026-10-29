@@ -11,7 +11,7 @@
 
 ## ADR-002 — BYOK with trusted gateway
 
-- **State:** Initial self-hosted/server-configured key direction CONFIRMED; authentication, secret provisioning and runtime implementation remain PROPOSED and need security review.
+- **State:** Initial self-hosted/server-configured key direction CONFIRMED; a local-only development session subset exists. Production authentication, secret provisioning and complete gateway implementation remain PROPOSED and need security review.
 - **Context:** Browser-distributed secrets can be stolen; OpenAI recommends backend routing.
 - **Decision:** the owner configures the provider key on their self-hosted server; the browser connects to a short-lived provider authorization session without submitting or receiving the key. Disconnect revokes only that authorization.
 - **Tradeoff:** the owner operates and protects the server; removing the configured key and provider-side revocation are separate operations.
@@ -54,6 +54,17 @@ The owner selected a **self-hosted gateway with server-configured provider key**
 - **Spike evidence:** [PI_OPENAI_SPIKE](../09-research/PI_OPENAI_SPIKE.md) records successful Pi text and separate direct OpenAI image calls, not a Pi-to-image tool or browser integration test.
 - **Rollback:** disable the Pi integration and preserve local originals, jobs and approvals. A direct generation workflow may be used only if separately implemented and verified; none exists at this decision snapshot.
 - **References:** [Pi SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md), [Pi security](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/security.md), [OpenAI image generation](https://developers.openai.com/api/docs/guides/image-generation).
+
+## ADR-007 — Loopback development gateway authentication
+
+- **State:** Local development implementation; production identity, secret storage and exposure remain OPEN and require separate security review and owner approval.
+- **Decision:** The non-public gateway binds only to `127.0.0.1`. One owner uses a randomly generated 256-bit access token, with only its SHA-256 verifier supplied to the process. The token is an application login credential, not the provider key. Server-issued app/provider sessions are memory-only, session-bound and expire independently; restarting invalidates them. The provider key remains server-side, and the local gateway performs no provider calls.
+- **Controls:** Exact host and origin, session-bound CSRF, strict JSON and size limits, login and connection throttles, Secure/HttpOnly/SameSite cookies, fixed provider allowlist and no request-body logging. These controls are not an independent security audit or an OS sandbox. A development access token is not an appropriate production identity system.
+- **Tradeoffs:** Restart disconnects all sessions; access is limited to the machine running the server. HTTPS termination, multi-user identity, durable/restart-safe limits, production secret provisioning and Pi process isolation are deliberately not implied by this local implementation.
+- **Local threat boundary:** Browser cookies are host-scoped, not port-scoped; a hostile service or process on the same machine may interfere with local sessions. Loopback is not an OS isolation boundary. Use only synthetic credentials until the separately reviewed production isolation and secret controls exist.
+- **Verify:** Synthetic hostile requests, cross-session isolation, expiry/revocation, in-flight disconnect race, rate limits, key redaction and a local browser smoke. Full SEC and live-provider gates remain open.
+- **Rollback:** Stop the local gateway and revert its source and API documentation; do not remove configured secrets or local product data.
+- **References:** [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html), [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 
 ## ADR amendment template
 

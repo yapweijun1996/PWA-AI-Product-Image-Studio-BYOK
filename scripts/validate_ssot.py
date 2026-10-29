@@ -127,9 +127,9 @@ def yaml_contract():
         return
     spec=yaml.safe_load((ROOT/'contracts/openapi.yaml').read_text('utf-8'))
     require(spec['openapi'].startswith('3.1.'),'must be OpenAPI 3.1')
-    paths=spec['paths']; expected=['/session/connect','/session/status','/session','/images/approvals','/images/generate','/health']
+    paths=spec['paths']; expected=['/auth/login','/auth/session','/auth/logout','/session/connect','/session/status','/session','/images/approvals','/images/generate','/health']
     require(set(paths)==set(expected),'gateway endpoint list differs from reference design')
-    require(spec['x-release-status']=='PROPOSED_NOT_IMPLEMENTED','contract incorrectly claims implementation')
+    require(spec['x-release-status']=='PARTIAL_LOCAL_NOT_DEPLOYED','contract incorrectly claims deployment or full implementation')
     # Verify all local $ref component pointers resolve; external refs are not used by this contract.
     def recur(node):
         if isinstance(node,dict):
@@ -150,6 +150,8 @@ def yaml_contract():
     schema=connect['requestBody']['content']['application/json']['schema']
     require(schema.get('additionalProperties') is False and set(schema.get('properties',{}))=={'provider'},'connect must not accept a provider key')
     require('configured' in spec['components']['schemas']['SessionStatus']['required'],'provider configuration status missing')
+    login=paths['/auth/login']['post']['requestBody']['content']['application/json']['schema']
+    require(login.get('additionalProperties') is False and set(login.get('properties',{}))=={'token'},'login accepts only the owner access token')
     approval=paths['/images/approvals']['post']
     require({'AppSession','ProviderSession'}==set(approval['security'][0]),'approval requires both authorization sessions')
     require(any(p.get('$ref')=='#/components/parameters/AttemptApprovalId' for p in image['parameters']),'generation requires an attempt approval')

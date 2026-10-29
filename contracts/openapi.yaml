@@ -3,8 +3,10 @@ info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
   version: 2.0.0
   description: >-
-    Proposed self-hosted same-origin API contract. NOT implemented or deployed.
-    The owner configures the OpenAI key on their server; the browser never submits it.
+    Target self-hosted same-origin API contract. A local-only development
+    authentication and provider-session subset is implemented; image operations
+    and production deployment are not. The owner configures the OpenAI key on
+    their server; the browser never submits it.
     Source photo/brand QA remains local and requires human approval.
 servers:
   - url: /api/v2
@@ -37,6 +39,84 @@ paths:
                     enum: [ready]
         '503':
           description: Temporarily unavailable
+  /auth/login:
+    post:
+      security: []
+      tags: [Session]
+      operationId: localOwnerLogin
+      summary: Authenticate the local development owner without a provider key
+      description: >-
+        Local-loopback development only. Requires exact Origin and
+        X-Studio-Request: login; a random owner access token is distinct from the
+        server-configured provider key. Successful login rotates the app session.
+      parameters:
+        - name: X-Studio-Request
+          in: header
+          required: true
+          schema:
+            type: string
+            const: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  pattern: '^[A-Za-z0-9_-]{43}$'
+      responses:
+        '200':
+          description: Authenticated app session and session-bound CSRF token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSessionStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: App authentication changed while login was in flight
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: Local session capacity reached
+  /auth/session:
+    get:
+      tags: [Session]
+      operationId: getLocalOwnerSession
+      summary: Return the authenticated app session's CSRF token
+      responses:
+        '200':
+          description: Authenticated app session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSessionStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/logout:
+    post:
+      tags: [Session]
+      operationId: logoutLocalOwner
+      summary: Revoke the app session and its provider authorization
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204':
+          description: App and provider sessions revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /session/connect:
     post:
       tags: [Session]
@@ -80,6 +160,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Provider authorization changed while the request was in flight
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -267,6 +349,17 @@ components:
         format: uuid
       description: Cryptographically random one-use session-bound approval; never an OpenAI key or idempotency guarantee
   schemas:
+    AppSessionStatus:
+      type: object
+      additionalProperties: false
+      required: [authenticated, csrfToken]
+      properties:
+        authenticated:
+          type: boolean
+          const: true
+        csrfToken:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43}$'
     SessionStatus:
       type: object
       additionalProperties: false
@@ -425,7 +518,7 @@ components:
           properties:
             code:
               type: string
-              enum: [INVALID_INPUT, UNAUTHENTICATED, FORBIDDEN, RATE_LIMITED, CONFLICT, PAYLOAD_TOO_LARGE, PROVIDER_ERROR, UPSTREAM_UNKNOWN]
+              enum: [INVALID_INPUT, UNAUTHENTICATED, FORBIDDEN, RATE_LIMITED, CONFLICT, PAYLOAD_TOO_LARGE, PROVIDER_ERROR, UPSTREAM_UNKNOWN, UNAVAILABLE, NOT_FOUND, INTERNAL_ERROR]
             message:
               type: string
               maxLength: 500
@@ -493,5 +586,5 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
-x-release-status: PROPOSED_NOT_IMPLEMENTED
+x-release-status: PARTIAL_LOCAL_NOT_DEPLOYED
 x-important-limitation: Provider HTTP image generation after timeout may charge and may not be reliably idempotent

@@ -42,8 +42,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4835,
-      "sha256": "9399d044ed333a1db5f129ac0eed410eea200dd7e061b14a571d701684584014"
+      "bytes": 5804,
+      "sha256": "c32ad14130e79fd4a478e371c5eeeb588301bf3c9a532a8c1136632238eb0180"
     },
     {
       "path": "ROADMAP.md",
@@ -57,8 +57,8 @@
     },
     {
       "path": "START_HERE_中文.md",
-      "bytes": 3199,
-      "sha256": "1e581d509a81f8eeb412c3c3358811e7b741aff9be606578709089dab7d3cb86"
+      "bytes": 3329,
+      "sha256": "085f2524191c31c6a3e1a2b05bbf4056e9b0c459845a4b9328e5cd333865f41b"
     },
     {
       "path": "TASK.md",
@@ -67,8 +67,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 17392,
-      "sha256": "c1efb86d4da82089ed1d267d14046ab354bd26f629c8bea920f387bf4333937d"
+      "bytes": 20499,
+      "sha256": "0d1158acfac7ef8c6ea95a830e798f1dcfbf8bfe3e2d90b707e6a30384722151"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -102,8 +102,8 @@
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 3146,
-      "sha256": "e066642ecb17ddd5b85ef5f799ca6880401dfab72131668c8e15561902576818"
+      "bytes": 3277,
+      "sha256": "bd4bd2101ede01a3439191edb9e803da95b38f623fea9b87a53a0cc4ed19d99d"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -152,8 +152,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 6570,
-      "sha256": "6744763aee33c6ecb2a41fa180014bf2f23f7011b373b1c2eb1c97008bcf70e5"
+      "bytes": 8891,
+      "sha256": "4dd416fc28d9aae037c4a2e704bf1e276c9a5297fc6e528949cbbd0f997cc13c"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -182,8 +182,8 @@
     },
     {
       "path": "docs/03-security/BYOK_SECURITY.md",
-      "bytes": 5644,
-      "sha256": "46bfd7a05f394da068cd736687ac6a6dc4da0ba9fd67b5abe68ed48d896760ee"
+      "bytes": 5818,
+      "sha256": "444f1d814d4754a9a010b8174a6e3d9fd59ef5dbab56f5f99e29987b164e9feb"
     },
     {
       "path": "docs/03-security/PRIVACY_DATA_LIFECYCLE.md",
@@ -212,8 +212,8 @@
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
-      "bytes": 5227,
-      "sha256": "5ef366978545e365bf0b7640de027fb19495af2dd82865631cefad319232d4b6"
+      "bytes": 6167,
+      "sha256": "66d25753c00cd865c55f0fb21c1f1eeddf36e27dbb51e49ceda9acda3c6a83fe"
     },
     {
       "path": "docs/05-api/ERROR_RETRY_COST.md",
@@ -287,13 +287,13 @@
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 2408,
-      "sha256": "0f8ce804afd41b876e7392912bc09f6489e0b3f100b8914d5d00d71cd75c3511"
+      "bytes": 2527,
+      "sha256": "95fe5707664150036cdeea0a3c13e299a525254c2db80081b646c5b86ac509f8"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 28212,
-      "sha256": "c6198ebf8d855cd4536c45df587b33ddcad8a43905b0e967857af54598fdb236"
+      "bytes": 30519,
+      "sha256": "508765f3da63c3f3bcfd3118abf3ef29d4ed1f3813c466cacbfb48545be3deb2"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -657,8 +657,8 @@
     },
     {
       "path": "scripts/validate_ssot.py",
-      "bytes": 11837,
-      "sha256": "d9571a8c956e72364ab77dfa69784efadfe000e1fd3c8d51471cbb36cfb2e9c0"
+      "bytes": 12145,
+      "sha256": "b1a645e341db1b40100674928c2d4f52bf876531d520f0a6fbee9f9862ca2451"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Implementation Roadmap — Dependency-Driven, No Promised Dates
 
-**Current state:** M0 has a scoped preflight record; M1 is in progress with an implemented shell, local SKU/facts, original images and backup of that currently supported subset. Full-project backup, migrations, offline/update, real-device and other milestone exit checks remain open. Consult [TASK](TASK.md) for exact statuses and evidence. Later milestones remain planned. The gates below are sequence constraints, not fixed delivery estimates or proof of release readiness.
+**Current state:** M0 has a scoped preflight record; M1 is in progress with an implemented shell, local SKU/facts, original images and backup of that currently supported subset. M2 has a loopback-only development session gateway, but no provider calls, production identity or approved deployment. Full-project backup, migrations, offline/update, real-device and other milestone exit checks remain open. Consult [TASK](TASK.md) for exact statuses and evidence. Later milestones remain planned. The gates below are sequence constraints, not fixed delivery estimates or proof of release readiness.
 
 | Milestone | Outcome | Dependencies | Evidence to exit |
 |---|---|---|---|
