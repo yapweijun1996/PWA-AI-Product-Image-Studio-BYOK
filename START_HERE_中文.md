@@ -1,6 +1,6 @@
 # 中文快速开始（Singapore / Malaysia）
 
-这份文档是 **PWA-AI-Product-Image-Studio-BYOK 的设计基线**。`app/` 已支持本地 SKU 与用户确认事实，并有离线外壳缓存；图片上传、生成、备份和完整 PWA 仍未完成，请以任务账本和实际验证为准。
+这份文档是 **PWA-AI-Product-Image-Studio-BYOK 的设计基线**。`app/` 已支持本地 SKU、用户确认事实和保留原件的图片上传，并有离线外壳缓存；图片生成、备份和完整 PWA 仍未完成，请以任务账本和实际验证为准。
 
 ## 目标
 

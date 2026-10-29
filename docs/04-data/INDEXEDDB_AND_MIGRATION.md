@@ -18,7 +18,7 @@ Use browser IndexedDB for source photos, masks, generated result Blobs, QA and j
 | userSettings | key | none | strictly non-secret prefs |
 | migrations | version | appliedAt | diagnostic record |
 
-Current implementation creates these stores in IndexedDB version 1. `products.sku` is a unique index on the trimmed, case-sensitive SKU; product records are checked against the canonical product JSON Schema on writes and reads using a build-time-generated validator compatible with a no-`unsafe-eval` CSP. Only SKU creation and user-confirmed fact changes are currently implemented. Image Blob storage, backup, quota recovery and later migrations remain unverified.
+Current implementation creates these stores in IndexedDB version 1. `products.sku` is a unique index on the trimmed, case-sensitive SKU; product records are checked against the canonical product JSON Schema on writes and reads using a build-time-generated validator compatible with a no-`unsafe-eval` CSP. SKU creation, confirmed facts and original-image Blob writes are implemented; product metadata and Blob commit atomically. Actual quota exhaustion, backup and later migrations remain unverified.
 
 ## Transaction semantics
 

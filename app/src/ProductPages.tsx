@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { addConfirmedFact, createProduct, getProduct, listProducts, removeFact, type Product } from './products';
+import { SourcePanel } from './SourcePanel';
 import { useUnsavedChanges } from './useUnsavedChanges';
 
 function message(error: unknown): string {
@@ -23,7 +24,7 @@ export function Workspace() {
       <div className="section-heading"><div><span className="section-kicker">LOCAL WORKSPACE</span><h2 id="projects-heading">Your products</h2></div><span>Stored in this browser</span></div>
       {error ? <p className="error-message" role="alert">{error}</p> : products === null ? <p className="muted" role="status">Loading products…</p> : products.length === 0 ? <div className="empty-state"><h3>No products yet</h3><p>Create a product to start recording its SKU and confirmed facts.</p><Link className="text-link" to="/products/new">Create your first product <span aria-hidden="true">→</span></Link></div> : <ul className="product-list">{products.map((product) => <li key={product.productId}><Link to={`/products/${product.productId}`}><span className="product-icon" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span><span className="product-summary"><strong>{product.name}</strong><small>{product.sku} · {product.category}</small></span><span aria-hidden="true">→</span></Link></li>)}</ul>}
     </section>
-    <p className="workspace-note">Browser data can be cleared or evicted. Backup and image upload are not available in this build.</p>
+    <p className="workspace-note">Browser data can be cleared or evicted. Backup is not available in this build.</p>
   </>;
 }
 
@@ -115,12 +116,13 @@ export function ProductDetails() {
   return <>
     <Link className="back-link" to="/">← All products</Link><div className="eyebrow">PRODUCT WORKSPACE</div><h1>{product.name}</h1>
     <p className="lead">{product.sku} · {product.category}</p>
+    <SourcePanel product={product} onChange={setProduct} />
     <div className="product-layout">
       <section className="product-section" aria-labelledby="facts-heading"><span className="section-kicker">PRODUCT TRUTH</span><h2 id="facts-heading">Confirmed facts</h2><p className="muted">Only record information you can verify. These entries are user-confirmed, not independently certified.</p>
         {product.facts.length === 0 ? <p className="empty-facts">No facts added yet.</p> : <dl className="facts-list">{product.facts.map((fact) => <div key={fact.factId}><dt>{fact.name}</dt><dd>{fact.value}<span className="fact-meta">{fact.confirmed ? 'Confirmed' : 'Not confirmed'}</span><button className="remove-button" type="button" disabled={saving} onClick={() => deleteFact(fact.factId)} aria-label={`Remove fact ${fact.name}`}>Remove</button></dd></div>)}</dl>}
       </section>
       <form className="form-card" onSubmit={submitFact}><h2>Add a fact</h2><label htmlFor="fact-name">Fact name</label><input id="fact-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} autoComplete="off" /><label htmlFor="fact-value">Fact value</label><textarea id="fact-value" value={value} onChange={(event) => setValue(event.target.value)} required maxLength={1000} rows={3} /><label className="checkbox-label"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} required /><span>I confirm this fact is accurate.</span></label>{error && <p className="error-message" role="alert">{error}</p>}<button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add confirmed fact'}</button></form>
     </div>
-    <p className="workspace-note">Image upload, generation and export are not available in this build.</p>
+    <p className="workspace-note">Generation, backup and export are not available in this build.</p>
   </>;
 }

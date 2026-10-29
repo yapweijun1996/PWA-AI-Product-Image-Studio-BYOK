@@ -52,6 +52,8 @@ K -->|Approved| L[Portable channel export]
 - Test alpha halos, feather edges, JPEG color shift, EXIF, portrait orientation, highlights and transparent PNG behavior across real browsers.
 - For lost SourceAsset, mark projects UNVERIFIABLE; never silently use last generated image as original.
 
+**Current source-input implementation:** PNG, JPEG and static WebP are checked by magic bytes and bounded headers before decoding; files are limited to 20 MiB, 24 megapixels and 20,000 pixels per edge. A separate EXIF-aware preview is reduced to at most 1,600 px per edge. The user reviews it before the original Blob and its SHA-256 metadata commit atomically; the original may retain sensitive EXIF and is never replaced by the preview. Chromium tests used synthetic files, including an oriented JPEG and a 12 MP image. Physical-device decoding, actual quota exhaustion and source-preserving compositing remain unverified.
+
 ## Proof standard
 
 The algorithm is a proposed approach. It becomes a "source-preserving" claim only after mask and pixel/geometry tests plus human visual QA on the actual target SKU.
