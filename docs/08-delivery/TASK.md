@@ -7,7 +7,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | ID | Epic | Objective | Depends on | Evidence / acceptance |
 |---|---|---|---|---|
 | T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
-| T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | reproduce checkout failure; test `.git`, `.DS_Store`, tracked payload changes and unexpected payloads; validate isolated package and real checkout |
+| T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | iOS-safe responsive shell tests |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | N→N+1 E2E, no unsaved draft loss |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | E2E-001..003,016, corrupt/duplicate test |
@@ -84,6 +84,13 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Checks:** Manifest-listed payload validation passed eight documentation checks with temporary `jsonschema` and `PyYAML`; separate synthetic schema probes checked provider-only connection and the approval/generation contract. Mock Pi SDK checks confirmed one valid fake tool invocation and rejected invalid fields and unknown shell/read/network tools. No provider request was made.
 - **Downstream gates:** T-002 and the non-secret T-010 shell may proceed after task-specific source validation. T-030/T-032 must independently finalize and review authentication, server-secret lifecycle, one-use approval, Pi OS/IPC isolation and cost controls before any real key or paid call. Public exposure, custody and production deployment remain unapproved.
 - **Rollback:** Restore the prior proposed documentation contract and preflight changes if the owner reverses the server-key direction. Do not delete owner-managed secrets, user data or independently created work.
+
+## T-002 validator record — 2026-10-30
+
+- **Change:** Exclude Git/OS metadata and owner-managed environment files from the package inventory and content scans. The validator rejects unexpected, missing, changed or symlinked payloads and writes a report only when explicitly requested.
+- **Evidence:** Five deterministic synthetic-package regression tests cover metadata and secret-file exclusion, unchanged existing reports, unexpected and changed files, missing files, symlink rejection and explicit reports. Full dependency-enabled checkout and isolated-package documentation checks are recorded in the task commit; they do not verify application behavior or provider security.
+- **Security:** No owner `.env` contents were read, changed or included in a commit. Environment files are not scanned; `.env.example` remains part of the checksummed package.
+- **Rollback:** Revert the validator, regression test, documentation, manifest and checksum entries together; the earlier isolated-package invocation in the preceding task commit remains available.
 
 ## Task execution record template
 

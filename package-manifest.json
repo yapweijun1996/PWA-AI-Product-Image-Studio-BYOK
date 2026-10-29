@@ -7,7 +7,7 @@
   "appTestsRun": false,
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 127,
+  "fileCountHashed": 128,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -291,8 +291,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 14045,
-      "sha256": "4be5ab53ff4505a6d15c4ca0c1d622ce1308cef9a71c64579334c7a971167fb5"
+      "bytes": 15111,
+      "sha256": "329326f68291888c77a0c933a795c50a2a2ee3ae065ad55b7f51906d44693d6c"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -636,8 +636,8 @@
     },
     {
       "path": "scripts/README.md",
-      "bytes": 2337,
-      "sha256": "ddd3cc4a020f31a43552bbf6d8fd0a7aee34e38aca1dc798f31ebd8deec85662"
+      "bytes": 1511,
+      "sha256": "3f49436cf721e0b6c48bbecb5f63253c189f6cdbbccd52aa2997b1a875bd5c75"
     },
     {
       "path": "scripts/requirements-doc-validation.txt",
@@ -645,9 +645,14 @@
       "sha256": "de6820527040005dd2e82b0634b71c8cde4aeadfe249ac6fc914cf98dfc3e477"
     },
     {
+      "path": "scripts/test_validate_ssot.py",
+      "bytes": 4069,
+      "sha256": "c7538761e8ec0c73ac71b96fd7c2208a6f78549b6eb4c8136324d6ebd5f6991e"
+    },
+    {
       "path": "scripts/validate_ssot.py",
-      "bytes": 10170,
-      "sha256": "0ddf82058bc00370708a96d6dad7b5ec0b82210bd9d27ff92591caf82d710a3d"
+      "bytes": 11777,
+      "sha256": "6f497e81386c641575406c6f3179420aa0144ee5a4a441f46487a7951fc1a45c"
     }
   ]
 }

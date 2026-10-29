@@ -3,9 +3,10 @@
 
 Dependencies: stdlib mandatory; optional PyYAML/jsonschema enable extra checks.
 Run from any working directory: python3 scripts/validate_ssot.py
+Pass --report PATH to write a report; otherwise the checkout is not modified.
 """
 from pathlib import Path
-import hashlib, json, re, sys, datetime
+import argparse, hashlib, json, os, re, sys
 
 ROOT = Path(__file__).resolve().parents[1]
 errors=[]; warnings=[]; checks=[]
@@ -20,6 +21,25 @@ def require(cond,msg):
     if not cond: raise ValueError(msg)
 
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def payload_files():
+    """List package candidates without opening local secrets or Git metadata."""
+    result=[]
+    for directory, dirs, files in os.walk(ROOT, followlinks=False):
+        parent=Path(directory)
+        dirs[:]=[name for name in dirs if name != '.git' and
+                 not (name == '.env' or name.startswith('.env.'))]
+        symlink_dirs=[name for name in dirs if (parent/name).is_symlink()]
+        dirs[:]=[name for name in dirs if name not in symlink_dirs]
+        for name in files+symlink_dirs:
+            path=parent/name
+            rel=path.relative_to(ROOT)
+            if name in ('.git', '.DS_Store') or (len(rel.parts)==1 and name in ('.gitattributes', 'validation-report.json')):
+                continue
+            if (name == '.env' or name.startswith('.env.')) and name != '.env.example':
+                continue
+            result.append(path)
+    return result
 
 def required_files():
     required=[
@@ -42,7 +62,7 @@ def md_links():
     # Intentionally excludes remote URLs, fragment-only anchors, images/data links and code-fenced content.
     linkre=re.compile(r'(?<!!)\[[^\]\n]+\]\(([^)]+)\)')
     problems=[]
-    for fp in ROOT.rglob('*.md'):
+    for fp in (p for p in payload_files() if p.suffix == '.md' and not p.is_symlink()):
         txt=fp.read_text(encoding='utf-8')
         require(txt.strip(),f'empty markdown {fp.relative_to(ROOT)}')
         require(len(re.findall(r'^\s*```',txt,flags=re.MULTILINE))%2==0,
@@ -61,7 +81,9 @@ def manifests():
     require(man.get('status')=='DOCUMENTATION_ONLY_NOT_IMPLEMENTED','manifest status mismatch')
     listed={x['path']:x for x in man['files']}
     exclude={'package-manifest.json','SHA256SUMS.txt','validation-report.json'}
-    actual={str(p.relative_to(ROOT)).replace('\\','/') for p in ROOT.rglob('*') if p.is_file() and str(p.relative_to(ROOT)).replace('\\','/') not in exclude}
+    candidates=payload_files()
+    require(not any(p.is_symlink() for p in candidates),'symbolic links are not supported in the documentation payload')
+    actual={p.relative_to(ROOT).as_posix() for p in candidates if p.relative_to(ROOT).as_posix() not in exclude}
     require(set(listed)==actual, f'manifest set mismatch missing={sorted(actual-set(listed))} extra={sorted(set(listed)-actual)}')
     for name, row in listed.items():
         fp=ROOT/name
@@ -72,7 +94,7 @@ def manifests():
     require(sums==expected,'SHA256SUMS mismatch')
 
 def json_and_style():
-    for fp in ROOT.rglob('*.json'): json.loads(fp.read_text('utf-8'))
+    for fp in (p for p in payload_files() if p.suffix == '.json' and not p.is_symlink()): json.loads(fp.read_text('utf-8'))
     p=json.loads((ROOT/'contracts/style-presets.json').read_text('utf-8'))
     ids=[x['id'] for x in p['styles']]
     require(ids==['studio','hero','lifestyle','flat_lay','macro','ugc','billboard'],f'styles not canonical: {ids}')
@@ -140,26 +162,35 @@ def cost_math():
 
 def no_secrets():
     bad=[]
-    for fp in ROOT.rglob('*'):
-        if not fp.is_file() or fp.suffix not in ('.md','.json','.yaml','.py','.txt'): continue
+    for fp in payload_files():
+        if fp.is_symlink() or fp.suffix not in ('.md','.json','.yaml','.py','.txt'): continue
         txt=fp.read_text('utf-8')
         if re.search(r'(?<!\w)sk-(?:proj-)?[A-Za-z0-9_-]{30,}',txt): bad.append(str(fp.relative_to(ROOT)))
         if re.search(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',txt): bad.append(str(fp.relative_to(ROOT)))
     require(not bad,'potential real secrets in '+', '.join(sorted(set(bad))))
 
-for name,func in [
- ('required_files',required_files),('markdown_links_and_fences',md_links),('checksum_manifest',manifests),
- ('json_and_seven_styles',json_and_style),('json_schemas_and_fixtures',schemas_and_fixtures),
- ('openapi_yaml_and_refs',yaml_contract),('cost_formula',cost_math),('no_obvious_secrets',no_secrets)
-]: ck(name,func)
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--report', type=Path, help='write JSON report to this explicit path')
+args=parser.parse_args()
 
-result={'project':'PWA-AI-Product-Image-Studio-BYOK','bundleVersion':json.loads((ROOT/'package-manifest.json').read_text('utf-8'))['version'],
+unsafe_links=any(p.is_symlink() for p in payload_files())
+if unsafe_links:
+    ck('payload_symlinks', lambda: require(False, 'symbolic links are not supported in the documentation payload'))
+else:
+    for name,func in [
+     ('required_files',required_files),('markdown_links_and_fences',md_links),('checksum_manifest',manifests),
+     ('json_and_seven_styles',json_and_style),('json_schemas_and_fixtures',schemas_and_fixtures),
+     ('openapi_yaml_and_refs',yaml_contract),('cost_formula',cost_math),('no_obvious_secrets',no_secrets)
+    ]: ck(name,func)
+
+result={'project':'PWA-AI-Product-Image-Studio-BYOK','bundleVersion':None if unsafe_links else json.loads((ROOT/'package-manifest.json').read_text('utf-8'))['version'],
  'purpose':'DOCUMENTATION VALIDATION ONLY - not app/API/visual E2E',
  'status':'FAIL' if errors else ('WARN' if warnings else 'PASS'),
  'checks':checks, 'errors':errors, 'warnings':warnings,
- 'markdownDocuments':len(list(ROOT.rglob('*.md'))),
- 'fileCount':len([p for p in ROOT.rglob('*') if p.is_file()]),
+ 'markdownDocuments':sum(p.suffix == '.md' for p in payload_files()),
+ 'fileCount':len(payload_files()),
  'testScope':'static doc syntax, links, checksums, JSON schemas, YAML refs, style integrity, cost scenario, obvious secret patterns'}
-(ROOT/'validation-report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+if args.report:
+    args.report.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(result,ensure_ascii=False,indent=2))
 sys.exit(1 if errors else 0)
