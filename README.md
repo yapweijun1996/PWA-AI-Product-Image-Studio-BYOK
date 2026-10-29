@@ -1,10 +1,10 @@
-# PWA-AI-Product-Image-Studio-BYOK — SSOT Documentation Pack
+# PWA-AI-Product-Image-Studio-BYOK
 
 **Version:** 2.0.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
-**Status:** DESIGN / IMPLEMENTATION PENDING · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`  
+**Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 
-> **This working tree contains a documentation baseline, not a running application.** On 2026-10-29, local `main` was inspected at `4aefa36`: its committed tree contained only `.gitattributes`; the documentation pack, contracts, fixtures and validator were untracked. No OpenAI production call, real-brand fidelity test, live deployment or application E2E is claimed. Reinspect current Git state before implementation; see [evidence status](docs/00-governance/EVIDENCE_STATUS.md).
+> The `app/` directory contains a React application shell with navigation, theme preferences and browser network status. Product creation, image upload, generation, offline launch and provider connection are not implemented. No production deployment, real-brand fidelity or complete application E2E is claimed. See the [task ledger](docs/08-delivery/TASK.md) and [evidence status](docs/00-governance/EVIDENCE_STATUS.md).
 
 ## Start here
 
@@ -15,14 +15,14 @@
 5. [Architecture](docs/02-architecture/SYSTEM_ARCHITECTURE.md), [BYOK security](docs/03-security/BYOK_SECURITY.md), [OpenAPI contract](contracts/openapi.yaml)
 6. [Seven style engine](docs/06-ai/SEVEN_STYLE_ENGINE.md), [Brand Lock](docs/06-ai/BRAND_LOCK_ENGINE.md), [QA](docs/06-ai/VISUAL_QA.md)
 7. [E2E test cases](docs/07-quality/E2E_ACCEPTANCE.md), [release gate](docs/07-quality/RELEASE_GATES.md), [task backlog](docs/08-delivery/TASK.md)
-8. Validate the documentation pack using the checkout-safe procedure in [scripts/README.md](scripts/README.md); the current validator has a known checkout-scope limitation.
+8. Validate the documentation pack using [scripts/README.md](scripts/README.md).
 
 ## Normative status tags
 
 - **CONFIRMED:** user-specified naming, BYOK direction, seven-style integration, KB-PWA standard adoption; not proof of implementation.
 - **PROPOSED:** recommended implementation design, technology choices, interfaces, targets. Change only through ADR / explicit approval.
 - **REQUIRES VERIFICATION:** vendor-specific API/limits/rates and behavior may change; verify prior to coding/live use.
-- **NOT IMPLEMENTED / NOT TESTED:** all app features in this pack until repository and test evidence proves otherwise.
+- **NOT IMPLEMENTED / NOT TESTED:** product workflows without corresponding code and test evidence.
 
 ## SSOT owner map
 
@@ -42,8 +42,19 @@
 
 Root `SPEC.md`, `DESIGN.md`, `EPIC.md`, `ROADMAP.md` and `TASK.md` are **pointers**, not copies of normative content. They exist for code agents expecting conventional names.
 
+## Run the application shell
+
+```bash
+cd app
+npm ci
+npm run dev
+```
+
+`npm run build` type-checks and builds the shell. A deployed SPA host must serve `index.html` for application routes. The current build does not yet implement the service-worker offline/update lifecycle or any provider operation.
+
+
 ## Machine-readable content
 
 `contracts/openapi.yaml`, `contracts/schemas/*.json`, `contracts/style-presets.json`, `fixtures/*.json`, `package-manifest.json`, `SHA256SUMS.txt`, `validation-report.json`, `scripts/validate_ssot.py`.
 
-**Scope:** documentation only. No secret keys, logo assets, product images, working app, invoices, subscription system, marketing claims or production credentials included.
+**Documentation package scope:** docs, contracts, fixtures and validators only; executable application source lives separately in `app/`. Neither the documentation checks nor the shell establish production security, real image fidelity or release readiness.

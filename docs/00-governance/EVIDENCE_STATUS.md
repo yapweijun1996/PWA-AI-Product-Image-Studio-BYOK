@@ -1,15 +1,14 @@
 # Evidence Status and Limitations
 
-| Subject | Verified on 2026-10-29 | Not verified / not claimed |
+| Subject | Current evidence | Not verified / not claimed |
 |---|---|---|
-| Repository | Local inspection on 2026-10-29: `main` at `4aefa36db63b20bb19b41b45a129f48984302f1e`; the committed tree contains `.gitattributes`, while this documentation pack, contracts, fixtures and validator are untracked | No application implementation, deployed site, live provider request or application tests established. Working-tree and remote state can change; recheck before work |
-| Previous project decision | KB-MCP recall confirms user plans seven styles, BYOK, exact name; two skills fully read | No confirmed architecture/deployment approval |
-| OpenAI images | Official developer docs describe 2026-09 2.5 Flare / Sunburst and image generation/edit methods | No live API call with seller key; no cost/latency benchmark |
-| Security | OpenAI official Help advises against browser-deployed API keys | No deployed secrets vault or penetration test |
-| Cloudflare | Official docs list Worker resource constraints and Secrets bindings | No account limits, billing, deployment, service configuration inspected |
-| PWA | KB-MCP `pwa:product-standard` read and translated to test cases | No actual iOS device, installed PWA or SW update tests performed |
-| Brand fidelity | Reusable KB-MCP Brand Lock prompt and QA methodology recovered | **Zero** real new-product outputs visually tested within this documentation task |
-| Documentation | Packaged-copy validation passed with full dependencies in an earlier 2026-10-29 check; the current checkout's recorded `validation-report.json` reports `FAIL` on the manifest set and warnings about missing optional dependencies | The validator traverses `.git` and other checkout files not in the package manifest; a package-only PASS does not prove the checkout command passes. Documentation validation is NOT app, provider, security-runtime or visual testing |
+| Repository | T-010 adds a React/Vite shell under `app/`; T-001 and T-002 were merged locally before it. See the [task ledger](../08-delivery/TASK.md) and Git history for task-level evidence. | No complete product workflow or deployment. Working-tree and remote state can change; recheck before work. |
+| Project decision | Owner selected self-hosted gateway, server-configured provider key, seven styles and Pi direction. | Public custody, production deployment and real-key gateway security are not approved. |
+| OpenAI images | A prior owner-requested Pi text call and separate direct image call succeeded; see [spike evidence](../09-research/PI_OPENAI_SPIKE.md). | No Pi-to-image gateway workflow or complete cost benchmark. |
+| Security | The shell contains no provider-key input; the provider boundary remains a proposed contract. | No implemented secure gateway, OS-level Pi isolation or penetration test. |
+| PWA | T-010 browser checks cover shell navigation, theme, network indication and responsive layout in Chromium. | No actual iOS installed-mode, offline launch or service-worker update tests. |
+| Brand fidelity | Reusable Brand Lock methodology and source-preservation requirement documented. | No real-brand output or pixel-fidelity validation. |
+| Documentation | T-002 checkout and isolated-package validator runs passed with optional dependencies; five synthetic regression tests passed. | Documentation validation does not test the separate application tree, provider, runtime security or visual fidelity. |
 
 ## Required evidence capture during implementation
 

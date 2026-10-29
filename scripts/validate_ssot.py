@@ -28,6 +28,7 @@ def payload_files():
     for directory, dirs, files in os.walk(ROOT, followlinks=False):
         parent=Path(directory)
         dirs[:]=[name for name in dirs if name != '.git' and
+                 not (parent == ROOT and name == 'app') and
                  not (name == '.env' or name.startswith('.env.'))]
         symlink_dirs=[name for name in dirs if (parent/name).is_symlink()]
         dirs[:]=[name for name in dirs if name not in symlink_dirs]

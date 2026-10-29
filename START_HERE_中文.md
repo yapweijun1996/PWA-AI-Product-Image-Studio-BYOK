@@ -1,6 +1,6 @@
 # 中文快速开始（Singapore / Malaysia）
 
-这份 ZIP 是 **PWA-AI-Product-Image-Studio-BYOK 的正式设计基线文档**，可直接解压后把 `docs/`、`contracts/` 等内容放入 GitHub 仓库。它不是已完成的 React PWA，也不代表已通过 OpenAI 图片生成实测。
+这份文档是 **PWA-AI-Product-Image-Studio-BYOK 的设计基线**。`app/` 现有有限的 React 外壳，但商品建立、图片生成、离线启动和完整 PWA 仍未完成；请以任务账本和实际验证为准。
 
 ## 目标
 
@@ -20,7 +20,7 @@
 
 ## 建议执行顺序
 
-1. 核对 GitHub 仓库 HEAD、项目规约与现有代码；本包所述实现状态均为 PENDING。
+1. 核对 GitHub 仓库 HEAD、项目规约、现有代码与 `docs/08-delivery/TASK.md` 的最新证据。
 2. 按 `DECISION_REGISTER.md` 审核尚未批准的部署、登录和密钥存储选择。
 3. 先完成 PWA、数据结构、BYOK Gateway，再完成单 Style 端到端调用。
 4. 落实 STRICT 前景像素保护、Mask、QA 和人工批准，最后再加七风格批量。

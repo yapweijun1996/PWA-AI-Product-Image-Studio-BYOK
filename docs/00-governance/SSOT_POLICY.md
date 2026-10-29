@@ -39,7 +39,7 @@ For **actual implementation state**: (1) inspected live code/config and reposito
 2. Inspect current branch, commit and tests before changing any implementation-sensitive spec.
 3. Use an ADR (or append one) for changes to storage/secret custody, model, provider, trust boundary, state machine or primary deployment.
 4. Change canonical owner first, update references, trace IDs and migration notes. Keep one version of each business rule.
-5. Run the documentation validator using the [checkout-safe procedure](../../scripts/README.md) until T-002 resolves its checkout-scope limitation. Verify docs/links/schemas, report the scoped result and separately run code tests when code exists.
+5. Run the documentation validator using [scripts/README.md](../../scripts/README.md). Verify docs/links/schemas and report the scoped result; the separate `app/` source tree requires its own build and security checks.
 6. Record evidence, reviewer, date and any unresolved risk. No inferred approval.
 
 ## Semantic version policy

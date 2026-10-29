@@ -37,6 +37,8 @@ class ValidatorInventoryTests(unittest.TestCase):
         (self.package / '.DS_Store').write_text('metadata', encoding='utf-8')
         secret = 'sk-' + 'A' * 40
         (self.package / '.env').write_text(secret, encoding='utf-8')
+        (self.package / 'app').mkdir()
+        (self.package / 'app/application.json').write_text('not documentation JSON', encoding='utf-8')
         report = self.package / 'validation-report.json'
         report.write_text('owner report', encoding='utf-8')
         result, output = self.validate()

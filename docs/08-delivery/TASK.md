@@ -8,7 +8,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 |---|---|---|---|---|
 | T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
-| T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | iOS-safe responsive shell tests |
+| T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | N→N+1 E2E, no unsaved draft loss |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | E2E-001..003,016, corrupt/duplicate test |
 | T-021 | EP-01 | Upload MIME/EXIF/resize/provenance; original immutable Blob | T-020 | E2E-002; large image safe |
@@ -91,6 +91,14 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Evidence:** Five deterministic synthetic-package regression tests cover metadata and secret-file exclusion, unchanged existing reports, unexpected and changed files, missing files, symlink rejection and explicit reports. Full dependency-enabled checkout and isolated-package documentation checks are recorded in the task commit; they do not verify application behavior or provider security.
 - **Security:** No owner `.env` contents were read, changed or included in a commit. Environment files are not scanned; `.env.example` remains part of the checksummed package.
 - **Rollback:** Revert the validator, regression test, documentation, manifest and checksum entries together; the earlier isolated-package invocation in the preceding task commit remains available.
+
+## T-010 shell record — 2026-10-30
+
+- **Change:** Added a React/TypeScript/Vite shell in `app/` with real Workspace, Settings and Help routes, light/dark/system appearance, theme-aware top chrome, browser network status, safe-area layout, manifest and icons. Unimplemented product workflows are explicitly identified instead of simulated.
+- **Evidence:** `npm run build` passed. Chromium exercised navigation, direct route loading, Back, refresh and persisted theme, keyboard skip link, active-page semantics, offline status and client-side navigation after going offline. At 320 and 768 CSS px the measured document width matched the viewport; desktop and mobile screenshots were inspected. Manifest and 180/192/512 px icon URLs returned HTTP 200. No application console errors appeared in the final online pass.
+- **Security:** `npm audit --audit-level=high` reported zero vulnerabilities. A source scan found no obvious provider-key/private-key patterns in application source or public assets. This is not a gateway security review; the shell has no provider connection.
+- **Limits:** Offline page reload, service-worker updates, real-device iOS installation, screen-reader and comprehensive accessibility testing remain pending. The failed offline reload before T-011 confirms that offline launch is not yet available. Product creation, storage, upload, generation and export are not implemented.
+- **Rollback:** Revert the `app/` tree and corresponding documentation/validator boundary changes together; do not delete user-managed environment files or other local data.
 
 ## Task execution record template
 

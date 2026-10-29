@@ -26,8 +26,8 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 3097,
-      "sha256": "73eca097a1cb9e5baa8018e6df13053979dd4b13983381d33dbdc89b54474a37"
+      "bytes": 3236,
+      "sha256": "9e3773108597a239888014b00c5ea02ee11a527e7c1e089a110dfa61758e6692"
     },
     {
       "path": "DESIGN.md",
@@ -41,8 +41,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3767,
-      "sha256": "c923e7f9650ed1b38c896e8fe27384a3ef71ba8a479c8276649a8e5fbe6d8a66"
+      "bytes": 3995,
+      "sha256": "4b6dbdda38808193927da63dee2db4621dab5b0551ace74fed9f27ca6ae0f0cd"
     },
     {
       "path": "ROADMAP.md",
@@ -56,8 +56,8 @@
     },
     {
       "path": "START_HERE_中文.md",
-      "bytes": 2774,
-      "sha256": "f9325acabc9adb2eb3551dc8338a2d335d2b4153de4d115e0e6f453b3ff81177"
+      "bytes": 2761,
+      "sha256": "cc2b3c0b6866d1d56e2b37ee4e8ddbac24bec98855b71ce34e5b1a5aa26fa907"
     },
     {
       "path": "TASK.md",
@@ -101,8 +101,8 @@
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 2708,
-      "sha256": "71d42e0f7f9d7cfdf0da2b294ff4f9fd20ddd22413d56096ad70c352e55ce627"
+      "bytes": 2418,
+      "sha256": "e065d8f142d5e423446feaed8eb588d7b28182268cb992d6c1c5b08eb54d9bcc"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -116,8 +116,8 @@
     },
     {
       "path": "docs/00-governance/SSOT_POLICY.md",
-      "bytes": 4123,
-      "sha256": "af579cca2df14f707779d56538f1065b6dc0a37eb94b4c19417732bf5ba1e6e4"
+      "bytes": 4094,
+      "sha256": "3b4b43ed4fbe6ee680a9b4ea92c1ae04bb39c46b5a4de71500831752a4a36b29"
     },
     {
       "path": "docs/01-product/FEATURE_PRIORITY.md",
@@ -291,8 +291,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 15111,
-      "sha256": "329326f68291888c77a0c933a795c50a2a2ee3ae065ad55b7f51906d44693d6c"
+      "bytes": 16791,
+      "sha256": "73bf69f7d2e60e56bc5600ccd79e4b50e9cb2e29cbe68751ff341379ba793060"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -636,8 +636,8 @@
     },
     {
       "path": "scripts/README.md",
-      "bytes": 1511,
-      "sha256": "3f49436cf721e0b6c48bbecb5f63253c189f6cdbbccd52aa2997b1a875bd5c75"
+      "bytes": 1627,
+      "sha256": "d3eecc323a88992e7a753e70ea73e626f0dc5dee4d2b3f3a79b0d60a5dbd9670"
     },
     {
       "path": "scripts/requirements-doc-validation.txt",
@@ -646,13 +646,13 @@
     },
     {
       "path": "scripts/test_validate_ssot.py",
-      "bytes": 4069,
-      "sha256": "c7538761e8ec0c73ac71b96fd7c2208a6f78549b6eb4c8136324d6ebd5f6991e"
+      "bytes": 4211,
+      "sha256": "f57e15477a627c4b1f7a5f84eec38001c4367b9f1ea825a0197e316368d25507"
     },
     {
       "path": "scripts/validate_ssot.py",
-      "bytes": 11777,
-      "sha256": "6f497e81386c641575406c6f3179420aa0144ee5a4a441f46487a7951fc1a45c"
+      "bytes": 11837,
+      "sha256": "d9571a8c956e72364ab77dfa69784efadfe000e1fd3c8d51471cbb36cfb2e9c0"
     }
   ]
 }
