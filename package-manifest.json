@@ -17,8 +17,8 @@
   "files": [
     {
       "path": ".env.example",
-      "bytes": 258,
-      "sha256": "0343b1cc737421b918a63b84cf920168fc9f40100cba2096ab09b5254f8f35fa"
+      "bytes": 386,
+      "sha256": "0c0b744dcc0f6e339343e82a0b0a5da5035b95426b982850d00c9d373de8b27a"
     },
     {
       "path": ".gitignore",
@@ -292,8 +292,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 42594,
-      "sha256": "c78d2448d49e21d7f2f46321cdba549a7f16bb4d6939bb736d6cab3fb5e42057"
+      "bytes": 43454,
+      "sha256": "592549c30bfd7ef1bfd2967456075749b05d59d515acc96c514461745535e781"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

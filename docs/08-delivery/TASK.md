@@ -9,7 +9,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
 | T-003 | EP-07 | Reconcile current architecture and task status across project docs | T-001 | VERIFIED for the scoped source-backed documentation audit and static validation; runtime security, device and release gates remain open. See T-003 record below. |
-| T-004 | EP-07 | Correct outdated development gateway configuration guidance | T-003,T-030 | PENDING — align `.env.example` and development guidance with the loopback gateway; verify that `.env` is not automatically loaded, the gateway makes no provider call, and no secret values are added. |
+| T-004 | EP-07 | Correct outdated development gateway configuration guidance | T-003,T-030 | VERIFIED — empty example matches the loopback-only gateway and synthetic startup; `.env` is not automatically loaded and no provider request is made. See T-004 record below. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — synthetic Chromium update, unsaved-mask and late-draft guards exercised; installed-device and in-flight transaction no-loss acceptance remain open. See T-011 follow-up record below. |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU, facts, sources and an enforced-quota rollback exercised in Chromium; generation-dependent fact filtering and physical-device quota remain open. |
@@ -119,6 +119,12 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Evidence:** Audited current `app/src/products.ts` and `app/src/backup.ts`, their scoped T-020–T-022 tests and Chromium observations, ADR-002, the proposed OpenAPI contract and the task ledger. The documentation validator checks links, schemas and checksum metadata; its result is not proof of gateway security, complete image generation or deployment.
 - **Limits:** Full-project backup, migrations, gateway authentication and key isolation, physical devices, real-brand QA, consenting seller research and production release remain open. The reviewer personas are a simulation, not interviews. The historical direct provider spike does not establish Pi-to-image integration.
 - **Rollback:** Revert the affected documentation, API-description and matching checksum updates together. Preserve user-managed environment files, local product data and research history.
+
+## T-004 local gateway configuration guidance — 2026-10-30
+
+- **Change:** Corrected `.env.example` to describe the implemented loopback development gateway, its explicit process environment and synthetic-only boundary. Both example values remain empty; README already describes the startup sequence and that no `.env` file is loaded or provider call made.
+- **Evidence:** With `OPENAI_API_KEY` removed from a synthetic process environment and a synthetic app-token verifier, the actual gateway started on loopback, accepted the synthetic login and returned `configured: false` / `connected: false`. Source inspection confirms it reads the process environment rather than loading `.env` and contains no provider adapter. No owner environment file or real key was read.
+- **Rollback:** Revert the example and this task record; preserve owner-managed environment files and local data.
 
 ## T-010 shell record — 2026-10-30
 
