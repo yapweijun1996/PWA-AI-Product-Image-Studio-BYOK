@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "1.0.0",
+  "jobId": "55555555-5555-4555-8555-555555555555",
+  "productId": "11111111-1111-4111-8111-111111111111",
+  "styleId": "studio",
+  "lockMode": "STRICT",
+  "operation": "generate_scene",
+  "sourceHashes": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "promptVersion": "1.0.0",
+  "promptSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "model": "gpt-image-2.5-flare",
+  "quality": "high",
+  "size": "1024x1024",
+  "status": "QA_PENDING",
+  "createdAt": "2026-10-29T12:00:01Z",
+  "approvedAt": null,
+  "attempts": [
+    {
+      "attemptId": "66666666-6666-4666-8666-666666666666",
+      "state": "SUCCEEDED",
+      "createdAt": "2026-10-29T12:00:01Z",
+      "submittedAt": "2026-10-29T12:00:02Z",
+      "completedAt": "2026-10-29T12:00:30Z",
+      "estimatedUSD": "0.103500",
+      "observedUSD": null,
+      "providerRequestId": null,
+      "retryOf": null,
+      "outcome": "DEFINITIVE_SUCCESS",
+      "usage": null,
+      "errorCode": null
+    }
+  ]
+}

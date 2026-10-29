@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ssot/generation-job.schema.json",
+  "title": "Generation Job v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "productId",
+    "styleId",
+    "lockMode",
+    "operation",
+    "sourceHashes",
+    "promptVersion",
+    "promptSha256",
+    "model",
+    "quality",
+    "size",
+    "status",
+    "attempts",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "productId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "styleId": {
+      "enum": [
+        "studio",
+        "hero",
+        "lifestyle",
+        "flat_lay",
+        "macro",
+        "ugc",
+        "billboard"
+      ]
+    },
+    "lockMode": {
+      "enum": [
+        "STRICT",
+        "BALANCED",
+        "CREATIVE"
+      ]
+    },
+    "operation": {
+      "enum": [
+        "generate_scene",
+        "reference_edit",
+        "concept"
+      ]
+    },
+    "sourceHashes": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "promptVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "promptSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "model": {
+      "enum": [
+        "gpt-image-2.5-flare",
+        "gpt-image-2.5-sunburst"
+      ]
+    },
+    "quality": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "auto"
+      ]
+    },
+    "size": {
+      "type": "string",
+      "pattern": "^(auto|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$"
+    },
+    "status": {
+      "enum": [
+        "DRAFT",
+        "QUEUED",
+        "SUBMITTING",
+        "RUNNING",
+        "GENERATED",
+        "QA_PENDING",
+        "APPROVED",
+        "REJECTED",
+        "FAILED",
+        "CANCELLED",
+        "UNKNOWN"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "approvedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "attempts": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "attemptId",
+          "state",
+          "createdAt",
+          "estimatedUSD",
+          "observedUSD",
+          "providerRequestId"
+        ],
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "enum": [
+              "QUEUED",
+              "SUBMITTING",
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED",
+              "UNKNOWN"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submittedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "estimatedUSD": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+\\.[0-9]{1,6}$"
+          },
+          "observedUSD": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+\\.[0-9]{1,6}$"
+          },
+          "providerRequestId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "retryOf": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "outcome": {
+            "enum": [
+              "NOT_SUBMITTED",
+              "DEFINITIVE_SUCCESS",
+              "DEFINITIVE_FAILURE",
+              "UNKNOWN"
+            ]
+          },
+          "usage": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80
+          }
+        }
+      }
+    }
+  }
+}

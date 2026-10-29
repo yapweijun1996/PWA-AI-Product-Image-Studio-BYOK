@@ -1,0 +1,20 @@
+{
+  "kind": "ILLUSTRATIVE_NOT_VENDOR_QUOTE",
+  "currency": "USD",
+  "priceSnapshotDate": "2026-10-29",
+  "apiRoute": "images",
+  "model": "gpt-image-2.5-flare",
+  "ratesPerMillion": {
+    "textInput": 5,
+    "imageInput": 8,
+    "imageOutput": 30
+  },
+  "assumedTokensPerAttempt": {
+    "textInput": 300,
+    "imageInput": 1500,
+    "imageOutput": 3000
+  },
+  "computedEstimatePerAttemptUSD": "0.103500",
+  "sevenAttemptsUSD": "0.724500",
+  "notes": "Not measured. Billing may differ; Responses route may have mainline model cost and API-specific caching."
+}

@@ -1,0 +1,410 @@
+openapi: 3.1.0
+info:
+  title: AI Product Image Studio BYOK Gateway (PROPOSED)
+  version: 1.0.0
+  description: >-
+    Versioned proposed same-origin API contract. NOT implemented or deployed.
+    Authenticated public users only; no secrets in responses, logs or browser storage.
+    Source photo/brand QA remains local and requires human approval.
+servers:
+  - url: /api/v1
+    description: Same-origin authenticated gateway
+security:
+  - AppSession: []
+tags:
+  - name: Session
+  - name: Images
+  - name: Diagnostics
+paths:
+  /health:
+    get:
+      security: []
+      tags: [Diagnostics]
+      operationId: health
+      summary: Non-sensitive health probe
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+        '503':
+          description: Temporarily unavailable
+  /session/connect:
+    post:
+      tags: [Session]
+      operationId: connectByokSession
+      summary: Connect a user-supplied OpenAI API key in a short-lived server vault
+      description: >-
+        Requires authenticated caller and CSRF token. Returns connection status;
+        server sets an HttpOnly Secure SameSite cookie for the BYOK session.
+        Application must not persist raw Key in client storage.
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/ClientRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [provider, apiKey]
+              properties:
+                provider:
+                  type: string
+                  const: openai
+                apiKey:
+                  type: string
+                  minLength: 10
+                  maxLength: 512
+                  writeOnly: true
+                  description: Ephemeral secret transmitted to trusted backend over HTTPS; never returned
+      responses:
+        '201':
+          description: Connected; BYOK cookie set by backend
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /session/status:
+    get:
+      tags: [Session]
+      operationId: getByokSessionStatus
+      summary: Read safe connection status, never reveal key
+      responses:
+        '200':
+          description: Connection status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /session:
+    delete:
+      tags: [Session]
+      operationId: disconnectByokSession
+      summary: Revoke server-side encrypted key session and expire cookie
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204':
+          description: Revoked; response has no body
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /images/generate:
+    post:
+      tags: [Images]
+      operationId: generateImage
+      summary: Submit one explicit, possibly chargeable image attempt
+      description: >-
+        P0 synchronous contract. One request represents one Attempt; a style job may
+        require multiple separately disclosed stages. A network timeout after
+        submission may have billed; client MUST mark UNKNOWN and MUST NOT auto-retry.
+        STRICT may call only generate_scene and locally composite original product.
+        All authorization and input limits enforced server-side.
+      security:
+        - AppSession: []
+          ByokSession: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - $ref: '#/components/parameters/ClientRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageAttemptRequest'
+      responses:
+        '200':
+          description: Definitively completed provider request; image not yet QA-approved
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageAttemptResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '504':
+          $ref: '#/components/responses/UnknownTimeout'
+components:
+  securitySchemes:
+    AppSession:
+      type: apiKey
+      in: cookie
+      name: app_session
+      description: Authenticated first-party user identity session; provider choice TBD
+    ByokSession:
+      type: apiKey
+      in: cookie
+      name: byok_session
+      description: Short-lived authenticated user-key session, HttpOnly Secure SameSite=Strict
+  parameters:
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 256
+      description: CSRF protection bound to authenticated principal
+    ClientRequestId:
+      name: X-Client-Request-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Correlation/duplicate-request reservation before provider send; not OpenAI idempotency guarantee
+  schemas:
+    SessionStatus:
+      type: object
+      additionalProperties: false
+      required: [connected, provider, expiresAt]
+      properties:
+        connected:
+          type: boolean
+        provider:
+          type: string
+          const: openai
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+    ImageAttemptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - clientAttemptId
+        - productId
+        - styleId
+        - lockMode
+        - operation
+        - model
+        - quality
+        - size
+        - prompt
+        - promptVersion
+        - sourceAssetHashes
+        - estimatedUSD
+      properties:
+        clientAttemptId:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        styleId:
+          type: string
+          enum: [studio, hero, lifestyle, flat_lay, macro, ugc, billboard]
+        lockMode:
+          type: string
+          enum: [STRICT, BALANCED, CREATIVE]
+        operation:
+          type: string
+          enum: [generate_scene, reference_edit, concept]
+          description: STRICT MUST use generate_scene; cross-field enforcement is server-side
+        model:
+          type: string
+          enum: [gpt-image-2.5-flare, gpt-image-2.5-sunburst]
+        quality:
+          type: string
+          enum: [low, medium, high, xhigh, max, auto]
+        size:
+          type: string
+          pattern: '^(auto|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$'
+          description: Gateway must validate live provider pixel count, multiples-of-16 and aspect ratio
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 32000
+        promptVersion:
+          type: string
+          pattern: '^\d+\.\d+\.\d+$'
+        sourceAssetHashes:
+          type: array
+          minItems: 0
+          maxItems: 16
+          items:
+            type: string
+            pattern: '^[a-f0-9]{64}$'
+        imageDataBase64:
+          type: string
+          maxLength: 16777216
+          description: Optional reference-image payload (JPEG/PNG/WebP), no data URL prefix. P0 gateway size caps apply
+        imageMimeType:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+        estimatedUSD:
+          type: string
+          pattern: '^\d+\.\d{1,6}$'
+          description: Soft user-visible estimate only; never actual charge guarantee
+        maxEstimatedUSD:
+          type: string
+          pattern: '^\d+\.\d{1,6}$'
+        outputFormat:
+          type: string
+          enum: [png, jpeg, webp]
+          default: png
+    ImageAttemptResult:
+      type: object
+      additionalProperties: false
+      required: [clientAttemptId, outcome, model, image, usage, observedUSD, providerRequestId]
+      properties:
+        clientAttemptId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          const: DEFINITIVE_SUCCESS
+        model:
+          type: string
+        providerRequestId:
+          type: [string, 'null']
+        image:
+          type: object
+          additionalProperties: false
+          required: [mimeType, dataBase64, width, height]
+          properties:
+            mimeType:
+              type: string
+              enum: [image/png, image/jpeg, image/webp]
+            dataBase64:
+              type: string
+              minLength: 1
+              description: Browser decodes and validates bounds; server should avoid duplicate memory copies
+            width:
+              type: integer
+              minimum: 1
+            height:
+              type: integer
+              minimum: 1
+        usage:
+          type: [object, 'null']
+          additionalProperties: true
+          description: Provider usage when supplied; null does not mean zero tokens
+        observedUSD:
+          type: [string, 'null']
+          pattern: '^\d+\.\d{1,6}$'
+          description: Null if provider usage insufficient to calculate cost
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, retryable, requestId, outcome]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_INPUT, UNAUTHENTICATED, FORBIDDEN, RATE_LIMITED, CONFLICT, PAYLOAD_TOO_LARGE, PROVIDER_ERROR, UPSTREAM_UNKNOWN]
+            message:
+              type: string
+              maxLength: 500
+            retryable:
+              type: boolean
+              description: May be true only if safe and explicitly approved by user; NEVER auto-retry after ambiguous send
+            requestId:
+              type: string
+            outcome:
+              type: string
+              enum: [DEFINITIVE_FAILURE, UNKNOWN]
+            retryAfterSeconds:
+              type: [integer, 'null']
+              minimum: 0
+  responses:
+    BadRequest:
+      description: Invalid input, prompt, style or provider parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Missing user or BYOK session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Caller forbidden or CSRF failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Conflict:
+      description: Duplicate attempt or inconsistent job state; no duplicate provider call
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    PayloadTooLarge:
+      description: Source image too large / decompression limits
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: User/app/provider limit reached
+      headers:
+        Retry-After:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    UpstreamError:
+      description: Provider error; outcome depends on whether request definitely reached provider
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    UnknownTimeout:
+      description: Provider submission may have succeeded/billed; no automatic retry
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+x-release-status: PROPOSED_NOT_IMPLEMENTED
+x-important-limitation: Provider HTTP image generation after timeout may charge and may not be reliably idempotent

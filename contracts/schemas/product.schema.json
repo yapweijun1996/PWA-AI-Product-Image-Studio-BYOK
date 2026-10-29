@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ssot/product.schema.json",
+  "title": "Product Project v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "productId",
+    "sku",
+    "name",
+    "category",
+    "rightsAcknowledged",
+    "facts",
+    "sourceAssets",
+    "brandLock",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "productId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sku": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "rightsAcknowledged": {
+      "type": "boolean"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "facts": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "factId",
+          "name",
+          "value",
+          "origin",
+          "confirmed"
+        ],
+        "properties": {
+          "factId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "origin": {
+            "enum": [
+              "USER_CONFIRMED",
+              "VISIBLE_SOURCE"
+            ]
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "sourceAssetId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      }
+    },
+    "sourceAssets": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assetId",
+          "sha256",
+          "mimeType",
+          "width",
+          "height",
+          "cameraView",
+          "filename"
+        ],
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "mimeType": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ]
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20000
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20000
+          },
+          "cameraView": {
+            "enum": [
+              "FRONT",
+              "BACK",
+              "SIDE",
+              "TOP",
+              "UNKNOWN"
+            ]
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        }
+      }
+    },
+    "brandLock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "protectedText",
+        "forbiddenChanges",
+        "maskAssetId"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "STRICT",
+            "BALANCED",
+            "CREATIVE"
+          ]
+        },
+        "protectedText": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "forbiddenChanges": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "maskAssetId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "lockedColors": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          }
+        }
+      }
+    }
+  }
+}

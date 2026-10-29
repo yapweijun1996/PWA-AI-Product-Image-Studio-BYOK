@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "1.0.0",
+  "sourceSkill": "image:product-photography-brand-lock",
+  "sourceSkillVersion": "1.0.1",
+  "status": "PROPOSED software presets derived from confirmed skill",
+  "defaultLockMode": "STRICT",
+  "invariant": "Original reference is visual truth; no prompt implies pixel lock",
+  "styles": [
+    {
+      "id": "studio",
+      "name": "Studio Shot",
+      "purpose": "Catalog/ecommerce",
+      "defaultAspectRatio": "4:5",
+      "promptAddon": "Style: Studio Shot. Create a seamless professional studio backdrop whose tone contrasts appropriately with the product. Use controlled softbox lighting, crisp original product details, natural material highlights, realistic contact shadow, balanced framing and minimal props. Keep the reference view when that best preserves the original product. Suitable for product detail pages and catalogs.",
+      "strictFeasibility": "Use compatible original camera view; keep source pixel foreground.",
+      "singleIndependentJob": true
+    },
+    {
+      "id": "hero",
+      "name": "Hero Shot",
+      "purpose": "Premium campaign",
+      "defaultAspectRatio": "4:5",
+      "promptAddon": "Style: Hero Shot. Make the original product the dominant campaign focal point. Use refined directional light, depth, negative space, high-quality reflections and a dramatic yet believable category-appropriate set. Platforms/plinths may be used only where product size and physical support make sense. Enhance drama through surroundings, not product redesign.",
+      "strictFeasibility": "Keep original foreground angle; avoid fake reflections printed on source product.",
+      "singleIndependentJob": true
+    },
+    {
+      "id": "lifestyle",
+      "name": "Lifestyle / Pinterest",
+      "purpose": "Editorial use context",
+      "defaultAspectRatio": "4:5",
+      "promptAddon": "Style: Lifestyle Shot. Place the unchanged product in a believable use context for the verified category and intended audience. Use natural window/daylight, tactile environmental details, contextually relevant props, layered depth and premium but authentic editorial styling. Do not imply specifications or use cases not supported by the reference or user.",
+      "strictFeasibility": "Do not claim unsupported use or place imaginary accessories on product.",
+      "singleIndependentJob": true
+    },
+    {
+      "id": "flat_lay",
+      "name": "Flat Lay",
+      "purpose": "Overhead scene",
+      "defaultAspectRatio": "1:1",
+      "promptAddon": "Style: Flat Lay. Arrange the original product with a harmonious, category-relevant selection of accessories on a clean background, with top-down lighting and realistic shadows. A TRUE 90-degree overhead view requires a compatible original product view; if unavailable, produce a flat-lay-inspired scene at the source camera angle or request an overhead reference. Never fake invisible parts of the packaging.",
+      "strictFeasibility": "Require actual top-view reference for true overhead; otherwise source-angle adaptation.",
+      "singleIndependentJob": true
+    },
+    {
+      "id": "macro",
+      "name": "Macro Detail",
+      "purpose": "Visible craftsmanship",
+      "defaultAspectRatio": "4:5",
+      "promptAddon": "Style: Macro Shot. Crop into original visible areas to emphasize authentic texture, stitching, material, lettering, printing or mechanical detail appropriate to the product. Use controlled close-up lighting and realistic depth of field. Do not regenerate small text or synthesize resolution/detail beyond what the source supports. If the input is too low-resolution, request a clearer close-up for genuine high-detail accuracy.",
+      "strictFeasibility": "Require adequate source resolution for genuine details; unverifiable otherwise.",
+      "singleIndependentJob": true
+    },
+    {
+      "id": "ugc",
+      "name": "UGC Style",
+      "purpose": "Authentic casual-look social",
+      "defaultAspectRatio": "4:5",
+      "promptAddon": "Style: UGC Style. Present the unchanged product in a believable informal consumer-style photograph under natural ambient light with gently imperfect framing. Optional hands or people may appear if appropriate but should not obscure branding or falsely imply a real customer testimonial, endorsement or verified experience. Avoid over-polished studio effects and artificial product changes. Clearly treat the scene as AI-generated if representing it as real would mislead.",
+      "strictFeasibility": "Hands/occlusions cannot obscure protected source labels; never represent fictional testimonial as real.",
+      "singleIndependentJob": true
+    },
+    {
+      "id": "billboard",
+      "name": "Billboard Mockup",
+      "purpose": "Advertisement visualisation",
+      "defaultAspectRatio": "16:9",
+      "promptAddon": "Style: Billboard Mockup. First compose a category-appropriate advertisement using the unchanged original product artwork. Then show the WHOLE completed ad on a realistic billboard/display in a relevant environmental context with believable scale, perspective, mounting, reflections and lighting. Preserve the product graphic inside the ad as much as technically possible. No invented promotional copy or approvals; user-supplied copy only.",
+      "strictFeasibility": "Whole-ad perspective mockup; user-supplied copy only; may require >1 provider call disclosed before submit.",
+      "singleIndependentJob": true
+    }
+  ]
+}

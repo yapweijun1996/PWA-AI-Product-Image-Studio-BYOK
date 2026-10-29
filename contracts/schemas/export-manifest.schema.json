@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ssot/export-manifest.schema.json",
+  "title": "Portable Export Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "exportId",
+    "productId",
+    "createdAt",
+    "approvedOnly",
+    "files",
+    "appVersion"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "exportId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "productId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "appVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approvedOnly": {
+      "type": "boolean"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256",
+          "bytes",
+          "mimeType",
+          "approved",
+          "role"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\)[A-Za-z0-9._/-]+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mimeType": {
+            "type": "string",
+            "minLength": 3
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "original",
+              "mask",
+              "output",
+              "qa",
+              "receipt",
+              "project"
+            ]
+          },
+          "sourceAssetId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "qaId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      }
+    }
+  }
+}

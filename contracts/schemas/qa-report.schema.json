@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ssot/qa-report.schema.json",
+  "title": "Visual QA Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "qaId",
+    "assetId",
+    "sourceSha256",
+    "lockMode",
+    "scores",
+    "weightedScore",
+    "status",
+    "hardVetoFindings",
+    "humanDecision",
+    "reviewedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "qaId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "assetId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sourceSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "lockMode": {
+      "enum": [
+        "STRICT",
+        "BALANCED",
+        "CREATIVE"
+      ]
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "design",
+        "typography",
+        "geometry",
+        "realism",
+        "style"
+      ],
+      "properties": {
+        "design": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "typography": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "geometry": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "realism": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "style": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        }
+      }
+    },
+    "weightingVariant": {
+      "enum": [
+        "default",
+        "unbranded"
+      ]
+    },
+    "weightedScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "status": {
+      "enum": [
+        "PASS_CANDIDATE",
+        "REVIEW_REQUIRED",
+        "UNVERIFIABLE",
+        "REJECTED"
+      ]
+    },
+    "hardVetoFindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "description"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "BLOCKER",
+              "WARN",
+              "INFO"
+            ]
+          }
+        }
+      }
+    },
+    "humanDecision": {
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED"
+      ]
+    },
+    "reviewedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "reviewerNote": {
+      "type": "string",
+      "maxLength": 2000
+    }
+  }
+}
