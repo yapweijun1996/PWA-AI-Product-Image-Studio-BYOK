@@ -15,10 +15,10 @@
 
 ## Service Worker contract
 
-- Change build identity for every release; HTML and worker revalidation must discover updates. Precache only static app shell, never `/api/*`, Images API, source images or seller-authenticated material.
+- Change build identity for every release; worker revalidation must discover updates. A controlled navigation uses its active worker's cached HTML so it cannot mix a newer shell with older hashed assets while an update waits. Precache only static app shell, never `/api/*`, Images API, source images or seller-authenticated material.
 - N to N+1: new worker waits; app shows visible `New version available`; user chooses `Update now`; save local drafts/masks and pending transactions; show loader; message `SKIP_WAITING` to waiting worker; await controllerchange; reload after activation; error/timeout recovery visible.
 - Do not automatically force reload while user edits a mask. Test update from two actual builds, not by clicking simulated button.
-- Clean old versioned caches on activation; different strategy for HTML versus hashed static assets; exclude sensitive routes.
+- Clean old versioned caches on activation; keep HTML and hashed assets from the same active build; exclude sensitive routes.
 
 ## iOS-first requirements
 

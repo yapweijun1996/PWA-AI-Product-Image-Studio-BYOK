@@ -4,6 +4,7 @@ import { addConfirmedFact, createProduct, getProduct, listProducts, removeFact, 
 import { SourcePanel } from './SourcePanel';
 import { BackupExport } from './BackupPages';
 import { useUnsavedChanges } from './useUnsavedChanges';
+import { MaskEditor } from './MaskEditor';
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Local storage is unavailable. Please try again.';
@@ -37,7 +38,7 @@ export function NewProduct() {
   const [rights, setRights] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  useUnsavedChanges(Boolean(sku || name || category || rights || saving));
+  const markSaved = useUnsavedChanges(Boolean(sku || name || category || rights || saving));
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,6 +47,7 @@ export function NewProduct() {
     setError('');
     try {
       const product = await createProduct({ sku, name, category, rightsAcknowledged: rights });
+      markSaved();
       navigate(`/products/${product.productId}`, { replace: true });
     } catch (reason) {
       setError(message(reason));
@@ -118,6 +120,7 @@ export function ProductDetails() {
     <Link className="back-link" to="/">← All products</Link><div className="eyebrow">PRODUCT WORKSPACE</div><h1>{product.name}</h1>
     <p className="lead">{product.sku} · {product.category}</p>
     <SourcePanel product={product} onChange={setProduct} />
+    <MaskEditor product={product} onChange={setProduct} />
     <div className="product-layout">
       <section className="product-section" aria-labelledby="facts-heading"><span className="section-kicker">PRODUCT TRUTH</span><h2 id="facts-heading">Confirmed facts</h2><p className="muted">Only record information you can verify. These entries are user-confirmed, not independently certified.</p>
         {product.facts.length === 0 ? <p className="empty-facts">No facts added yet.</p> : <dl className="facts-list">{product.facts.map((fact) => <div key={fact.factId}><dt>{fact.name}</dt><dd>{fact.value}<span className="fact-meta">{fact.confirmed ? 'Confirmed' : 'Not confirmed'}</span><button className="remove-button" type="button" disabled={saving} onClick={() => deleteFact(fact.factId)} aria-label={`Remove fact ${fact.name}`}>Remove</button></dd></div>)}</dl>}

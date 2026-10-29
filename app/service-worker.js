@@ -33,10 +33,10 @@ self.addEventListener('fetch', (event) => {
       url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(async () => {
-      const cache = await caches.open(CACHE_NAME);
-      return (await cache.match('/index.html')) || Response.error();
-    }));
+    // Keep HTML and hashed assets on the same active build until the user
+    // explicitly activates a waiting update.
+    event.respondWith(caches.open(CACHE_NAME).then(async (cache) =>
+      (await cache.match('/index.html')) || fetch(request)));
   } else if (!url.search && SHELL_PATHS.has(url.pathname)) {
     event.respondWith(caches.open(CACHE_NAME).then(async (cache) =>
       (await cache.match(request)) || fetch(request)));

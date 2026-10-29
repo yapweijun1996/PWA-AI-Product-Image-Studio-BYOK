@@ -54,6 +54,8 @@ K -->|Approved| L[Portable channel export]
 
 **Current source-input implementation:** PNG, JPEG and static WebP are checked by magic bytes and bounded headers before decoding; files are limited to 20 MiB, 24 megapixels and 20,000 pixels per edge. A separate EXIF-aware preview is reduced to at most 1,600 px per edge. The user reviews it before the original Blob and its SHA-256 metadata commit atomically; the original may retain sensitive EXIF and is never replaced by the preview. Chromium tests used synthetic files, including an oriented JPEG and a 12 MP image. Physical-device decoding, actual quota exhaustion and source-preserving compositing remain unverified.
 
+**Current mask implementation:** A user can review and draw/erase a separate full-oriented-resolution PNG mask, including source-alpha initialization for transparent images. Each saved version is hashed, bound to its source hash and dimensions, stored atomically, and can be backed up with its original. The latest mask per source can be reopened; the last saved version is the product's active mask. Decoded mask alpha is capped to source alpha; a future compositor must retain this cap and treat mask alpha as final coverage, not multiply it by source alpha a second time. Preview is bounded to 1,600 px; full-resolution rendering uses a Worker/OffscreenCanvas when available and falls back to the main thread otherwise. No automatic segmentation or compositor is implemented.
+
 ## Proof standard
 
 The algorithm is a proposed approach. It becomes a "source-preserving" claim only after mask and pixel/geometry tests plus human visual QA on the actual target SKU.

@@ -89,6 +89,20 @@ h1 { margin: 12px 0 12px; font-size: clamp(32px, 3.5vw, 44px); letter-spacing: -
 .secondary-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer; }.secondary-button:disabled { opacity: .6; cursor: wait; }
 .source-drop { position: relative; padding: 24px; border: 1px dashed var(--accent); border-radius: 9px; background: var(--page); }.source-drop p { margin-bottom: 12px; font-size: 14px; line-height: 1.5; }.source-drop small { display: block; margin-top: 12px; color: var(--muted); line-height: 1.5; }.source-drop input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }.source-drop:focus-within { outline: 3px solid var(--focus); outline-offset: 3px; }
 .source-preview { margin: 20px 0; padding: 20px; border: 1px solid var(--border); border-radius: 9px; }.source-preview img { display: block; max-width: 100%; max-height: 480px; object-fit: contain; image-orientation: from-image; }.source-preview label { display: block; margin: 15px 0 8px; font-size: 13px; font-weight: 700; }.source-preview select { max-width: 260px; }.source-preview .secondary-button { margin-top: 12px; }.source-preview .form-actions .secondary-button { margin-top: 0; }
+.mask-editor { margin-bottom: 24px; }
+.mask-editor > label, .mask-controls > label, .mask-stamp label { font-size: 13px; font-weight: 700; }
+.mask-editor > select { display: block; max-width: 420px; margin: 8px 0 16px; }
+.mask-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin: 16px 0; }
+.mask-controls select { width: auto; min-width: 150px; }
+.mask-controls .checkbox-label { margin: 0; align-items: center; }
+.mask-viewport { max-height: 70vh; overflow: auto; border: 1px solid var(--border); background: repeating-conic-gradient(#ccc 0% 25%, #eee 0% 50%) 0 / 20px 20px; }
+.mask-surface { position: relative; min-width: 1px; }
+.mask-surface img, .mask-surface canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.mask-surface img { image-orientation: from-image; }
+.mask-surface canvas { opacity: .6; touch-action: none; cursor: crosshair; }
+.mask-surface canvas.mask-hidden { opacity: 0; }
+.mask-stamp { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 20px 0 0; padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
+.mask-stamp input { width: 78px; min-height: 44px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 16px; }
 .settings-card { display: flex; justify-content: space-between; gap: 32px; padding: 32px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .settings-card h2 { font-size: 22px; }.settings-card p { margin-bottom: 0; }
 .setting-control { min-width: 220px; align-self: center; }.setting-control label { display: block; margin-bottom: 8px; font-weight: 700; font-size: 13px; }

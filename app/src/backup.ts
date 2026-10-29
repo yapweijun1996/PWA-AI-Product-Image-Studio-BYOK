@@ -1,19 +1,20 @@
 import { BlobReader, BlobWriter, Uint8ArrayReader, ZipReader, ZipWriter, configure, type FileEntry } from '@zip.js/zip.js/lib/zip-core-native.js';
 import validateManifest from 'virtual:export-manifest-validator';
-import { getBackupSnapshot, hasImportConflict, validateBackupProduct, type BackupSource, type Product } from './products';
+import { getBackupSnapshot, hasImportConflict, validateBackupMasks, validateBackupProduct, type BackupMask, type BackupSource, type MaskMetadata, type Product } from './products';
 import { prepareSource, sha256 } from './prepareSource';
 
 configure({ useWebWorkers: false });
 const MAX_IMAGE = 20 * 1024 * 1024;
 const MAX_JSON = 1024 * 1024;
 const MAX_ARCHIVE = 340 * 1024 * 1024;
-const MAX_TOTAL = 16 * MAX_IMAGE + 2 * MAX_JSON;
-const MAX_ENTRIES = 18;
+const MAX_TOTAL = 338 * 1024 * 1024;
+const MAX_MASKS = 512;
+const MAX_ENTRIES = 18 + 2 * MAX_MASKS;
 const MAX_RATIO = 200;
 
-type ManifestFile = { path: string; sha256: string; bytes: number; mimeType: string; approved: boolean; role: 'project' | 'original'; sourceAssetId?: string | null; attemptId?: string | null; qaId?: string | null };
+type ManifestFile = { path: string; sha256: string; bytes: number; mimeType: string; approved: boolean; role: 'project' | 'original' | 'mask'; sourceAssetId?: string | null; attemptId?: string | null; qaId?: string | null };
 type Manifest = { schemaVersion: '1.0.0'; exportId: string; productId: string; createdAt: string; approvedOnly: boolean; files: ManifestFile[]; appVersion: string };
-export type BackupPreview = { product: Product; sources: BackupSource[]; totalBytes: number; conflict: boolean };
+export type BackupPreview = { product: Product; sources: BackupSource[]; masks: BackupMask[]; totalBytes: number; conflict: boolean };
 type Progress = (message: string) => void;
 
 function cancelled(signal: AbortSignal) {
@@ -32,6 +33,10 @@ function sourcePath(asset: Product['sourceAssets'][number]): string {
   return `originals/${asset.assetId}.${extensions[asset.mimeType]}`;
 }
 
+function maskPath(maskId: string, extension: 'json' | 'png'): string {
+  return `masks/${maskId}.${extension}`;
+}
+
 export async function createBackup(productId: string, signal: AbortSignal, progress: Progress): Promise<Blob> {
   progress('Checking the project and original files…');
   const snapshot = await getBackupSnapshot(productId);
@@ -43,10 +48,23 @@ export async function createBackup(productId: string, signal: AbortSignal, progr
   for (const source of snapshot.sources) {
     files.push({ path: sourcePath(source.metadata), sha256: source.metadata.sha256, bytes: source.blob.size, mimeType: source.metadata.mimeType, approved: false, role: 'original', sourceAssetId: source.metadata.assetId });
   }
+  if (snapshot.masks.length > MAX_MASKS) throw new Error('This project has too many mask versions for one backup. No data was omitted.');
+  const maskMetadata: Uint8Array[] = [];
+  for (const mask of snapshot.masks) {
+    const bytes = new TextEncoder().encode(JSON.stringify(mask.metadata));
+    if (bytes.length > MAX_JSON) throw new Error('Mask metadata exceeds the backup limit.');
+    maskMetadata.push(bytes);
+    files.push({ path: maskPath(mask.metadata.maskId, 'json'), sha256: await sha256(bytes), bytes: bytes.length, mimeType: 'application/json', approved: false, role: 'mask', sourceAssetId: mask.metadata.sourceAssetId });
+    files.push({ path: maskPath(mask.metadata.maskId, 'png'), sha256: mask.metadata.sha256, bytes: mask.blob.size, mimeType: 'image/png', approved: false, role: 'mask', sourceAssetId: mask.metadata.sourceAssetId });
+  }
   const manifest: Manifest = { schemaVersion: '1.0.0', exportId: crypto.randomUUID(), productId: snapshot.product.productId, createdAt: new Date().toISOString(), appVersion: __APP_VERSION__, approvedOnly: true, files };
   if (!validateManifest(manifest)) throw new Error('The backup manifest is invalid.');
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
   if (manifestBytes.length > MAX_JSON) throw new Error('The backup manifest exceeds the limit.');
+  if (projectBytes.length + manifestBytes.length + snapshot.sources.reduce((sum, source) => sum + source.blob.size, 0) +
+      snapshot.masks.reduce((sum, mask, index) => sum + mask.blob.size + maskMetadata[index].length, 0) > MAX_TOTAL) {
+    throw new Error('This project exceeds the backup size limit. No data was omitted.');
+  }
   const writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false, level: 0 });
   try {
     await writer.add('project.json', new Uint8ArrayReader(projectBytes), { signal });
@@ -56,9 +74,18 @@ export async function createBackup(productId: string, signal: AbortSignal, progr
       progress(`Adding original ${index + 1} of ${snapshot.sources.length}…`);
       await writer.add(sourcePath(source.metadata), new BlobReader(source.blob), { signal });
     }
+    for (let index = 0; index < snapshot.masks.length; index++) {
+      cancelled(signal);
+      const mask = snapshot.masks[index];
+      progress(`Adding mask version ${index + 1} of ${snapshot.masks.length}…`);
+      await writer.add(maskPath(mask.metadata.maskId, 'json'), new Uint8ArrayReader(maskMetadata[index]), { signal });
+      await writer.add(maskPath(mask.metadata.maskId, 'png'), new BlobReader(mask.blob), { signal });
+    }
     await writer.add('export-manifest.json', new Uint8ArrayReader(manifestBytes), { signal });
     cancelled(signal);
-    return await writer.close();
+    const archive = await writer.close();
+    if (archive.size > MAX_ARCHIVE) throw new Error('This project exceeds the backup archive limit. No data was omitted.');
+    return archive;
   } catch (error) {
     await writer.close().catch(() => undefined);
     throw error;
@@ -103,9 +130,9 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
       if (entry.directory || entry.symlink || entry.encrypted || entry.executable || !('getData' in entry)) throw new Error('Directories, links, executable or encrypted entries are not supported.');
       const key = entry.filename.toLowerCase();
       if (entries.size >= MAX_ENTRIES || folded.has(key)) throw new Error('The archive has too many or duplicate entries.');
-      if (!/^(project\.json|export-manifest\.json|originals\/[0-9a-f-]{36}\.(png|jpg|webp))$/i.test(entry.filename)) throw new Error('The archive contains an unsupported or unsafe path.');
+      if (!/^(project\.json|export-manifest\.json|originals\/[0-9a-f-]{36}\.(png|jpg|webp)|masks\/[0-9a-f-]{36}\.(png|json))$/i.test(entry.filename)) throw new Error('The archive contains an unsupported or unsafe path.');
       if (!Number.isSafeInteger(entry.uncompressedSize) || !Number.isSafeInteger(entry.compressedSize) || entry.uncompressedSize < 0 || entry.compressedSize < 0 ||
-          entry.uncompressedSize > (entry.filename.startsWith('originals/') ? MAX_IMAGE : MAX_JSON) ||
+          entry.uncompressedSize > (entry.filename.endsWith('.json') ? MAX_JSON : MAX_IMAGE) ||
           (entry.uncompressedSize > 0 && (entry.compressedSize === 0 || entry.uncompressedSize / entry.compressedSize > MAX_RATIO)) ||
           ![0, 8].includes(entry.compressionMethod)) throw new Error('An archive entry exceeds a safety limit or uses an unsupported compression method.');
       totalBytes += entry.uncompressedSize;
@@ -122,7 +149,7 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
     if (!manifest.approvedOnly) throw new Error('This backup contains data that this version cannot safely restore.');
     const declared = new Map<string, ManifestFile>();
     for (const item of manifest.files) {
-      if (declared.has(item.path) || item.approved || !['project', 'original'].includes(item.role) || item.attemptId || item.qaId) throw new Error('The backup contains unsupported or duplicate manifest entries.');
+      if (declared.has(item.path) || item.approved || !['project', 'original', 'mask'].includes(item.role) || item.attemptId || item.qaId) throw new Error('The backup contains unsupported or duplicate manifest entries.');
       declared.set(item.path, item);
     }
     if (declared.size + 1 !== entries.size || [...declared.keys()].some((path) => !entries.has(path))) throw new Error('The manifest and archive entries do not match.');
@@ -136,7 +163,7 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
     catch { throw new Error('The project metadata is invalid JSON.'); }
     const product = validateBackupProduct(rawProduct);
     assertNoSecrets(product);
-    if (product.productId !== manifest.productId || declared.size !== product.sourceAssets.length + 1) throw new Error('The project and manifest do not match.');
+    if (product.productId !== manifest.productId) throw new Error('The project and manifest do not match.');
     const sources: BackupSource[] = [];
     for (let index = 0; index < product.sourceAssets.length; index++) {
       cancelled(signal);
@@ -156,8 +183,31 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
         URL.revokeObjectURL(prepared.previewUrl);
       }
     }
+    const masks: BackupMask[] = [];
+    const maskInfos = [...declared.values()].filter((item) => item.role === 'mask');
+    if (maskInfos.length % 2 || maskInfos.length / 2 > MAX_MASKS || declared.size !== product.sourceAssets.length + 1 + maskInfos.length) throw new Error('The backup has missing or extra mask entries.');
+    for (const info of maskInfos.filter((item) => item.path.endsWith('.json'))) {
+      cancelled(signal);
+      const match = /^masks\/([0-9a-f-]{36})\.json$/i.exec(info.path);
+      const entry = entries.get(info.path);
+      if (!match || !entry || info.mimeType !== 'application/json' || !info.sourceAssetId || info.bytes !== entry.uncompressedSize) throw new Error('A mask metadata entry is invalid.');
+      const metadataBlob = await readEntry(entry, MAX_JSON, signal);
+      const metadataBytes = new Uint8Array(await metadataBlob.arrayBuffer());
+      if (await sha256(metadataBytes) !== info.sha256) throw new Error('Mask metadata hash does not match.');
+      let metadata: MaskMetadata;
+      try { metadata = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(metadataBytes)) as MaskMetadata; }
+      catch { throw new Error('Mask metadata is invalid JSON.'); }
+      if (!metadata || typeof metadata !== 'object' || metadata.maskId !== match[1] || metadata.sourceAssetId !== info.sourceAssetId) throw new Error('Mask metadata and manifest do not match.');
+      assertNoSecrets(metadata);
+      const pngPath = maskPath(metadata.maskId, 'png'), pngInfo = declared.get(pngPath), pngEntry = entries.get(pngPath);
+      if (!pngInfo || !pngEntry || pngInfo.role !== 'mask' || pngInfo.mimeType !== 'image/png' || pngInfo.sourceAssetId !== metadata.sourceAssetId || pngInfo.sha256 !== metadata.sha256 || pngInfo.bytes !== pngEntry.uncompressedSize) throw new Error('The mask PNG and manifest do not match.');
+      progress(`Verifying mask version ${masks.length + 1} of ${maskInfos.length / 2}…`);
+      masks.push({ metadata, blob: await readEntry(pngEntry, MAX_IMAGE, signal) });
+    }
+    if (masks.length * 2 !== maskInfos.length) throw new Error('The backup has missing or extra mask entries.');
+    const verifiedMasks = await validateBackupMasks(product, masks, sources);
     cancelled(signal);
-    return { product, sources, totalBytes, conflict: await hasImportConflict(product) };
+    return { product, sources, masks: verifiedMasks, totalBytes, conflict: await hasImportConflict(product, verifiedMasks) };
   } finally {
     await reader.close();
   }
