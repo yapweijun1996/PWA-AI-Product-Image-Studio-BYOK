@@ -4,7 +4,7 @@
 **Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 
-> The `app/` directory provides local SKU projects, user-confirmed facts, immutable source-image upload, a portable backup for this currently supported data, a static-only offline/update worker, and a loopback-only development gateway for app/provider sessions. The gateway makes no provider requests and has no connection UI; it is not approved for production. Backup of future masks, jobs, outputs, QA and receipts and migration from older schema versions remain unimplemented; unsupported data is rejected rather than omitted. Generation remains unimplemented. Draft protection has been exercised for product forms and selected source previews, but real mask/transaction preservation remains unverified. No production deployment, real-brand fidelity or complete application E2E is claimed. See the [task ledger](docs/08-delivery/TASK.md) and [evidence status](docs/00-governance/EVIDENCE_STATUS.md).
+> The `app/` directory provides local SKU projects, user-confirmed facts, immutable source-image upload, a portable backup for this currently supported data, a static-only offline/update worker, and a loopback-only development gateway with a settings UI for app/provider sessions. The gateway makes no provider requests and is not approved for production. Backup of future masks, jobs, outputs, QA and receipts and migration from older schema versions remain unimplemented; unsupported data is rejected rather than omitted. Generation remains unimplemented. Draft protection has been exercised for product forms and selected source previews, but real mask/transaction preservation remains unverified. No production deployment, real-brand fidelity or complete application E2E is claimed. See the [task ledger](docs/08-delivery/TASK.md) and [evidence status](docs/00-governance/EVIDENCE_STATUS.md).
 
 ## Start here
 
@@ -52,7 +52,16 @@ npm run dev
 
 `npm run build` type-checks and builds the shell and worker; `npm test` runs image-header, backup and local gateway security regression tests on Node 22.12 or newer (Node 22/23 may warn that type stripping is experimental). Static hosting needs HTTPS (or localhost), an `index.html` fallback for application routes, and revalidation of `/sw.js` and HTML rather than immutable caching. The shell can load offline only after a successful online installation. Browser data may be evicted: export backups to a trusted location. Backups are unencrypted and can include confidential photos and EXIF; see the [backup contract](docs/04-data/EXPORT_IMPORT.md) for supported data and limits.
 
-For a **local synthetic-data development gateway**, first build the app. Generate a random 32-byte base64url owner access token and its SHA-256 hex digest with a trusted local tool. Treat the token as a credential: keep it out of source, shell history, logs, URLs and provider-key fields. Supply only the digest as `STUDIO_ACCESS_TOKEN_SHA256` and, if testing configured-provider status, set `OPENAI_API_KEY` to a synthetic value before `npm run gateway`. Open `http://127.0.0.1:4173/`; `STUDIO_PORT` may select another loopback port. The gateway does not load `.env` files or call OpenAI. It has no login/connection UI yet; its API is described in the [gateway contract](docs/05-api/API_CONTRACT.md). Never expose this development gateway to a LAN or public network, or treat it as a production authentication or key-management system. Sessions are invalidated on restart.
+For a **local synthetic-data development gateway**, first build the app. The following command generates a random app access token and its SHA-256 digest. Its output is sensitive: do not copy the token into source, logs, URLs, shell history or provider-key fields. This token is not an OpenAI API key. The command avoids the `sk-` prefix so it is not mistaken for one.
+
+```bash
+node -e 'const c=require("node:crypto");let t;do{t=c.randomBytes(32).toString("base64url")}while(t.toLowerCase().startsWith("sk-"));console.log("Local app access token:",t);console.log("SHA-256:",c.createHash("sha256").update(t).digest("hex"))'
+read -r -p 'SHA-256 digest: ' STUDIO_ACCESS_TOKEN_SHA256
+export STUDIO_ACCESS_TOKEN_SHA256
+OPENAI_API_KEY=synthetic-local-only npm run gateway
+```
+
+Open `http://127.0.0.1:4173/settings`, sign in with the local app access token, and connect the synthetic provider session. Do not enter a provider API key in the browser. `STUDIO_PORT` may select another loopback port. The gateway does not load `.env` files or call OpenAI; its API is described in the [gateway contract](docs/05-api/API_CONTRACT.md). Never expose this development gateway to a LAN or public network, or treat it as a production authentication or key-management system. Sessions are invalidated on restart.
 
 
 ## Machine-readable content

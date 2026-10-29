@@ -3,6 +3,7 @@ import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import { useServiceWorker } from './useServiceWorker';
 import { NewProduct, ProductDetails, Workspace } from './ProductPages';
 import { BackupImport } from './BackupPages';
+import { ProviderSessionPanel } from './ProviderSessionPanel';
 
 type Theme = 'system' | 'light' | 'dark';
 const themeKey = 'image-studio.theme';
@@ -67,7 +68,7 @@ function Settings({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) 
       <div><span className="section-kicker">DISPLAY</span><h2 id="appearance-heading">Appearance</h2><p>Choose a theme or follow your device setting.</p></div>
       <div className="setting-control"><label htmlFor="theme">Theme</label><select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}><option value="system">Use device setting</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
     </section>
-    <section className="notice" aria-labelledby="provider-heading"><h2 id="provider-heading">Provider connection</h2><p>Provider connection is not available in this build. This page does not request or store an API key.</p></section>
+    <ProviderSessionPanel />
   </>;
 }
 

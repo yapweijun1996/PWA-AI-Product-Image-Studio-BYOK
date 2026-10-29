@@ -94,6 +94,13 @@ h1 { margin: 12px 0 12px; font-size: clamp(32px, 3.5vw, 44px); letter-spacing: -
 .setting-control { min-width: 220px; align-self: center; }.setting-control label { display: block; margin-bottom: 8px; font-weight: 700; font-size: 13px; }
 select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 16px; }
 .notice { max-width: 700px; margin-top: 32px; padding: 22px 24px; border-left: 3px solid var(--accent); background: var(--tint); }.notice h2 { font-size: 16px; margin-bottom: 7px; }.notice p { max-width: none; margin: 0; }
+.provider-session > p + p, .provider-session form, .provider-session > button { margin-top: 14px; }
+.provider-login { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.provider-login label { font-size: 13px; font-weight: 700; }
+.provider-login input { width: min(100%, 420px); min-height: 46px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 16px; }
+.provider-actions { flex-wrap: wrap; gap: 10px; }
+.provider-session .error-message { color: #a32323; }
+:root[data-theme="dark"] .provider-session .error-message { color: #ffc0b9; }
 .guide-list { border-top: 1px solid var(--border); }.guide-list section { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 16px; padding: 26px 0; border-bottom: 1px solid var(--border); }.guide-list h2 { margin: 0 0 8px; font-size: 19px; }.guide-list p { max-width: 680px; margin: 0; }.guide-footnote { margin-top: 28px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 footer { display: flex; justify-content: space-between; gap: 16px; padding: 22px 48px calc(22px + env(safe-area-inset-bottom)); color: var(--muted); border-top: 1px solid var(--border); font-size: 10px; letter-spacing: .06em; }
 .update-notice { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 48px; color: var(--ink); background: var(--tint); border-bottom: 1px solid var(--border); }
