@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import { useServiceWorker } from './useServiceWorker';
 import { NewProduct, ProductDetails, Workspace } from './ProductPages';
+import { BackupImport } from './BackupPages';
 
 type Theme = 'system' | 'light' | 'dark';
 const themeKey = 'image-studio.theme';
@@ -114,7 +115,7 @@ export function App() {
           : <button type="button" onClick={update.updateNow}>Update now</button>)}
       </section>}
       <main id="main-content" tabIndex={-1}>
-        <Routes><Route path="/" element={<Workspace/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes>
+        <Routes><Route path="/" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes>
       </main>
       <footer><span>PRODUCT IMAGE STUDIO</span><span>Local-first by design</span></footer>
     </div>

@@ -8,6 +8,7 @@
 | Security | The shell contains no provider-key input; the provider boundary remains a proposed contract. | No implemented secure gateway, OS-level Pi isolation or penetration test. |
 | PWA | Chromium exercised offline shell/product reload, two-build update and protection of an unsaved product form before update. | No real mask/pending-transaction preservation proof, actual iOS installed-mode or full PWA release test. |
 | Source image | Synthetic PNG, WebP and oriented JPEG were previewed and stored; the JPEG's stored hash was compared with the input hash, and corruption and transaction rollback were exercised in Chromium. | No physical iOS, actual storage-exhaustion or real-brand fidelity proof. |
+| Portable backup | Chromium exported a synthetic product and original, independently checked ZIP hashes, restored on a separate origin, reopened the original offline, and exercised conflict/transaction rollback and malicious ZIP rejection. | Masks, jobs, outputs, QA, receipts, historical schema migration, quota exhaustion and installed iOS are not implemented or verified. Backups are unencrypted. |
 | Brand fidelity | Reusable Brand Lock methodology and source-preservation requirement documented. | No real-brand output or pixel-fidelity validation. |
 | Documentation | T-002 checkout and isolated-package validator runs passed with optional dependencies; five synthetic regression tests passed. | Documentation validation does not test the separate application tree, provider, runtime security or visual fidelity. |
 

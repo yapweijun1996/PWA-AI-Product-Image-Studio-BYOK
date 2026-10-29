@@ -4,6 +4,17 @@
 
 User can leave the app with their original photos, approved outputs, masks, verified facts, job/cost/QA lineage. A backup is not dependent on app operator cloud storage. A **portable project** can include rejected draft metadata but must visibly distinguish it from approved output.
 
+## Implemented subset
+
+The browser currently exports and imports one product, its facts and immutable original images. ZIPs contain `project.json`, `export-manifest.json` and `originals/<assetId>.<extension>`; hashes and source references are verified before an add-only IndexedDB transaction. The import preview shows the exact uncompressed archive bytes and warns that actual browser storage use differs. Duplicate product, SKU or source IDs are rejected, including races after preview. User-visible progress and cancellation are available before commit.
+
+Only product and export-manifest schema version `1.0.0` is supported. No historical schema or migration contract exists yet; unsupported versions, masks, jobs, generated outputs, QA and receipts are rejected rather than silently omitted. This subset does not satisfy the complete portable-project target below. Integrate those record types and their tested migrations as their features are implemented.
+
+Backups are unencrypted and may contain sensitive project details, original images and EXIF metadata. Choose a trusted destination. The application rejects certain recognizable credential patterns in project metadata, but this heuristic cannot detect every secret and does not inspect image pixels or metadata for secrets. Never put credentials in product data or source images.
+
+The current limits are 340 MiB compressed archive, 18 entries, 1 MiB per JSON file, 20 MiB per original, 322 MiB total expanded bytes and a 200:1 expansion ratio. Import rejects encrypted, executable, linked, duplicate, unsupported or unsafe entries, verifies ZIP integrity and hashes, and checks image headers and dimensions. These controls do not replace independent security review or real-device storage testing.
+
+
 ## ZIP structure (target)
 
 ```text

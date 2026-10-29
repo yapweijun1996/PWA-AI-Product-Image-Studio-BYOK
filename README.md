@@ -4,7 +4,7 @@
 **Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 
-> The `app/` directory provides local SKU projects, user-confirmed facts and source-image upload with immutable originals in IndexedDB, plus a static-only offline/update worker. Generation, backup and provider connection are not implemented. Draft protection has been exercised for product forms and selected source previews, but real mask/transaction preservation remains unverified. No production deployment, real-brand fidelity or complete application E2E is claimed. See the [task ledger](docs/08-delivery/TASK.md) and [evidence status](docs/00-governance/EVIDENCE_STATUS.md).
+> The `app/` directory provides local SKU projects, user-confirmed facts, immutable source-image upload, a portable backup for this currently supported data, and a static-only offline/update worker. Backup of future masks, jobs, outputs, QA and receipts and migration from older schema versions remain unimplemented; unsupported data is rejected rather than omitted. Generation and provider connection are not implemented. Draft protection has been exercised for product forms and selected source previews, but real mask/transaction preservation remains unverified. No production deployment, real-brand fidelity or complete application E2E is claimed. See the [task ledger](docs/08-delivery/TASK.md) and [evidence status](docs/00-governance/EVIDENCE_STATUS.md).
 
 ## Start here
 
@@ -50,7 +50,7 @@ npm ci
 npm run dev
 ```
 
-`npm run build` type-checks and builds the shell and worker; `npm test` runs image-header regression tests on Node 22.12 or newer (Node 22/23 may warn that type stripping is experimental). Serve the production build over HTTPS (or localhost), return `index.html` for application routes, and revalidate `/sw.js` and HTML rather than serving them from an immutable cache. The shell can load offline only after a successful online installation. Browser data may be evicted; backup and provider operations remain unimplemented.
+`npm run build` type-checks and builds the shell and worker; `npm test` runs image-header and backup security regression tests on Node 22.12 or newer (Node 22/23 may warn that type stripping is experimental). Serve the production build over HTTPS (or localhost), return `index.html` for application routes, and revalidate `/sw.js` and HTML rather than serving them from an immutable cache. The shell can load offline only after a successful online installation. Browser data may be evicted: export backups to a trusted location. Backups are unencrypted and can include confidential photos and EXIF; see the [backup contract](docs/04-data/EXPORT_IMPORT.md) for supported data and limits. Provider operations remain unimplemented.
 
 
 ## Machine-readable content

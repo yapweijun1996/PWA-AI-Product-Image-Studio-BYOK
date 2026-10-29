@@ -210,14 +210,10 @@ export async function saveSource(productId: string, source: PreparedSource, came
   });
 }
 
-export async function loadOriginalSource(productId: string, metadata: Product['sourceAssets'][number]): Promise<Blob> {
-  const db = await openDatabase();
-  const record = await new Promise<unknown>((resolve, reject) => {
-    const tx = db.transaction('sourceAssets', 'readonly');
-    const request = tx.objectStore('sourceAssets').get(metadata.assetId);
-    tx.oncomplete = () => resolve(request.result);
-    tx.onabort = () => reject(transactionError(tx));
-  });
+type SourceMetadata = Product['sourceAssets'][number];
+export type BackupSource = { metadata: SourceMetadata; blob: Blob; exifOrientation: number };
+
+async function verifyStoredSource(productId: string, metadata: SourceMetadata, record: unknown): Promise<BackupSource> {
   if (!record || typeof record !== 'object') throw new Error('The original source is missing and cannot be verified.');
   const source = record as Record<string, unknown>;
   if (source.productId !== productId || source.assetId !== metadata.assetId || source.sha256 !== metadata.sha256 ||
@@ -236,5 +232,119 @@ export async function loadOriginalSource(productId: string, metadata: Product['s
       (rotated ? header.width : header.height) !== metadata.height) {
     throw new Error('The original source dimensions or orientation do not match. It cannot be verified.');
   }
-  return source.blob;
+  return { metadata, blob: source.blob, exifOrientation: header.orientation };
+}
+
+export async function loadOriginalSource(productId: string, metadata: SourceMetadata): Promise<Blob> {
+  const db = await openDatabase();
+  const record = await new Promise<unknown>((resolve, reject) => {
+    const tx = db.transaction('sourceAssets', 'readonly');
+    const request = tx.objectStore('sourceAssets').get(metadata.assetId);
+    tx.oncomplete = () => resolve(request.result);
+    tx.onabort = () => reject(transactionError(tx));
+  });
+  return (await verifyStoredSource(productId, metadata, record)).blob;
+}
+
+function validateBackupReferences(product: Product): void {
+  const sourceIds = new Set(product.sourceAssets.map((asset) => asset.assetId));
+  const hashes = new Set(product.sourceAssets.map((asset) => asset.sha256));
+  const factIds = new Set(product.facts.map((fact) => fact.factId));
+  if (sourceIds.size !== product.sourceAssets.length || hashes.size !== product.sourceAssets.length ||
+      factIds.size !== product.facts.length || (sourceIds.size > 0 && !product.rightsAcknowledged) ||
+      product.brandLock.maskAssetId !== null ||
+      product.facts.some((fact) => fact.sourceAssetId && !sourceIds.has(fact.sourceAssetId))) {
+    throw new Error('This project contains unsupported or inconsistent references; it cannot be safely backed up or imported.');
+  }
+}
+
+export function validateBackupProduct(value: unknown): Product {
+  const product = checkedProduct(value);
+  validateBackupReferences(product);
+  return product;
+}
+
+export async function getBackupSnapshot(productId: string): Promise<{ product: Product; sources: BackupSource[] }> {
+  const db = await openDatabase();
+  const snapshot = await new Promise<{ product: Product; rows: unknown[] }>((resolve, reject) => {
+    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'generatedAssets'], 'readonly');
+    const productRequest = tx.objectStore('products').get(productId);
+    const sourceRequest = tx.objectStore('sourceAssets').index('productId').getAll(productId);
+    const jobCount = tx.objectStore('jobs').index('productId').count(productId);
+    const assetCount = tx.objectStore('generatedAssets').index('productId').count(productId);
+    const maskCounts: IDBRequest<number>[] = [];
+    let product: Product;
+    let failure: Error | undefined;
+    productRequest.onsuccess = () => {
+      try {
+        if (productRequest.result === undefined) throw new Error('This project no longer exists.');
+        product = checkedProduct(productRequest.result);
+        validateBackupReferences(product);
+        for (const asset of product.sourceAssets) {
+          maskCounts.push(tx.objectStore('masks').index('sourceAssetId').count(asset.assetId));
+        }
+      } catch (error) {
+        failure = error instanceof Error ? error : new Error('The project cannot be backed up.');
+        tx.abort();
+      }
+    };
+    tx.oncomplete = () => {
+      if (jobCount.result || assetCount.result || maskCounts.some((count) => count.result)) {
+        reject(new Error('This project contains jobs, outputs or masks that this backup version cannot safely include.'));
+      } else {
+        resolve({ product, rows: sourceRequest.result });
+      }
+    };
+    tx.onabort = () => reject(failure ?? transactionError(tx));
+  });
+  if (snapshot.rows.length !== snapshot.product.sourceAssets.length) {
+    throw new Error('The source records do not match the project. Backup was not created.');
+  }
+  const sources: BackupSource[] = [];
+  const sourceFields: Record<string, true> = { assetId: true, sha256: true, mimeType: true, width: true, height: true, cameraView: true, filename: true, productId: true, exifOrientation: true, blob: true };
+  for (const metadata of snapshot.product.sourceAssets) {
+    const row = snapshot.rows.find((value) => value && typeof value === 'object' && (value as Record<string, unknown>).assetId === metadata.assetId);
+    if (!row || typeof row !== 'object' || Object.keys(row).some((key) => !Object.hasOwn(sourceFields, key))) {
+      throw new Error('A source contains unsupported fields. Backup was not created.');
+    }
+    sources.push(await verifyStoredSource(productId, metadata, row));
+  }
+  return { product: snapshot.product, sources };
+}
+
+export async function hasImportConflict(product: Product): Promise<boolean> {
+  const db = await openDatabase();
+  return new Promise<boolean>((resolve, reject) => {
+    const tx = db.transaction(['products', 'sourceAssets'], 'readonly');
+    const products = tx.objectStore('products');
+    const checks = [products.getKey(product.productId), products.index('sku').getKey(product.sku),
+      ...product.sourceAssets.map((asset) => tx.objectStore('sourceAssets').getKey(asset.assetId))];
+    tx.oncomplete = () => resolve(checks.some((request) => request.result !== undefined));
+    tx.onabort = () => reject(transactionError(tx));
+  });
+}
+
+export async function restoreProduct(product: Product, sources: BackupSource[]): Promise<void> {
+  checkedProduct(product);
+  validateBackupReferences(product);
+  if (sources.length !== product.sourceAssets.length) throw new Error('The backup has missing or extra sources.');
+  const ids = new Set(sources.map((source) => source.metadata.assetId));
+  if (ids.size !== sources.length) throw new Error('The backup contains duplicate source IDs.');
+  for (const metadata of product.sourceAssets) {
+    const source = sources.find((item) => item.metadata.assetId === metadata.assetId);
+    if (!source) throw new Error('The backup is missing an original source.');
+    await verifyStoredSource(product.productId, metadata, { ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
+  }
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['products', 'sourceAssets'], 'readwrite');
+    tx.objectStore('products').add(product);
+    for (const source of sources) {
+      tx.objectStore('sourceAssets').add({ ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
+    }
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(tx.error?.name === 'ConstraintError'
+      ? new Error('This product, SKU or source ID already exists. Nothing was imported.')
+      : transactionError(tx));
+  });
 }

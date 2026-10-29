@@ -6,17 +6,20 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import standalone from 'ajv/dist/standalone/index.js';
 
-function productValidator(): Plugin {
-  const virtualId = 'virtual:product-validator';
-  const resolvedId = `\0${virtualId}`;
+function contractValidators(): Plugin {
+  const schemas: Record<string, string> = {
+    'virtual:product-validator': 'product.schema.json',
+    'virtual:export-manifest-validator': 'export-manifest.schema.json',
+  };
   return {
-    name: 'product-validator',
+    name: 'contract-validators',
     resolveId(id) {
-      return id === virtualId ? resolvedId : undefined;
+      return schemas[id] ? `\0${id}` : undefined;
     },
     load(id) {
-      if (id !== resolvedId) return;
-      const schemaPath = new URL('../contracts/schemas/product.schema.json', import.meta.url);
+      const filename = schemas[id.startsWith('\0') ? id.slice(1) : id];
+      if (!filename) return;
+      const schemaPath = new URL(`../contracts/schemas/${filename}`, import.meta.url);
       this.addWatchFile(schemaPath.pathname);
       const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
       const ajv = new Ajv2020({ code: { source: true, esm: true }, strict: true });
@@ -25,7 +28,7 @@ function productValidator(): Plugin {
         .replace('require("ajv/dist/runtime/ucs2length").default', 'ucs2lengthModule')
         .replace('require("ajv-formats/dist/formats").fullFormats', 'fullFormats');
       if (source.includes('require(') || source.includes('new Function')) {
-        throw new Error('Unexpected generated product validator dependency');
+        throw new Error('Unexpected generated contract validator dependency');
       }
       return `import ucs2lengthModule from 'ajv/dist/runtime/ucs2length.js';\n` +
         `import { fullFormats } from 'ajv-formats/dist/formats.js';\n${source}`;
@@ -52,4 +55,5 @@ function shellWorker(): Plugin {
   };
 }
 
-export default defineConfig({ plugins: [react(), productValidator(), shellWorker()] });
+const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
+export default defineConfig({ define: { __APP_VERSION__: JSON.stringify(appVersion) }, plugins: [react(), contractValidators(), shellWorker()] });

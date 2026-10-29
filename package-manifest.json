@@ -7,7 +7,7 @@
   "appTestsRun": false,
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 128,
+  "fileCountHashed": 129,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -41,8 +41,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4449,
-      "sha256": "3cb6986624cadaf1c3dc83b8d53d05be56f081fa906ef20ddd84b2e3f0356709"
+      "bytes": 4835,
+      "sha256": "9399d044ed333a1db5f129ac0eed410eea200dd7e061b14a571d701684584014"
     },
     {
       "path": "ROADMAP.md",
@@ -56,8 +56,8 @@
     },
     {
       "path": "START_HERE_中文.md",
-      "bytes": 2806,
-      "sha256": "cf5b6355ef0a14e817525fccc8d43d8fd16403297efdd69fc265052d2a8e58c3"
+      "bytes": 3041,
+      "sha256": "15ff3b430eff4f8bba2591b2c1821e0d18afa8530f1588e696f05b5266a037bd"
     },
     {
       "path": "TASK.md",
@@ -101,8 +101,8 @@
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 2743,
-      "sha256": "b6d846dc9e72d2f86f1dccbfead9a59f3608d47bb310f20f7976b7282f701df0"
+      "bytes": 3146,
+      "sha256": "e066642ecb17ddd5b85ef5f799ca6880401dfab72131668c8e15561902576818"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -201,8 +201,8 @@
     },
     {
       "path": "docs/04-data/EXPORT_IMPORT.md",
-      "bytes": 2536,
-      "sha256": "c2e76fda124a6c61bc9ee4a859bc9b820c99016ac1ebeae716d70622c6e48de0"
+      "bytes": 4297,
+      "sha256": "fdaa14377a2f21abe153144f71e19c913a2366ccfad078cf7172b8efc181a678"
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
@@ -221,8 +221,8 @@
     },
     {
       "path": "docs/05-api/OPENAI_ADAPTER.md",
-      "bytes": 3920,
-      "sha256": "dd149adb46cdd39d3a696bea6992a5170a5156a634dfdf75c197ca392c33227c"
+      "bytes": 4255,
+      "sha256": "2bedeef11aec000638424befaa729630283ed62a0b67727a34b87255edb33181"
     },
     {
       "path": "docs/06-ai/BRAND_LOCK_ENGINE.md",
@@ -286,13 +286,13 @@
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 2099,
-      "sha256": "be9e0e2278ca13be93b4f09748e67e84d92ddd45bb224e525e6d4890dbdc679b"
+      "bytes": 2353,
+      "sha256": "260c0e6d4a6929f1def8bced59b3587395442c85691e788b99a5f6c48d5fbae4"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 22307,
-      "sha256": "527a6e9f6571c88617a8b06b54f0c0cdc6460d7baa7cae2aeee1f45f4316576c"
+      "bytes": 26921,
+      "sha256": "90ad4357578ed0cebcfcbf3e31837e5e933951e0e10b6d9255262666e85f0917"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -310,14 +310,19 @@
       "sha256": "f2876f8d574003471f266faee46890b54809a1196428cfcd06db4acac79513f5"
     },
     {
+      "path": "docs/09-research/PERSONA_REVIEW_2026-10-30.md",
+      "bytes": 7334,
+      "sha256": "099326c90a39893385c17473b8d403ac35167493b0cdf1b53fbf92e1b80ddc2a"
+    },
+    {
       "path": "docs/09-research/PILOT_EXPERIMENT.md",
       "bytes": 2505,
       "sha256": "8b66bfbc15a0f1f50eca2ac19f23b62ccec53caf8d95aca5c6ba68e8fbdaf67c"
     },
     {
       "path": "docs/09-research/PI_OPENAI_SPIKE.md",
-      "bytes": 5254,
-      "sha256": "accbc5afa85c858eb2d1dfcb34f2bd24a25aaeb444defead9fa387d4003349de"
+      "bytes": 5570,
+      "sha256": "29597cc2ced238d9a4c87817805b1bc716f8b54ad2db7c234d58f683f8eff15e"
     },
     {
       "path": "docs/09-research/SOURCES.md",
@@ -326,13 +331,13 @@
     },
     {
       "path": "docs/09-research/SPIKE_TEST_PLAN.md",
-      "bytes": 21602,
-      "sha256": "e5db0fe9a6480e321171ab1ca2b9f1e42e21f73bdc4ee8e41328388cf9f91c94"
+      "bytes": 21937,
+      "sha256": "9952aab04c103f50147b92dbf17fba93e59cb48f31a1ecdb34b9fd81db0a4237"
     },
     {
       "path": "docs/09-research/UI_UX_LAYOUT_RESEARCH.md",
-      "bytes": 16783,
-      "sha256": "730d56660f8a96a9d1b705a3319b2ae1c8d305dd6f8c7d9fd8eca352d6833f82"
+      "bytes": 17003,
+      "sha256": "0586c735ff9428125d6a3a98d9866f8ca4daba55282e5dc447d982186e038e61"
     },
     {
       "path": "docs/09-research/evidence/openai-image-spike.png",
@@ -606,8 +611,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "bytes": 2512,
-      "sha256": "373e0a4b6342ba20e606742be88c3a2e6d048f091a1c9452a41c3b76e7672b93"
+      "bytes": 2583,
+      "sha256": "49864730db1dd0fc937ccfd815f30f7c9e8ab8d860aea46358d303e4754f5c32"
     },
     {
       "path": "fixtures/cost-scenario.json",

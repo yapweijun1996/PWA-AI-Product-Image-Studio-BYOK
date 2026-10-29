@@ -1,6 +1,6 @@
 # Execution Task Ledger — Ready for Pi / OMP / Coding Agents
 
-**Initial status of EVERY task:** `PENDING` (documentation scope only). Owner may change status after inspecting repository and committing evidence. Complete one task at a time or parallelize only non-overlapping files with a defined integration gate.
+**Status:** the table and dated records below describe the current evidence and its limits; earlier records preserve historical states. Complete one task at a time or parallelize only non-overlapping files with a defined integration gate.
 
 For proposed research experiments and their dependencies, see [Spike Test Catalog](../09-research/SPIKE_TEST_PLAN.md). Spike results do not automatically complete delivery tasks.
 
@@ -8,15 +8,17 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 |---|---|---|---|---|
 | T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
+| T-003 | EP-07 | Reconcile current architecture and task status across project docs | T-001 | PENDING — source-backed current-state audit; correct remaining server-key/vault and outdated implementation claims without rewriting dated history; doc links and checksum validation |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — shell update verified; real draft/mask flush and no-loss acceptance require T-020/T-050 integration. See T-011 record below. |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU, facts and source persistence exercised; actual quota exhaustion and generation-dependent fact filtering remain open. |
 | T-021 | EP-01 | Upload MIME/EXIF/resize/provenance; original immutable Blob | T-020 | VERIFIED for synthetic Chromium input and local persistence; physical-device and real quota gates remain open. See T-021 record below. |
-| T-022 | EP-01 | Portable backup ZIP/import and version migration | T-020 | E2E-017; hash/path/bomb cases |
+| T-022 | EP-01 | Portable backup ZIP/import and version migration | T-020 | IMPLEMENTED_UNVERIFIED — current product/fact/original subset verified; full project records and historical migrations remain open. See T-022 record below. |
 | T-030 | EP-02 | Self-hosted gateway authentication, CSRF, allowlist, server-configured secret and provider authorization session | T-001 | SEC-001..008; Key scan = 0 |
 | T-031 | EP-02 | Provider connect/status/disconnect settings UX without browser key entry | T-030,T-010 | E2E-009; no browser credential exposure |
 | T-032 | EP-02 / EP-03 | Pi Agent integration preflight and restricted browser-facing image workflow design | T-001,T-030 | reviewed SDK/runtime boundary, tool allowlist, principal isolation, no-shell tests, cost approval and image-provider contract |
 | T-033 | EP-02 / EP-03 | Implement isolated Pi host and browser integration after T-032 acceptance | T-032,T-040 | mocked cross-user and injection tests, redacted traces, browser E2E; controlled live call only after owner key and budget are available |
+| T-034 | EP-02 / EP-03 | Design and verify a restricted text-model path for the isolated Pi host | T-030,T-032 | PENDING — document the candidate trust boundary; fake-key tests enforce principal/session/model/budget limits and no key exposure or arbitrary outbound URLs; security review before real credentials |
 | T-040 | EP-03 | Provider adapter + one Studio scene generation | T-030,T-021 | E2E-007/008, controlled live API probe |
 | T-041 | EP-03 | Job/attempt state machine, timeout UNKNOWN, rate handling | T-040 | E2E-010/015/023, no auto duplicate |
 | T-042 | EP-03 | Cost estimate, usage receipt, budget guard | T-041 | E2E-014; values/unknown labeled correctly |
@@ -29,7 +31,16 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-080 | EP-06 | Offline, iOS installed, responsiveness/accessibility test | T-011,T-061 | E2E-018..020 + evidence |
 | T-081 | EP-07 | Security/privacy/backup/perf regression and remediation | T-071,T-080 | SEC, PERF and threat gates pass |
 | T-082 | EP-07 | Five-category SKU pilot, real brand QA and measured cost | T-081 | documented approval/veto & economics |
+| T-083 | EP-07 | Validate seller setup, BYOK comprehension and single-SKU task with consenting target users | T-010,T-084 | PENDING — synthetic or rights-cleared task script; record completion, time and friction; separate proposed findings from population claims. No outreach without authorization |
+| T-084 | EP-06 | Review the proposed visual anchors and accessibility paths for the MVP | T-010 | PENDING — owner records Accept/Change/Reject for representative desktop/tablet/mobile and critical state anchors; verify keyboard, non-drag actions and real zoom when an interactive flow exists |
 | T-090 | EP-07 | Production deployment + rollback runbook with explicit owner approval | T-082 | release gates A–F, URL and post-deploy smoke |
+
+## Improvement priorities from simulated reviewers — 2026-10-30
+
+- The previous ten-persona review was a simulation based on project evidence, not seller interviews. See [review and task mapping](../09-research/PERSONA_REVIEW_2026-10-30.md).
+- Near term: reconcile stale docs (T-003), then use the existing task dependencies to build the smallest one-SKU / one-style / human-QA / approved-export journey. Extend T-022 as masks, jobs, outputs, QA and receipts are implemented; define a migration only when a supported historical schema exists.
+- Security and cost: T-030/032/034 must resolve gateway authentication, server-configured key and isolated Pi model access; T-041/042 must protect per-attempt approvals, UNKNOWN and spend. Do not assume the earlier isolated Pi text probe proves the production isolation path.
+- Product and design: T-084 and T-083 test the design direction and self-hosted onboarding; T-050/051/060 preserve and review original product identity; T-080/081/082 retain device, security and pilot gates. Proposed work is PENDING until supported by the evidence required by each task.
 
 ## T-001 preflight observation — 2026-10-29
 
@@ -123,6 +134,13 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Offline/update:** The saved original reopened offline, while the service-worker cache contained only shell files. Under a CSP permitting `blob:` images but not `unsafe-eval`, a selected source preview blocked an update until saved; the new version reopened the saved source. A failed replacement retained the previous preview and selected camera view.
 - **Limits:** Actual device memory/quota exhaustion, physical iOS EXIF behavior, real-brand fidelity, mask editing and compositing remain unverified. No provider call or production key was used.
 - **Rollback:** Revert source-input code and documentation without deleting IndexedDB records or original user files. A later migration or backup is required before removing persisted source data.
+
+## T-022 portable backup subset record — 2026-10-30
+
+- **Change:** Added unencrypted ZIP export and previewed, add-only import for the currently implemented product, facts and original images. Canonical product and manifest schemas, original hashes and cross-references are checked. The preview gives the exact expanded archive byte count and warns that actual storage use may differ. Unsupported records and unknown schema versions are rejected, not omitted or guessed.
+- **Evidence:** `npm run build` passed; nine application tests passed, including traversal, duplicate names, symlinks, expansion bomb, forged size, unknown manifest version and modified metadata regressions. Chromium downloaded a synthetic ZIP, independently verified its manifest hashes and original JPEG hash, and restored it under a separate origin; the original reopened offline. A race inserting a conflicting source after preview aborted the whole transaction without overwriting the existing record. Malicious paths, links, duplicate names, oversized expansion, forged sizes, modified metadata, unknown versions and extra files were rejected. A synthetic recognizable key pattern was refused before export, and a synthetic unsupported job prevented export rather than being dropped. An 8 MB synthetic image exercised export progress and cancellation with no download. At 320 CSS px the final import page had no horizontal overflow. Import and download also worked under a CSP without `unsafe-eval`.
+- **Security and limits:** `npm audit --audit-level=high` reported zero vulnerabilities. Backups are not encrypted and can contain sensitive photo/EXIF data; credential-pattern detection is not a complete secret scan of metadata or image bytes. No production key or provider request was used. Full mask/job/output/QA/receipt portability, actual quota exhaustion, physical iOS behavior and historical migration remain unverified or unimplemented. No prior supported schema is available, so inventing a migration would risk data loss.
+- **Rollback:** Revert backup UI, ZIP implementation, tests and the matching documentation together. Preserve all IndexedDB data and downloaded backups; do not delete user files.
 
 ## Task execution record template
 
