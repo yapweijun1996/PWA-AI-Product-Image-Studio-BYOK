@@ -8,7 +8,7 @@
   "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 129,
+  "fileCountHashed": 130,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -67,8 +67,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 20499,
-      "sha256": "0d1158acfac7ef8c6ea95a830e798f1dcfbf8bfe3e2d90b707e6a30384722151"
+      "bytes": 20719,
+      "sha256": "8561f0fb5c9c5c3481d80f62b5370a5ce90ab4dfa65f9cc50a54400b67fbdc2b"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -97,8 +97,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 5285,
-      "sha256": "1a98a8260c8d015f135309070d469e50c219d3762ffb498c7755f2f30db3e702"
+      "bytes": 5680,
+      "sha256": "8bc490b24d82a1da3e94013c907f0e703592884dda08940bc1c1bb43e48d5ab1"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -152,8 +152,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 10628,
-      "sha256": "218e1276e0523f4052be96307d1e2de0695b38c69052c0e0ce29e3e1b1996d6e"
+      "bytes": 12169,
+      "sha256": "ae518462cc221e63dd29bb887f8a4bd95a9c6557ac95131432a6d486667366f6"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -167,8 +167,8 @@
     },
     {
       "path": "docs/02-architecture/JOB_ORCHESTRATION.md",
-      "bytes": 3708,
-      "sha256": "d4ec1717abce1ed80de7fce70064b6a63921c8b27c8715f18d4f875721ce7099"
+      "bytes": 3787,
+      "sha256": "6546a51826ece62ea61a26fd9f9aa49cfab87edf4beaed6cbac417bd9dd981dd"
     },
     {
       "path": "docs/02-architecture/PWA_OFFLINE.md",
@@ -287,18 +287,23 @@
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 2527,
-      "sha256": "95fe5707664150036cdeea0a3c13e299a525254c2db80081b646c5b86ac509f8"
+      "bytes": 3443,
+      "sha256": "68c8b594c3a6546bcdc8ce1a0554449f8f6d4475c9c4807f08c3d4e180d32702"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 39623,
-      "sha256": "29ca6966a8a76630bb1add294b34e8e246340cc7c82a30e676f82fe6e35d89d0"
+      "bytes": 42594,
+      "sha256": "c78d2448d49e21d7f2f46321cdba549a7f16bb4d6939bb736d6cab3fb5e42057"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
       "bytes": 16210,
       "sha256": "445a52c1d1257704ecf347c8ce6af59df0eb90d13f9df544f71c13a4aed3f1fe"
+    },
+    {
+      "path": "docs/09-research/CODE_REVIEW_2026-10-30.md",
+      "bytes": 6920,
+      "sha256": "863dcf8d9507f28cae5a7fa5891f62f8e2bcd7f617e5ce6094a4bd9eced42e43"
     },
     {
       "path": "docs/09-research/COMPETITION.md",
@@ -612,8 +617,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "bytes": 2583,
-      "sha256": "49864730db1dd0fc937ccfd815f30f7c9e8ab8d860aea46358d303e4754f5c32"
+      "bytes": 2637,
+      "sha256": "ae161e572c5d1bb1a1bb3ea9bcdb706e2ddbd41d6c1ba0c6db5b7d57aaf86d4f"
     },
     {
       "path": "fixtures/cost-scenario.json",

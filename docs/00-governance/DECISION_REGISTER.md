@@ -20,6 +20,7 @@
 | DEC-014 | No team sync, video, or ecommerce live publish in MVP | PROPOSED | Keep launch scope bounded; expansion follows validated pilot |
 | DEC-015 | No automatic retry for UNKNOWN outcome after provider request | PROPOSED RELIABILITY GATE | Billing/duplication risk; escalate explicit consent to retry |
 | DEC-016 | Browser-facing product uses a Pi-based agent and the user's OpenAI key for image generation | CONFIRMED PRODUCT DIRECTION; IMPLEMENTATION OPEN | Explicit owner direction 2026-10-29. Pi execution environment, restricted tool interface and provider/session isolation remain to be designed and verified. |
+| DEC-017 | Use one UUID for each image request and its `clientAttemptId`; persist non-secret attempt state to prevent duplicate submission | CONFIRMED DIRECTION | Owner selected the unified-ID option. Repeated attempts must not resend; an ambiguous retry needs a new UUID and approval. This does not authorize a paid call or deployment. |
 
 ## Approval-needed decisions before implementation / public release
 
@@ -32,7 +33,7 @@
 | OPEN-005 | Masking quality floor? | Manual mask MVP; optional automatic local segmentation subject to benchmark | Visual QA reviewer |
 | OPEN-006 | Provider usage response guarantees? | Adapter must handle missing usage; reconcile billing; run sandbox contract test | Integration engineer |
 | OPEN-007 | Output channel presets? | Confirm current Shopee/Lazada/Shopify dimensions and policies from official docs before claiming compliance | Product owner |
-| OPEN-008 | Gateway request correlation and duplicate handling? | OpenAPI defines `X-Client-Request-Id` and `clientAttemptId` separately; define their relationship, reservation scope, expiry and duplicate response before implementation | API / security engineer |
+| OPEN-008 | Gateway request correlation and duplicate handling? | Owner selected matching `X-Client-Request-Id` and `clientAttemptId`, with persistent non-secret no-resend records. Journal implementation, principal scope, safe retention/recovery and independent security review remain open. | API / security engineer |
 | OPEN-009 | QA score rounding and unbranded weights? | QA schema permits fractional scores; define rounding, threshold behavior and exact unbranded weighting without weakening the hard veto | Product owner + visual QA reviewer |
 
 No open item may be silently marked CONFIRMED. Update `docs/02-architecture/ADR.md` with chosen implementation and rejected alternatives.

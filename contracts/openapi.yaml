@@ -265,9 +265,11 @@ paths:
         submission may have billed; client MUST mark UNKNOWN and MUST NOT auto-retry.
         STRICT may call only generate_scene and locally composite original product.
         The server checks the one-use approval against the current app/provider
-        sessions and canonical request digest, and atomically consumes it with
-        duplicate-attempt reservation before sending. Changed inputs, expired or
-        replayed approvals are rejected; ambiguous outcomes remain UNKNOWN.
+        sessions and canonical request digest. X-Client-Request-Id MUST equal
+        clientAttemptId. Before sending, the gateway atomically consumes the approval
+        and durably reserves the attempt per authenticated principal; a duplicate
+        must not submit again, even after restart. Changed inputs, expired or replayed
+        approvals are rejected; ambiguous outcomes remain UNKNOWN.
         All authorization and input limits are enforced server-side.
       security:
         - AppSession: []
@@ -339,7 +341,7 @@ components:
       schema:
         type: string
         format: uuid
-      description: Correlation/duplicate-request reservation before provider send; not OpenAI idempotency guarantee
+      description: Correlation/duplicate-request reservation before provider send; for /images/generate it MUST equal clientAttemptId. Not an OpenAI idempotency guarantee.
     AttemptApprovalId:
       name: X-Attempt-Approval
       in: header

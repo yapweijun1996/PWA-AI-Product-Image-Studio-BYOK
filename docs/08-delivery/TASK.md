@@ -9,6 +9,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
 | T-003 | EP-07 | Reconcile current architecture and task status across project docs | T-001 | VERIFIED for the scoped source-backed documentation audit and static validation; runtime security, device and release gates remain open. See T-003 record below. |
+| T-004 | EP-07 | Correct outdated development gateway configuration guidance | T-003,T-030 | PENDING — align `.env.example` and development guidance with the loopback gateway; verify that `.env` is not automatically loaded, the gateway makes no provider call, and no secret values are added. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — synthetic Chromium update, unsaved-mask and late-draft guards exercised; installed-device and in-flight transaction no-loss acceptance remain open. See T-011 follow-up record below. |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU, facts, sources and an enforced-quota rollback exercised in Chromium; generation-dependent fact filtering and physical-device quota remain open. |
@@ -34,6 +35,15 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-083 | EP-07 | Validate seller setup, BYOK comprehension and single-SKU task with consenting target users | T-010,T-084 | PENDING — synthetic or rights-cleared task script; record completion, time and friction; separate proposed findings from population claims. No outreach without authorization |
 | T-084 | EP-06 | Review the proposed visual anchors and accessibility paths for the MVP | T-010 | PENDING — owner records Accept/Change/Reject for representative desktop/tablet/mobile and critical state anchors; verify keyboard, non-drag actions and real zoom when an interactive flow exists |
 | T-090 | EP-07 | Production deployment + rollback runbook with explicit owner approval | T-082 | release gates A–F, URL and post-deploy smoke |
+
+## Code review progress snapshot and priorities — 2026-10-30
+
+- **Estimated overall progress: approximately 31%** (rough range 25–35%). This is an engineering judgment for the full intended BYOK image studio, not a measured completion rate or release-readiness score. The dated [code review](../09-research/CODE_REVIEW_2026-10-30.md) owns the weighting, calculation, findings and review limits; revisit the estimate when scope or evidence changes.
+- **P1 — one safe image journey:** T-030/032/034 and their security gates precede or accompany T-040. Establish the restricted provider boundary, then deliver one synthetic-first SKU/Studio attempt with explicit cost approval and a controlled live check only when authorized. T-041/042 must preserve UNKNOWN outcomes and prevent accidental repeat billing.
+- **P1 — Pi and source fidelity:** T-033 remains dependent on accepted isolation and T-040; prove restricted IPC and principal binding before enabling the browser-facing agent. Follow T-050/051/060/061 to composite the original, enforce the brand veto, record human approval and export only approved work.
+- **P2 — resilience and release:** Extend T-022 when jobs, outputs and QA exist; close T-011/080/081 with update, accessibility, real-device, security and recovery evidence. Retain the forced Chromium quota rollback evidence in the T-020 follow-up; natural exhaustion and device acceptance remain open.
+- **P3 — maintenance:** T-004 tracks the stale gateway statement in `.env.example`. Investigate the build's chunk-size warning based on device measurements; preserve existing tests and avoid speculative refactoring.
+- **Baseline:** The code review examined `main` at `8e4295d`; the later `9429f50` records the scoped forced-quota observation without changing application source. The percentage is unchanged as an estimate, not a new verification of that later observation.
 
 ## Improvement priorities from simulated reviewers — 2026-10-30
 
@@ -181,6 +191,12 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Synthetic SDK evidence:** Pi SDK 1.4.0 and Node 22.23.4 ran with only a fake `generate_image` tool, empty resources and separate in-memory sessions inside a disposable `node:22-alpine` container. A fake model stream's `bash` call was rejected as an unknown tool, invalid tool parameters did not execute, a valid synthetic call executed once, and each session's prompt was absent from the other session's in-memory history. The container had networking disabled, a read-only root, dropped capabilities, `no-new-privileges`, bounded resources and an unprivileged UID. No provider request or real credential was used.
 - **Security limits:** The same container successfully executed `/bin/sh`; tool-level rejection is not an OS-level no-shell guarantee. In-memory history separation is not proof of cross-process or cross-principal authorization. No reviewed IPC boundary, host sandbox, real image adapter, one-use approval implementation, cost guard, provider entitlement or paid end-to-end flow was tested. Pi 1.4.0 requires Node `>=22.19.0`, while the current app permits Node `>=22.12.0`; integration must resolve the mismatch. T-032 is not accepted for production or as a completed dependency for T-033.
 - **Rollback:** Revert this record and the accompanying ADR amendment; no persistent Pi runtime, user data, credential or provider state was changed.
+
+## T-040 attempt identity decision — 2026-10-30
+
+- **Owner decision:** Use the same UUID for the image-generation request header and `clientAttemptId`, with a persistent non-secret attempt record to prevent resending the same attempt after restart. A user-approved retry requires a new UUID and approval. ADR-008, the job contract and proposed OpenAPI record the choice.
+- **Limits:** Journal storage, principal scoping, duplicate-status response and crash recovery are not implemented or independently reviewed. No real key, paid request or deployment was authorized by this decision. T-040 remains pending.
+- **Rollback:** A change to the identifier decision requires an explicit versioned migration preserving existing reservations; no runtime state was modified here.
 
 ## T-050 manual mask and backup record — 2026-10-30
 

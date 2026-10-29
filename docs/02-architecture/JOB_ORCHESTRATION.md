@@ -34,8 +34,8 @@ No automatic `UNKNOWN→SUBMITTING` transition. Retry from FAILED/REJECTED/UNKNO
 
 ## Idempotency boundaries
 
-- The proposed OpenAPI contract requires the UUID header `X-Client-Request-Id` and the body field `clientAttemptId`. The header is described as a correlation and pre-submit reservation identifier; their exact relationship and duplicate-request behavior remain open in [OPEN-008](../00-governance/DECISION_REGISTER.md). Do not introduce a different header name without updating the canonical OpenAPI contract.
-- Gateway stores an attempt reservation before provider submission (atomic per authenticated principal). If a duplicate is detected, return known local status without another outbound call.
+- For `/images/generate`, the owner selected the same UUID for `X-Client-Request-Id` and `clientAttemptId`; other endpoint correlation IDs are unaffected. The header is also the pre-submit reservation identifier. See [ADR-008](ADR.md) and [OPEN-008](../00-governance/DECISION_REGISTER.md) for outstanding journal and security review.
+- Gateway durably reserves an attempt before provider submission, atomically scoped to its authenticated principal, and retains only non-secret identity, digest and status information. A duplicate never sends another provider request, including after restart; duplicate-status response, safe retention and recovery remain implementation gates.
 - This does **not** prove provider-level idempotency. If network response is lost after submission, gateway may have no charge/asset reconciliation; retain UNKNOWN until explicit recovery.
 - Never assert OpenAI Images endpoint supports an idempotency key unless vendor docs explicitly confirm it for that operation.
 
