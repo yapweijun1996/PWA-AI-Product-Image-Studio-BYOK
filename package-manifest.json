@@ -102,8 +102,8 @@
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 3415,
-      "sha256": "9370250107547f50c2b08ac0fe9e18d778f8ffc5a38ab7cabd546863fc8e7305"
+      "bytes": 3490,
+      "sha256": "b9f18fdbbe73d1a3bb8b542c39c4c1fc9969229610ba0ca41ba5e1a20552f219"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -162,8 +162,8 @@
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
-      "bytes": 5804,
-      "sha256": "2a38bbb7c985858ffb0dc2da5d57667c661c0b8a62b38613a214c70e4a4fab8d"
+      "bytes": 5871,
+      "sha256": "37cb3ab97880ec762ab3951811ee4060785ad3ad260a4d1b93784366a74d86e0"
     },
     {
       "path": "docs/02-architecture/JOB_ORCHESTRATION.md",
@@ -207,8 +207,8 @@
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
-      "bytes": 3962,
-      "sha256": "4e715f81179ed404be7f9fb63a151aa7bda5e9a4a870f30455fbfcd04350e620"
+      "bytes": 4059,
+      "sha256": "fe4aca7dc329843f85ae6c99d49b8ef24f572dd286eeae478ea28aca0748df67"
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
@@ -292,8 +292,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 38596,
-      "sha256": "5220d129a5ff8afb0a76fb2e56e2f01cb014335f11a1c4eb57239fe4a2e8422d"
+      "bytes": 39623,
+      "sha256": "29ca6966a8a76630bb1add294b34e8e246340cc7c82a30e676f82fe6e35d89d0"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

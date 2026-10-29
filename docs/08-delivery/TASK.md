@@ -11,7 +11,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-003 | EP-07 | Reconcile current architecture and task status across project docs | T-001 | VERIFIED for the scoped source-backed documentation audit and static validation; runtime security, device and release gates remain open. See T-003 record below. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — synthetic Chromium update, unsaved-mask and late-draft guards exercised; installed-device and in-flight transaction no-loss acceptance remain open. See T-011 follow-up record below. |
-| T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU, facts and source persistence exercised; actual quota exhaustion and generation-dependent fact filtering remain open. |
+| T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU, facts, sources and an enforced-quota rollback exercised in Chromium; generation-dependent fact filtering and physical-device quota remain open. |
 | T-021 | EP-01 | Upload MIME/EXIF/resize/provenance; original immutable Blob | T-020 | VERIFIED for synthetic Chromium input and local persistence; physical-device and real quota gates remain open. See T-021 record below. |
 | T-022 | EP-01 | Portable backup ZIP/import and version migration | T-020 | IMPLEMENTED_UNVERIFIED — product/fact/original/mask subset exercised; jobs, outputs, QA, receipts and historical migrations remain open. See T-022 and T-050 records below. |
 | T-030 | EP-02 | Self-hosted gateway authentication, CSRF, allowlist, server-configured secret and provider authorization session | T-001 | IMPLEMENTED_UNVERIFIED — loopback-only development session subset exercised with synthetic credentials; full security review, production identity and provider integration remain open. See T-030 record below. |
@@ -139,6 +139,12 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Update integration:** In two builds served under a CSP without `unsafe-eval`, a real unsaved product form blocked update activation and retained its input. After the product was saved, explicit update reloaded to the persisted product. Navigation cancellation also retained a dirty form. Mask and pending-transaction protection still require their own implementation and test.
 - **Open acceptance at T-020:** T-021 subsequently exercised image upload and a synthetic 12 MP source. Actual quota exhaustion remains untested (E2E-016), and T-040 must prove generation only consumes confirmed facts (E2E-003). T-020 remains IMPLEMENTED_UNVERIFIED for those named criteria.
 - **Rollback:** Revert product source, forms, validator plugin and docs together. Do not delete the IndexedDB database or user-created products; future rollback must preserve or explicitly export data.
+
+## T-020 quota follow-up — 2026-10-30
+
+- **Evidence:** On a synthetic local Chromium origin, the DevTools quota override reported `overrideActive=true` and a 1-byte origin quota. A 16,595,666-byte synthetic PNG triggered the application's local-storage-full message; IndexedDB retained the existing product and its previously saved 12 MP original, with no new source or product reference. The browser initially accepted a smaller source despite the override, so the quota value alone was not treated as proof of failure. After removing the override, retrying the same PNG saved both its Blob and product reference. No real seller data was used.
+- **Limits:** This is a forced Chromium quota condition, not observed natural exhaustion or a physical iOS/device test. It does not prove generation's confirmed-fact filtering; that depends on T-040. No source or runtime code was changed.
+- **Rollback:** Revert this evidence and its status documentation if needed; do not remove user data or backups.
 
 ## T-021 source image record — 2026-10-30
 
