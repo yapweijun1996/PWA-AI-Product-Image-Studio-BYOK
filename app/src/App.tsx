@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
+import { useServiceWorker } from './useServiceWorker';
 
 type Theme = 'system' | 'light' | 'dark';
 const themeKey = 'image-studio.theme';
@@ -112,6 +113,7 @@ function NotFound() {
 export function App() {
   const { theme, setTheme } = useAppearance();
   const online = useNetworkStatus();
+  const update = useServiceWorker();
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
@@ -123,6 +125,16 @@ export function App() {
     </aside>
     <div className="content-shell">
       <header className="topbar"><span>PRODUCT IMAGE STUDIO</span><span className="network" role="status"><span className={online ? 'network-dot' : 'network-dot offline'} aria-hidden="true"/>{online ? 'Browser online' : 'Browser offline'}</span></header>
+      {update.state !== 'idle' && <section className="update-notice" aria-label="Application update" aria-live="polite">
+        <div>
+          <strong>{update.state === 'activating' ? 'Updating application…' : update.state === 'error' ? 'Update unavailable' : 'New version available'}</strong>
+          <p>{update.state === 'activating' ? 'Please keep this page open.' : update.state === 'error' ? 'The update could not be completed. Save your work, check your connection and reload when ready.' : 'Save any work before updating. This page will reload only when you choose to update.'}</p>
+        </div>
+        {update.state === 'activating' && <span className="update-spinner" aria-hidden="true" />}
+        {update.state !== 'activating' && (update.state === 'error'
+          ? <button type="button" onClick={() => window.location.reload()}>Reload when ready</button>
+          : <button type="button" onClick={update.updateNow}>Update now</button>)}
+      </section>}
       <main id="main-content" tabIndex={-1}>
         <Routes><Route path="/" element={<Home/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes>
       </main>

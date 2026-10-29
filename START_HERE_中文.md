@@ -1,6 +1,6 @@
 # 中文快速开始（Singapore / Malaysia）
 
-这份文档是 **PWA-AI-Product-Image-Studio-BYOK 的设计基线**。`app/` 现有有限的 React 外壳，但商品建立、图片生成、离线启动和完整 PWA 仍未完成；请以任务账本和实际验证为准。
+这份文档是 **PWA-AI-Product-Image-Studio-BYOK 的设计基线**。`app/` 现有有限的 React 外壳与离线外壳缓存，但商品建立、图片生成、编辑草稿的更新保护和完整 PWA 仍未完成；请以任务账本和实际验证为准。
 
 ## 目标
 

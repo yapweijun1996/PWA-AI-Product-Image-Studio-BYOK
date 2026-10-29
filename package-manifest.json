@@ -41,8 +41,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3995,
-      "sha256": "4b6dbdda38808193927da63dee2db4621dab5b0551ace74fed9f27ca6ae0f0cd"
+      "bytes": 4231,
+      "sha256": "b87ac86c46229a6111c4bb775f51f64e13b04f337c32d77d3c9f9732fa39c601"
     },
     {
       "path": "ROADMAP.md",
@@ -56,8 +56,8 @@
     },
     {
       "path": "START_HERE_中文.md",
-      "bytes": 2761,
-      "sha256": "cc2b3c0b6866d1d56e2b37ee4e8ddbac24bec98855b71ce34e5b1a5aa26fa907"
+      "bytes": 2797,
+      "sha256": "3d64c32f06ee516f0d86ad5c3fd28b1df3bede76a738ec5f16532f34ae2cc602"
     },
     {
       "path": "TASK.md",
@@ -101,8 +101,8 @@
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 2418,
-      "sha256": "e065d8f142d5e423446feaed8eb588d7b28182268cb992d6c1c5b08eb54d9bcc"
+      "bytes": 2487,
+      "sha256": "e913a6225124439b74bb948708ccac3ce23cbf2e53eec160d3bb7b3696d68dc7"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -156,8 +156,8 @@
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
-      "bytes": 2902,
-      "sha256": "77b526a60af116abd339c792d71630d0c6841513261fd776a1b7bade518cf4e5"
+      "bytes": 3259,
+      "sha256": "1ff9366538bacd6ac5e3658956049b8bb049d75c25786ce6a25bbadd765c6475"
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
@@ -291,8 +291,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 16791,
-      "sha256": "73bf69f7d2e60e56bc5600ccd79e4b50e9cb2e29cbe68751ff341379ba793060"
+      "bytes": 18487,
+      "sha256": "50d1ef2312ef439247c036d520797bdc0a8c061eae0caa2ebb8f106df1ccc323"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

@@ -9,7 +9,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
-| T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | N→N+1 E2E, no unsaved draft loss |
+| T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — shell update verified; real draft/mask flush and no-loss acceptance require T-020/T-050 integration. See T-011 record below. |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | E2E-001..003,016, corrupt/duplicate test |
 | T-021 | EP-01 | Upload MIME/EXIF/resize/provenance; original immutable Blob | T-020 | E2E-002; large image safe |
 | T-022 | EP-01 | Portable backup ZIP/import and version migration | T-020 | E2E-017; hash/path/bomb cases |
@@ -99,6 +99,14 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Security:** `npm audit --audit-level=high` reported zero vulnerabilities. A source scan found no obvious provider-key/private-key patterns in application source or public assets. This is not a gateway security review; the shell has no provider connection.
 - **Limits:** Offline page reload, service-worker updates, real-device iOS installation, screen-reader and comprehensive accessibility testing remain pending. The failed offline reload before T-011 confirms that offline launch is not yet available. Product creation, storage, upload, generation and export are not implemented.
 - **Rollback:** Revert the `app/` tree and corresponding documentation/validator boundary changes together; do not delete user-managed environment files or other local data.
+
+## T-011 shell update record — 2026-10-30
+
+- **Change:** Each production build emits a distinct static-only service worker. The user must choose the waiting-worker update; the initiating tab displays a loader and reloads after activation. Other tabs receive an update notice rather than an automatic reload. API and non-shell content are not cached.
+- **Evidence:** Two separately generated build IDs were served from a local test server. Chromium loaded the first, reloaded it offline, and navigated offline. A second build waited until the user action; a DOM-observed loader appeared; the selected tab reloaded and the old shell cache was removed. A second tab retained an injected unsaved control without a reload and reloaded only after its own action. A synthetic `/api/probe` response was absent from the cache and failed offline.
+- **Open acceptance:** No actual product draft, pending transaction or mask editor exists yet. The initiating tab's injected unsaved control was lost after its explicit update; the current warning is not automatic draft preservation. Integrate and verify real save/flush and error handling with T-020 and T-050 before marking T-011 VERIFIED or claiming E2E-019 no-loss acceptance.
+- **Limits:** Chromium localhost is not an installed iPhone test. First-load offline is not supported. Hosting must revalidate the worker and HTML. No provider request or real key was used.
+- **Rollback:** Revert the worker, build plugin, update UI and related documentation; preserve local data and review active browser caches before any release rollback.
 
 ## Task execution record template
 

@@ -25,6 +25,8 @@ Official docs as of 2026-10 list Workers memory 128 MB and Free-plan CPU budget 
 - `preview`: restricted identity; staging secrets and dedicated test key; sanitized fixtures; domain isolated from prod.
 - `production`: authenticated users, approved custody/retention, redacted traces, rate limiting and owner-operated deployment review.
 
+The current static shell expects same-origin root deployment, SPA navigation fallback to `index.html`, HTTPS (localhost for development), and revalidation of `/sw.js` and HTML on every visit. Hashed JS/CSS may be served as immutable. Only build-generated shell assets are precached; API responses and seller images are not. This is not approval to deploy.
+
 ## Production release gates
 
 - Preview deployment branch built and signed/tagged; verify URLs, CSP, session cookies, `/api` authz, secret access, error handling, request body limits, telemetry redaction.
