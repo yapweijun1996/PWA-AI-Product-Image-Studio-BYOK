@@ -11,11 +11,11 @@
 | DEC-005 | Follow KB-MCP `pwa:product-standard` | CONFIRMED AS STANDARD | iOS safe area, controlled SW update, offline definition, accessibility |
 | DEC-006 | React + Vite + TypeScript + local-first IndexedDB | PROPOSED | Fits PWA and independent jobs; confirm existing repo and migration constraints |
 | DEC-007 | Cloudflare Pages + same-origin Workers hosted BYOK gateway | PROPOSED ALTERNATIVE | Not selected for the initial implementation; public custody remains subject to separate approval and security review |
-| DEC-008 | Encrypt user keys in short-lived server-side session, DO-backed or equivalent | PROPOSED | Require threat review, auth, key expiry and deletion evidence before public launch |
+| DEC-008 | Hosted encrypted user-key session vault | PROPOSED ALTERNATIVE | Not the initial self-hosted path; public custody requires separate owner approval and security review |
 | DEC-009 | Production public BYOK requires verified-user authentication + per-user quotas | PROPOSED SECURITY GATE | Identity provider, access policy and region TBD |
 | DEC-010 | P0 single SKU, 1–7 independent jobs, per-job QA and human approval | PROPOSED MVP | Prioritize one successful real SKU workflow before batch/video |
 | DEC-011 | Weighted QA 35/25/15/15/10 with editorial threshold 85 and hard brand veto | CONFIRMED AS SKILL RULE | Requires per-image human review; not an automated certificate |
-| DEC-012 | User-hosted gateway as the initial BYOK trust boundary | CONFIRMED DIRECTION | Owner selected self-hosted gateway in this conversation; deployment, identity, key configuration and operational details remain open |
+| DEC-012 | User-hosted gateway with server-configured provider key | CONFIRMED DIRECTION | Owner selected server configuration; browser never inputs or receives the provider key. Runtime, authentication, secret operations and deployment remain open |
 | DEC-013 | Default image models Flare (speed) and Sunburst (precision) | PROPOSED WITH CURRENT EVIDENCE | Official 2026-10 docs; model IDs and rates must be checked before coding |
 | DEC-014 | No team sync, video, or ecommerce live publish in MVP | PROPOSED | Keep launch scope bounded; expansion follows validated pilot |
 | DEC-015 | No automatic retry for UNKNOWN outcome after provider request | PROPOSED RELIABILITY GATE | Billing/duplication risk; escalate explicit consent to retry |
@@ -27,8 +27,8 @@
 |---|---|---|---|
 | OPEN-001 | Self-hosted deployment and distribution? | Select runtime, hosting and operational procedure; public operator-hosted custody is not approved | Product owner + implementation/security review |
 | OPEN-002 | Identity model for public release? | Cloudflare Access beta / email magic-link / passkey / self-host; no unauthenticated public BYOK proxy | Product owner + security reviewer |
-| OPEN-003 | Key storage implementation? | Durable Object + application-level AEAD encryption and TTL, or secret vault; needs review of revocation and rotation | Security engineer |
-| OPEN-004 | Default local retention and backups? | Suggested no server image storage and 30-day max server session? **Key session <= 60 min recommended;** browser local data until user deletion; confirm privacy notice | Product owner |
+| OPEN-003 | Self-hosted secret provisioning and rotation? | Owner configures the server key outside the browser; select secure storage, rotation and removal mechanics and review process isolation | Security engineer |
+| OPEN-004 | Default local retention and backups? | No server image storage proposed; provider authorization session <= 60 minutes recommended; browser local data until user deletion; confirm privacy notice | Product owner |
 | OPEN-005 | Masking quality floor? | Manual mask MVP; optional automatic local segmentation subject to benchmark | Visual QA reviewer |
 | OPEN-006 | Provider usage response guarantees? | Adapter must handle missing usage; reconcile billing; run sandbox contract test | Integration engineer |
 | OPEN-007 | Output channel presets? | Confirm current Shopee/Lazada/Shopify dimensions and policies from official docs before claiming compliance | Product owner |

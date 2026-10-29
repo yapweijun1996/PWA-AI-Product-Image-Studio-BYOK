@@ -1,13 +1,13 @@
 {
   "name": "PWA-AI-Product-Image-Studio-BYOK-SSOT",
-  "version": "1.0.0",
-  "date": "2026-10-29",
+  "version": "2.0.0",
+  "date": "2026-10-30",
   "status": "DOCUMENTATION_ONLY_NOT_IMPLEMENTED",
   "source": "user-confirmed repo name + KB-MCP skills + official reference documentation",
   "appTestsRun": false,
-  "liveProviderCalls": false,
+  "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 124,
+  "fileCountHashed": 127,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -41,8 +41,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3769,
-      "sha256": "bf4f3d72c68d97d7040180d3374397408beab826fa5c36cbb737a9f6889288a4"
+      "bytes": 3767,
+      "sha256": "c923e7f9650ed1b38c896e8fe27384a3ef71ba8a479c8276649a8e5fbe6d8a66"
     },
     {
       "path": "ROADMAP.md",
@@ -66,8 +66,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 13262,
-      "sha256": "30817351e8f53fd616db7211478343ac014ba12be70540e92e522867868a1a3d"
+      "bytes": 17360,
+      "sha256": "5a898f7ebacc1ee1cfb088c02d40afa1539473fad803f09d4f62a8f36f5f4359"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -96,8 +96,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 5241,
-      "sha256": "d94ec48aa48061e9064b3eddbeba4c0a23642381108aa283df051a5c88c75021"
+      "bytes": 5285,
+      "sha256": "1a98a8260c8d015f135309070d469e50c219d3762ffb498c7755f2f30db3e702"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -111,18 +111,18 @@
     },
     {
       "path": "docs/00-governance/REQUIREMENTS_TRACEABILITY.md",
-      "bytes": 4213,
-      "sha256": "46854768584565ce69c86c8003282e51fddbc597fdc87e318b5ba7025c8635d9"
+      "bytes": 4284,
+      "sha256": "17d5de58e8f7f1a4454e8bb4737bf8d2e9b4f92cd049d28d51339a45a41f57af"
     },
     {
       "path": "docs/00-governance/SSOT_POLICY.md",
-      "bytes": 3987,
-      "sha256": "ec3b9cf1a7d434beb64ad52befa97f8aff1e4c3a03d9be4331ca9f0ce13bed37"
+      "bytes": 4123,
+      "sha256": "af579cca2df14f707779d56538f1065b6dc0a37eb94b4c19417732bf5ba1e6e4"
     },
     {
       "path": "docs/01-product/FEATURE_PRIORITY.md",
-      "bytes": 2066,
-      "sha256": "8ce396fb3dda171bc3951c0880500b16766b490a6ba29e4bc0757d1c94df6469"
+      "bytes": 2070,
+      "sha256": "a892163f80f9870475a87da64e32f6b5003aa092e260ac131224ea235ab4e93f"
     },
     {
       "path": "docs/01-product/KPI_SUCCESS.md",
@@ -136,8 +136,8 @@
     },
     {
       "path": "docs/01-product/PRD.md",
-      "bytes": 5776,
-      "sha256": "222f622419ae85fe0354ee17ae91a04ac5776f9a57aee7363b0858a23dcad9e3"
+      "bytes": 6159,
+      "sha256": "5e4abff7a18442ab2760ee226665744da34b5e9c57b37737806cc9af9dcdda96"
     },
     {
       "path": "docs/01-product/USER_FLOWS.md",
@@ -151,13 +151,13 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 5896,
-      "sha256": "82b9582bd2587f8e19e1240477f47577a8386f46cd0aef33761e456cc63d547f"
+      "bytes": 6570,
+      "sha256": "6744763aee33c6ecb2a41fa180014bf2f23f7011b373b1c2eb1c97008bcf70e5"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
-      "bytes": 2760,
-      "sha256": "82d1865b87368094d30150cf3a4cef93e51d7a5008e0e4a5e0ebcfc735a32809"
+      "bytes": 2902,
+      "sha256": "77b526a60af116abd339c792d71630d0c6841513261fd776a1b7bade518cf4e5"
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
@@ -176,23 +176,23 @@
     },
     {
       "path": "docs/02-architecture/SYSTEM_ARCHITECTURE.md",
-      "bytes": 5279,
-      "sha256": "0b27b17db07638ac1aa8b70193142608675791b8bd1a904b35a1fd7807be4a12"
+      "bytes": 5584,
+      "sha256": "a93d42a51a20dcc739a5143536e6344478c0bf02bcc0231eeaf3797f62ad31a7"
     },
     {
       "path": "docs/03-security/BYOK_SECURITY.md",
-      "bytes": 4377,
-      "sha256": "22b5b59c1a115acaa2c5f3f0897d83ed2498b28cec0aff7f0ae36890849c8fa9"
+      "bytes": 5644,
+      "sha256": "46bfd7a05f394da068cd736687ac6a6dc4da0ba9fd67b5abe68ed48d896760ee"
     },
     {
       "path": "docs/03-security/PRIVACY_DATA_LIFECYCLE.md",
-      "bytes": 2869,
-      "sha256": "c232d53849d9c8796f39b331dab108e716f07385881f07dd9545c07c97300b95"
+      "bytes": 3011,
+      "sha256": "318f487c53476c441df83fe1aeb03ce2383b26587e26d07cf35e2036d503fd8d"
     },
     {
       "path": "docs/03-security/THREAT_MODEL.md",
-      "bytes": 3778,
-      "sha256": "110ea1115a58e69f59f6878a8ad907d8f06bc75eb4fee5f2fbef1761375efb66"
+      "bytes": 4176,
+      "sha256": "35a2ca6b0bbdc77b0f7527d47e70d5955b1918f2b9a1090c3d916571d862b974"
     },
     {
       "path": "docs/04-data/DATA_MODEL.md",
@@ -211,8 +211,8 @@
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
-      "bytes": 3897,
-      "sha256": "ee9f024e032f60dda2db5259ac900254b1f990115f19d6eef38094a919b8ef0f"
+      "bytes": 5227,
+      "sha256": "5ef366978545e365bf0b7640de027fb19495af2dd82865631cefad319232d4b6"
     },
     {
       "path": "docs/05-api/ERROR_RETRY_COST.md",
@@ -246,8 +246,8 @@
     },
     {
       "path": "docs/07-quality/E2E_ACCEPTANCE.md",
-      "bytes": 4150,
-      "sha256": "5c3d0bf136c8deb1fc7cf365f659edc5eaed9eba8911007a464a76631ac92693"
+      "bytes": 4353,
+      "sha256": "e3c88c31087e5f937834eff04456adf0f9e7889bb67713a193e53701e0cb2ad0"
     },
     {
       "path": "docs/07-quality/EVIDENCE_TEMPLATE.md",
@@ -261,23 +261,23 @@
     },
     {
       "path": "docs/07-quality/SECURITY_PERFORMANCE.md",
-      "bytes": 2434,
-      "sha256": "d980f829df5129f7cb1dded445a93783832b04a50215107b42438730bcafe83b"
+      "bytes": 2601,
+      "sha256": "dc32faf77adfe0825da08adc81e5b4a1deaff0ac86ffc70946193ae394c0b7e5"
     },
     {
       "path": "docs/07-quality/TEST_STRATEGY.md",
-      "bytes": 2561,
-      "sha256": "9a326997ec9dbbbbbd945b5182c9e5522f2ad6b0e064257449e489200d5d91cb"
+      "bytes": 2632,
+      "sha256": "b9b3e00cca8bec6c69b3f056ad269cb386a790f68167583031f322f9ab17466f"
     },
     {
       "path": "docs/08-delivery/AI_AGENT_HANDOFF.md",
-      "bytes": 3443,
-      "sha256": "049e48974185e2265fb465a3d05fd3d76503a482f62d8771dcbc2c07695091a9"
+      "bytes": 3619,
+      "sha256": "bdcb011e0d9e2c6db6c2316e915b523d1d89698a139a2e13fd963b82287b8f33"
     },
     {
       "path": "docs/08-delivery/DEV_OPERATIONS.md",
-      "bytes": 2326,
-      "sha256": "9b6f5ec0e62d18d42d74b32b8706d62098e934916c5afba535ae3df86c1d31f0"
+      "bytes": 2406,
+      "sha256": "1629d2488e3feac37ac7df70bda311afd40d8d221123362ed1f7b97ff0a412e8"
     },
     {
       "path": "docs/08-delivery/EPIC.md",
@@ -291,13 +291,13 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 7972,
-      "sha256": "cf448234151e8046460b48df907850336cc016d138e6586d957d0d697939a98f"
+      "bytes": 14045,
+      "sha256": "4be5ab53ff4505a6d15c4ca0c1d622ce1308cef9a71c64579334c7a971167fb5"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
-      "bytes": 15804,
-      "sha256": "46da308e82b5fd4196aaf588f77f5014382efc6eb5d6d5f2bf5189cb9409e36b"
+      "bytes": 16140,
+      "sha256": "9cfe8847ce235b2de44a8d0108ab4b536bd109e48eea0c4c16a3886e5f079c89"
     },
     {
       "path": "docs/09-research/COMPETITION.md",
@@ -315,14 +315,29 @@
       "sha256": "8b66bfbc15a0f1f50eca2ac19f23b62ccec53caf8d95aca5c6ba68e8fbdaf67c"
     },
     {
+      "path": "docs/09-research/PI_OPENAI_SPIKE.md",
+      "bytes": 5254,
+      "sha256": "accbc5afa85c858eb2d1dfcb34f2bd24a25aaeb444defead9fa387d4003349de"
+    },
+    {
       "path": "docs/09-research/SOURCES.md",
       "bytes": 6348,
       "sha256": "e7757af1f0221aabd55be52c8d026149815c5d7910595ad9e40753fa17089a17"
     },
     {
+      "path": "docs/09-research/SPIKE_TEST_PLAN.md",
+      "bytes": 21602,
+      "sha256": "e5db0fe9a6480e321171ab1ca2b9f1e42e21f73bdc4ee8e41328388cf9f91c94"
+    },
+    {
       "path": "docs/09-research/UI_UX_LAYOUT_RESEARCH.md",
       "bytes": 16783,
       "sha256": "730d56660f8a96a9d1b705a3319b2ae1c8d305dd6f8c7d9fd8eca352d6833f82"
+    },
+    {
+      "path": "docs/09-research/evidence/openai-image-spike.png",
+      "bytes": 1129902,
+      "sha256": "2f385101aac46389fe204fbdf9d14667f9ece1b3af3f69bb93e576befc3f5f0a"
     },
     {
       "path": "docs/10-design/DESIGN_SYSTEM.md",
@@ -591,8 +606,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "bytes": 2403,
-      "sha256": "36a8c0e8aeecbc24d7bc8fa822b0fc3f285b037c7b8b9894ffae3f9ce93ee338"
+      "bytes": 2512,
+      "sha256": "373e0a4b6342ba20e606742be88c3a2e6d048f091a1c9452a41c3b76e7672b93"
     },
     {
       "path": "fixtures/cost-scenario.json",
@@ -631,8 +646,8 @@
     },
     {
       "path": "scripts/validate_ssot.py",
-      "bytes": 9350,
-      "sha256": "e11e543b72e78a4ecb94ef87ac04a1963b5c53fea143e86716fd59d8bb56b5b4"
+      "bytes": 10170,
+      "sha256": "0ddf82058bc00370708a96d6dad7b5ec0b82210bd9d27ff92591caf82d710a3d"
     }
   ]
 }

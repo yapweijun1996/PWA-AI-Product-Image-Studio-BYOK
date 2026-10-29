@@ -1,6 +1,6 @@
 # PWA-AI-Product-Image-Studio-BYOK — SSOT Documentation Pack
 
-**Version:** 1.0.0 (documentation baseline) · **Date:** 2026-10-29 (Asia/Singapore)  
+**Version:** 2.0.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
 **Status:** DESIGN / IMPLEMENTATION PENDING · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`  
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 

@@ -104,7 +104,7 @@ def yaml_contract():
         return
     spec=yaml.safe_load((ROOT/'contracts/openapi.yaml').read_text('utf-8'))
     require(spec['openapi'].startswith('3.1.'),'must be OpenAPI 3.1')
-    paths=spec['paths']; expected=['/session/connect','/session/status','/session','/images/generate','/health']
+    paths=spec['paths']; expected=['/session/connect','/session/status','/session','/images/approvals','/images/generate','/health']
     require(set(paths)==set(expected),'gateway endpoint list differs from reference design')
     require(spec['x-release-status']=='PROPOSED_NOT_IMPLEMENTED','contract incorrectly claims implementation')
     # Verify all local $ref component pointers resolve; external refs are not used by this contract.
@@ -122,7 +122,14 @@ def yaml_contract():
             for child in node: recur(child)
     recur(spec)
     image=paths['/images/generate']['post']
-    require({'AppSession','ByokSession'}==set(image['security'][0]),'generation requires both auth and Key sessions')
+    require({'AppSession','ProviderSession'}==set(image['security'][0]),'generation requires app and provider authorization sessions')
+    connect=paths['/session/connect']['post']
+    schema=connect['requestBody']['content']['application/json']['schema']
+    require(schema.get('additionalProperties') is False and set(schema.get('properties',{}))=={'provider'},'connect must not accept a provider key')
+    require('configured' in spec['components']['schemas']['SessionStatus']['required'],'provider configuration status missing')
+    approval=paths['/images/approvals']['post']
+    require({'AppSession','ProviderSession'}==set(approval['security'][0]),'approval requires both authorization sessions')
+    require(any(p.get('$ref')=='#/components/parameters/AttemptApprovalId' for p in image['parameters']),'generation requires an attempt approval')
 
 def cost_math():
     cost=json.loads((ROOT/'fixtures/cost-scenario.json').read_text('utf-8'))
@@ -146,7 +153,7 @@ for name,func in [
  ('openapi_yaml_and_refs',yaml_contract),('cost_formula',cost_math),('no_obvious_secrets',no_secrets)
 ]: ck(name,func)
 
-result={'project':'PWA-AI-Product-Image-Studio-BYOK','bundleVersion':'1.0.0',
+result={'project':'PWA-AI-Product-Image-Studio-BYOK','bundleVersion':json.loads((ROOT/'package-manifest.json').read_text('utf-8'))['version'],
  'purpose':'DOCUMENTATION VALIDATION ONLY - not app/API/visual E2E',
  'status':'FAIL' if errors else ('WARN' if warnings else 'PASS'),
  'checks':checks, 'errors':errors, 'warnings':warnings,

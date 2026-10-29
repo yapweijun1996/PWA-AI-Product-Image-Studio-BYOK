@@ -1,8 +1,10 @@
 # Deployment and Trust Boundary Options
 
-## Recommended but NOT approved as production architecture
+## Selected direction and hosted alternative
 
-**Option A:** Cloudflare Pages (React static) with same-origin Cloudflare Worker `/api/*` gateway and an authenticated short-lived encrypted user-key session store (e.g. Durable Objects). PWA and gateway share hostname to simplify cookie/CSRF and avoid cross-domain iOS cookie behavior. This still means operator-hosted code receives plaintext Key transiently and sends the request to OpenAI.
+The owner selected a self-hosted gateway with the provider key configured on their own server. Runtime, identity, secure secret operations and deployment remain subject to review and are not approved for production. No browser key submission is part of the selected path.
+
+**Option A, not selected:** Cloudflare Pages (React static) with same-origin Cloudflare Worker `/api/*` gateway and an authenticated short-lived encrypted user-key session store (e.g. Durable Objects). This alternative requires separate owner approval for hosted key custody.
 
 ## Other options
 

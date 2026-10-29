@@ -2,17 +2,19 @@
 
 **Initial status of EVERY task:** `PENDING` (documentation scope only). Owner may change status after inspecting repository and committing evidence. Complete one task at a time or parallelize only non-overlapping files with a defined integration gate.
 
+For proposed research experiments and their dependencies, see [Spike Test Catalog](../09-research/SPIKE_TEST_PLAN.md). Spike results do not automatically complete delivery tasks.
+
 | ID | Epic | Objective | Depends on | Evidence / acceptance |
 |---|---|---|---|---|
-| T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | checked HEAD, ADR approvals, secrets policy |
+| T-001 | EP-07 | Preflight repo, branch rules, skills, decision approvals and architecture gate | none | VERIFIED for the documentation and non-secret implementation preflight; see T-001 record below. Real-key gateway and deployment gates remain open. |
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | reproduce checkout failure; test `.git`, `.DS_Store`, tracked payload changes and unexpected payloads; validate isolated package and real checkout |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | iOS-safe responsive shell tests |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | N→N+1 E2E, no unsaved draft loss |
 | T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | E2E-001..003,016, corrupt/duplicate test |
 | T-021 | EP-01 | Upload MIME/EXIF/resize/provenance; original immutable Blob | T-020 | E2E-002; large image safe |
 | T-022 | EP-01 | Portable backup ZIP/import and version migration | T-020 | E2E-017; hash/path/bomb cases |
-| T-030 | EP-02 | Gateway auth, CSRF, allowlist, secrets and encrypted session | T-001 | SEC-001..008; Key scan = 0 |
-| T-031 | EP-02 | BYOK connect/status/disconnect settings UX | T-030,T-010 | E2E-009; no client credential persistence |
+| T-030 | EP-02 | Self-hosted gateway authentication, CSRF, allowlist, server-configured secret and provider authorization session | T-001 | SEC-001..008; Key scan = 0 |
+| T-031 | EP-02 | Provider connect/status/disconnect settings UX without browser key entry | T-030,T-010 | E2E-009; no browser credential exposure |
 | T-032 | EP-02 / EP-03 | Pi Agent integration preflight and restricted browser-facing image workflow design | T-001,T-030 | reviewed SDK/runtime boundary, tool allowlist, principal isolation, no-shell tests, cost approval and image-provider contract |
 | T-033 | EP-02 / EP-03 | Implement isolated Pi host and browser integration after T-032 acceptance | T-032,T-040 | mocked cross-user and injection tests, redacted traces, browser E2E; controlled live call only after owner key and budget are available |
 | T-040 | EP-03 | Provider adapter + one Studio scene generation | T-030,T-021 | E2E-007/008, controlled live API probe |
@@ -51,6 +53,37 @@
 - Local `pi --version` reports 1.4.0. The installed SDK and security documentation show a Node/Bun SDK and powerful default tools. Installed image-model docs give OpenRouter examples; direct OpenAI image support through Pi was not verified.
 - A fresh KB engineering reuse call returned `implementation_allowed=false` due to missing or invalid preflight evidence. T-001, T-032 and T-033 remain PENDING. No agent or image API implementation, paid test, key provisioning or deployment has been performed.
 - See [ADR-006](../02-architecture/ADR.md). Rollback for this documentation/config preparation is to remove the newly added empty template and ignore rules and revert this record; no credentials or runtime state were changed.
+
+## Pi / OpenAI bounded spike — 2026-10-29
+
+- Later in the same day, at the owner's request, a restricted Pi text request and a separate direct OpenAI Images API request succeeded using the owner-supplied local key. The image request produced a synthetic PNG with SDK retries disabled for the experiment. See [PI_OPENAI_SPIKE](../09-research/PI_OPENAI_SPIKE.md) for evidence, commands' scope and limitations.
+- The two calls did not test a Pi-to-image tool, gateway, browser UI, security boundary or full product flow. Exact provider usage/cost was not captured. T-001, T-032, T-033 and T-040 remain PENDING; a live image result alone does not complete them.
+- Rollback: remove the spike report and its synthetic test image, revert the index and manifest entries, and retain this task history as appropriate. The ignored `.env` is user-owned and must not be deleted.
+
+## Pi mock preflight observation — 2026-10-29
+
+- In a disposable directory, the installed Pi SDK 1.4.0 was initialized with an in-memory session, in-memory settings, an empty resource loader and only a synthetic `generate_image` tool. The active-tool list contained only that tool; extensions, skills and context files were absent and the session had no file.
+- A synthetic in-process model stream produced one tool call and the SDK emitted matching tool-start and tool-end events. A dummy credential was supplied only to satisfy SDK authentication checks; no real credential was read. The fake stream did not invoke a provider.
+- In five separate in-memory sessions, a sample strict tool schema accepted one valid request and rejected missing prompt, invalid model, unexpected URL and oversized prompt before the fake tool executed. These checks establish only the tested SDK configuration and sample schema, not product-tool validation, prompt-injection resistance, OS isolation or principal isolation. T-001, T-032 and T-033 remain PENDING.
+- The proof scripts ran in temporary directories and were removed automatically. Rollback: remove this observation and its corresponding spike-catalog note; no runtime code or persistent session was created.
+
+## Self-hosted server-key decision — 2026-10-30
+
+- The owner selected server-side provider-key configuration for their self-hosted gateway. The browser does not submit or receive the key. Disconnect revokes the provider authorization session only; server-secret removal and OpenAI revocation are separate operations.
+- The proposed OpenAPI contract is updated from `/api/v1` to `/api/v2` for this incompatible draft change. Authentication, Pi isolation, secure secret provisioning and deployment remain unverified. No deployed API exists and no production or public-custody approval is inferred.
+- The initial T-001 contract-change reuse preflight returned `PROCEED` for the then-current OpenAPI and related validator/documents; host validation and the broader preflight were still outstanding at that stage. See the later T-001 record below.
+- A clean manifest-listed payload passed all eight documentation checks with temporary `jsonschema` and `PyYAML` dependencies installed; this does not verify the actual checkout or an application. A separate schema probe accepted the provider-only request, rejected synthetic key/URL/invalid-provider fields, and checked the generation authorization and CSRF contract. No provider calls were made.
+- Rollback: restore the previous draft contract and related documentation only if the owner reverses the self-hosted key decision; no runtime state was changed.
+
+## T-001 preflight record — 2026-10-30
+
+- **State:** VERIFIED for repository, decision, documentation and non-secret local implementation preflight only. This is not approval of a deployed architecture, a real-key gateway or a production release.
+- **Repository:** `main` at `4f0421a` before this task's changes. Existing working-tree documents and the ignored owner-managed `.env` were preserved; no production key was read. Local environment: Node `v23.10.0`, Python `3.15.0`, Pi `1.4.0`.
+- **Decisions:** Owner confirmed self-hosted gateway, server-configured provider key, seven styles, STRICT source preservation and Pi direction. ADR-002 and ADR-006 record those decisions and remaining authentication, secret-operation and OS-isolation questions. `/api/v2` is a proposed breaking contract, not an implemented endpoint.
+- **Reuse/security:** Relevant KB-MCP skills were loaded. Source-hashed T-002 and greenfield T-010 shell preflight requests returned `PROCEED`; both are scoped to their reviewed targets. Independent security review identified approval binding and Pi credential/isolation risks; the proposed contract and security requirements now record the mitigations. No runtime security claim is made.
+- **Checks:** Manifest-listed payload validation passed eight documentation checks with temporary `jsonschema` and `PyYAML`; separate synthetic schema probes checked provider-only connection and the approval/generation contract. Mock Pi SDK checks confirmed one valid fake tool invocation and rejected invalid fields and unknown shell/read/network tools. No provider request was made.
+- **Downstream gates:** T-002 and the non-secret T-010 shell may proceed after task-specific source validation. T-030/T-032 must independently finalize and review authentication, server-secret lifecycle, one-use approval, Pi OS/IPC isolation and cost controls before any real key or paid call. Public exposure, custody and production deployment remain unapproved.
+- **Rollback:** Restore the prior proposed documentation contract and preflight changes if the owner reverses the server-key direction. Do not delete owner-managed secrets, user data or independently created work.
 
 ## Task execution record template
 

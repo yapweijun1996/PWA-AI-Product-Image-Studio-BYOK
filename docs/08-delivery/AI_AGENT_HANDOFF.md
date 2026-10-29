@@ -15,7 +15,7 @@ You are the responsible PWA product engineer + product-visual fidelity reviewer.
 ## Unit-of-work rules
 
 - Choose one smallest P0 task with explicit dependencies, tests and branch scope. Do not build video/billing while Studio image pipeline remains unverified.
-- Frontend may never persist user Key, even encrypted, for public hosted mode. No Key in local files, logs, zip.
+- The browser must never receive or persist a provider key. The owner configures it on their self-hosted server; no key in source control, logs, agent context or ZIP. The ignored owner-managed local `.env` is private user data and must not be read, modified or committed by default.
 - Every selected style is a distinct job; provider calls are attempts and may bill. Use UNKNOWN on ambiguous network result.
 - STRICT must composite original product image/artwork rather than assuming prompt "exact" works. Reject impossible camera views and wrong labels.
 - QA threshold is not automatic approval. Hard-veto plus human sign-off for real SKU.
@@ -41,5 +41,5 @@ Next executable task: ...
 ## Copy-ready high-level prompt
 
 ```text
-Implement one approved P0 task for PWA-AI-Product-Image-Studio-BYOK. First inspect current Git state and AGENTS.md, load applicable KB-MCP Brand Lock and PWA skills, read the canonical SSOT and contracts. Protect STRICT real-product source pixels, unverified claims, secure server-side BYOK session and cost/UNKNOWN retries. Create a small reversible change with unit/integration/Playwright tests, no real user API keys in CI, no automatic production deployment. Record evidence in TASK.md and relevant ADR; don't mark verified without actual test output.
+Implement one approved P0 task for PWA-AI-Product-Image-Studio-BYOK. First inspect current Git state and AGENTS.md, load applicable KB-MCP Brand Lock and PWA skills, read the canonical SSOT and contracts. Protect STRICT real-product source pixels, unverified claims, owner-configured server-side BYOK key and cost/UNKNOWN retries. Create a small reversible change with unit/integration/Playwright tests, no real user API keys in CI, no automatic production deployment. Record evidence in TASK.md and relevant ADR; don't mark verified without actual test output.
 ```

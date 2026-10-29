@@ -44,7 +44,7 @@ For **actual implementation state**: (1) inspected live code/config and reposito
 
 ## Semantic version policy
 
-- This bundle starts at **SSOT 1.0.0 / DRAFT**. It is a documentation baseline, not software v1.
+- The initial bundle was **SSOT 1.0.0 / DRAFT**. The current documentation baseline is **SSOT 2.0.0 / DRAFT**, reflecting the incompatible proposed API change to the owner-selected server-configured key model; it is not software v2.
 - MAJOR: incompatible API/schema or product invariant change.
 - MINOR: compatible new features, approved architectural ADR, additional style or nonbreaking API fields.
 - PATCH: clarification, link, typo, metadata update without changing contract semantics.

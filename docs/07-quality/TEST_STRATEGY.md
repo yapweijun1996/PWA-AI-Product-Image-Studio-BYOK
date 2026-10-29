@@ -4,7 +4,7 @@
 
 **Unit (fast, mocked):** prompt builder, category filtering, style ID uniqueness, cost formula, SKU facts provenance, state-machine transitions, mask compositing math, score calculation, JSON Schema and backup file name validation. Unit tests must not spend OpenAI API.
 
-**Integration (mocked/provider stubs):** same-origin Gateway session/CSRF/authz; Key encryption+revocation, allowed model + parameters, error body, 429/timeout UNKNOWN and cost/usage parsing, IndexedDB transactions, masking and ZIP import/export. Use sanitized provider fixtures; no user Key in CI.
+**Integration (mocked/provider stubs):** same-origin gateway session/CSRF/authz; provider authorization expiry and revocation, owner-controlled server-key configuration/rotation, allowed model + parameters, error body, 429/timeout UNKNOWN and cost/usage parsing, IndexedDB transactions, masking and ZIP import/export. Use sanitized provider fixtures; no user Key in CI.
 
 **Browser E2E (Playwright):** source upload and seven-style selection, one-style exact request count, image compare, QA rejection, mobile responsive, offline local edits, SW N→N+1 update. Test with stub gateway output and fixed asset hashes; browser evidence links required.
 

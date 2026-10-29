@@ -7,15 +7,15 @@
 | Original product photos | Browser IndexedDB only P0 | Until user deletes, browser evicts or import/export; backup user-controlled | Merchant-confidential possible |
 | Product facts / SKU | Browser IndexedDB | User-controlled | May contain personal/customer data; discourage uploads |
 | Generated results and QA | Browser IndexedDB | User-controlled; export ZIP can retain copies | Merchant-confidential possible |
-| BYOK plaintext | Browser input transient + Worker request/in-memory during use | Never persistent browser; ephemeral backend only | Secret, extremely sensitive |
-| Encrypted provider Key | Server vault if hosted | Default proposed <=60 min TTL or disconnect; confirm production policy | Secret ciphertext |
+| BYOK provider key | Owner-controlled server secret configuration and transient authorized provider processing | Owner provisions, rotates and removes server configuration; provider revocation is separate; never sent to browser | Secret, extremely sensitive |
+| Provider authorization session | Server session and HttpOnly cookie | Expires or disconnects independently of server key | Auth credential |
 | Cookie/session ID | HttpOnly cookie + server | TTL or logout | Auth credential |
 | Server telemetry | Redacted, aggregate only | Configurable 7–30 day log window; final retention policy open | Operational metadata |
 | OpenAI provider input/output | Third-party provider | Governed by current OpenAI API terms/policies; verify separately | Third-party processing |
 
 ## User controls
 
-Provide UI to delete one SKU, all local projects, downloaded export warning, disconnect current Key, and view privacy disclosure. Deleting locally cannot delete already downloaded ZIPs or automatically revoke files persisted by third parties. Privacy notice must not imply complete deletion from provider systems.
+Provide UI to delete one SKU or all local projects, warn about downloaded exports, disconnect the provider authorization session, and view the privacy disclosure. Disconnect does not delete the server-configured key or revoke it with the provider. Deleting locally cannot delete already downloaded ZIPs or automatically revoke files persisted by third parties.
 
 ## Images and commercial rights
 

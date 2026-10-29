@@ -11,16 +11,16 @@
 
 ## ADR-002 — BYOK with trusted gateway
 
-- **State:** PROPOSED, security review and owner sign-off required.
-- **Context:** Browser-distributed secrets can be stolen; OpenAI Help recommends backend routing.
-- **Decision:** same-origin authenticated gateway, short-lived encrypted session vault, revocation and audit without Key logging.
-- **Tradeoff:** operator receives Key temporarily; cannot market as pure zero-knowledge.
-- **Rejected:** store Key in localStorage/IndexedDB/Service Worker or commit in GitHub.
-- **Verify:** threat test, deletion, authz, CSP, cookie flags, log scan, TTL and key rotation.
+- **State:** Initial self-hosted/server-configured key direction CONFIRMED; authentication, secret provisioning and runtime implementation remain PROPOSED and need security review.
+- **Context:** Browser-distributed secrets can be stolen; OpenAI recommends backend routing.
+- **Decision:** the owner configures the provider key on their self-hosted server; the browser connects to a short-lived provider authorization session without submitting or receiving the key. Disconnect revokes only that authorization.
+- **Tradeoff:** the owner operates and protects the server; removing the configured key and provider-side revocation are separate operations.
+- **Alternative:** operator-hosted encrypted key custody remains unapproved and requires separate owner approval.
+- **Verify:** authz, CSRF, session expiry, origin checks, key isolation from Pi and browser, log scans, server-key rotation/removal and provider-error redaction.
 
 ### Owner-selected trust boundary
 
-The owner selected a **self-hosted gateway** for the initial implementation. The seller controls the gateway and provider key; this does not approve hosted operator custody or production deployment. Gateway runtime, authentication, secret configuration, retention and operational controls remain open and require design and security review. The hosted encrypted-session design above remains a proposed alternative, not the approved initial implementation.
+The owner selected a **self-hosted gateway with server-configured provider key** for the initial implementation. This does not approve operator-hosted custody or production deployment. Gateway runtime, authentication, exact secret configuration, retention and operational controls remain open and require design and security review. The old `/api/v1` browser-key-submission proposal is superseded by the proposed `/api/v2` contract; no runtime or deployed migration exists.
 
 ## ADR-003 — Local-first PWA, cloud image generation
 
@@ -47,11 +47,12 @@ The owner selected a **self-hosted gateway** for the initial implementation. The
 
 - **State:** Owner confirmed Pi-based browser-facing Agent and OpenAI BYOK image generation; runtime architecture and integration are PROPOSED, not implemented.
 - **Context:** Pi Coding Agent is a terminal/Node or Bun SDK agent, not an isolated browser runtime. Its default coding tools may read, change and execute files with the process account's permissions; project trust and tool prompts are not OS isolation.
-- **Decision direction:** Keep the PWA as the browser UI and the confirmed user-hosted gateway as the initial trust boundary. Evaluate a dedicated Node/Bun Pi host that exposes only explicitly defined, scoped image-workflow tools; route paid OpenAI image calls through the trusted provider adapter after user authorization. No generic shell, filesystem, arbitrary URL fetch, arbitrary extension loading or shared host credential access for end-user sessions. Pin a tested Pi version after compatibility review.
-- **Open:** whether the Node/Bun SDK host sits within the self-hosted gateway or as a separate isolated service; principal/session binding, per-user credential handoff, authorization, prompt-injection defense, execution isolation, transcript redaction, tool schema, retry/usage handling and lifecycle. Do not substitute a hosted key-custody model without explicit approval.
+- **Decision direction:** Keep the PWA as the browser UI and the confirmed user-hosted gateway as the initial trust boundary. Run the Pi host separately from the key-holding process under reviewed OS-level permissions/isolation; an SDK tool allowlist alone is not a sandbox. Expose only scoped image-workflow IPC mediated by the trusted gateway and bound to the current principal, provider session and approved attempt. Pi must not receive provider keys, browser session/CSRF/approval credentials or approval-issuance authority, and must not have generic shell, filesystem, arbitrary URL fetch or extension loading.
+- **Open:** actual process and OS isolation design, principal/session binding, server key configuration, authorization, prompt-injection defense, transcript redaction, tool schema, retry/usage handling and lifecycle. Do not substitute hosted key custody or expose a local-only prototype to a LAN/public network without explicit approval.
 - **Tradeoff:** SDK preserves Pi session/tool semantics but is not proof of browser support, multi-user isolation or safe image generation. The installed Pi image-model documentation shows OpenRouter examples; direct OpenAI image model availability through Pi has not been established. A bounded custom provider adapter remains a design option, not verified capability.
-- **Verify before release:** mocked tool allowlist and injection tests; no host filesystem/shell access; authorization and cross-user isolation; no key in browser persistence or agent output; explicit cost approval; UNKNOWN/no-auto-retry; session and resource cleanup; controlled owner-approved live provider test.
-- **Rollback:** disable the Pi integration and revert to the existing direct, user-confirmed generation workflow; preserve local originals, jobs and approvals. No code or runtime change has been made.
+- **Verify before release:** mocked tool allowlist and injection tests; OS-level key isolation; authorization and cross-user isolation; no key in browser persistence or agent output; one-use server-bound approval per paid attempt; session and resource cleanup; UNKNOWN/no-auto-retry; controlled owner-approved live provider test.
+- **Spike evidence:** [PI_OPENAI_SPIKE](../09-research/PI_OPENAI_SPIKE.md) records successful Pi text and separate direct OpenAI image calls, not a Pi-to-image tool or browser integration test.
+- **Rollback:** disable the Pi integration and preserve local originals, jobs and approvals. A direct generation workflow may be used only if separately implemented and verified; none exists at this decision snapshot.
 - **References:** [Pi SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md), [Pi security](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/security.md), [OpenAI image generation](https://developers.openai.com/api/docs/guides/image-generation).
 
 ## ADR amendment template

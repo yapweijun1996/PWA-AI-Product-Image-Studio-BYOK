@@ -4,14 +4,14 @@
 
 | ID | Input / attack | Pass criteria |
 |---|---|---|
-| SEC-001 | SKU name with HTML/script, injected product metadata | No HTML execution, Key not discoverable outside trusted submission |
+| SEC-001 | SKU name with HTML/script, injected product metadata | No HTML execution or unauthorized provider action; provider key never enters browser |
 | SEC-002 | Cross-site POST / missing CSRF token | 403/unauthorized and zero provider requests |
 | SEC-003 | Session A calls job/session B, cookie fixation | No cross-user access, deny by default |
 | SEC-004 | Inspect localStorage, sessionStorage, IndexedDB, CacheStorage, source map, logs, ZIP | No bearer Key, token or sensitive session secret |
 | SEC-005 | Set model to unknown, baseURL attacker domain, redirect, unapproved path | 400/403 before any bearer outbound send |
 | SEC-006 | ZIP slip/symlink/zip bomb, malformed image, delete project | Rejected safely; unrelated projects unaffected |
 | SEC-007 | SW offline request replay, HTTP cache, telemetry export | No `/api/*` or user image cached, no secret/prompt leak |
-| SEC-008 | Session expiry/disconnect, rate bursts, repeated cost override | Access cut off/limits applied with visible feedback |
+| SEC-008 | Provider-session expiry/disconnect, server-key removal, approval replay/change, rate bursts, repeated cost override | Access cut off/limits applied; approval bound and single-use; disconnect does not claim key removal or provider revocation |
 
 ## Performance test plan
 
@@ -27,5 +27,5 @@ These are suggested targets, not measured pass results. Use Performance panel, C
 
 ## Recovery and incident simulations
 
-- OAuth/authentication outage (if selected); vault down, malformed encryption Key; repeated 429; provider 5xx; offline after submit; asset save failure; storage eviction; revoked Key.
+- OAuth/authentication outage (if selected); missing server secret or inaccessible secret manager; repeated 429; provider 5xx; offline after submit; asset save failure; storage eviction; revoked provider key.
 - Every error visible without Key disclosure; document whether request may have billed. Preserve local source/QA history; no unbounded retries.

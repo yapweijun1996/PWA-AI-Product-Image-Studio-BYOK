@@ -12,7 +12,7 @@
 | FR-006 | P0 | Exactly seven category-adaptive preset IDs and prompt versions | E2E-006 |
 | FR-007 | P0 | Independently select any subset of styles; no forced 7-call batch | E2E-007 |
 | FR-008 | P0 | Explicit allowlisted model/quality/output sizes and preflight constraints | E2E-008 |
-| FR-009 | P0 | Secure BYOK connect/status/disconnect without client persistence | E2E-009 |
+| FR-009 | P0 | Server-configured BYOK and provider authorization connect/status/disconnect; provider key never enters browser | E2E-009 |
 | FR-010 | P0 | Per-style generation job and immutable attempt/evidence records | E2E-010 |
 | FR-011 | P0 | Preview original vs result with reasoned provenance | E2E-011 |
 | FR-012 | P0 | Weighted visual QA plus severe-failure veto; human review | E2E-012 |
@@ -30,7 +30,7 @@
 | FR-024 | P0 | Production gateway authz/CSRF/quotas/allowlist and deletion | SEC-001..008 |
 | FR-025 | P1 | Brand kit, export presets, listing copy, batch SKU workspace | Future tests |
 | FR-026 | P2 | Video, team sync, platform write API and alternative providers | Future tests |
-| NFR-001 | P0 | API keys never persist in browser storage or logs | SEC-001..004 |
+| NFR-001 | P0 | Provider keys never enter the browser, Git, logs, agent context or exports | SEC-001..004 |
 | NFR-002 | P0 | HTTPS, CSP, least privilege, anti-abuse control | SEC-002..008 |
 | NFR-003 | P0 | Real SKU fidelity prioritized above aesthetics and style fit | QA-001..005 |
 | NFR-004 | P0 | App remains responsive under target image load; stress test thresholds proposed | PERF-001..005 |

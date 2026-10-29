@@ -4,51 +4,41 @@
 
 ## Trust models
 
-1. **Hosted trusted-gateway model (proposed P0):** Merchant shares provider API Key with trusted first-party backend *temporarily*. HTTPS protects transit; backend decrypts it transiently for provider calls. Merchant must trust site operator and deployment. **Not zero-knowledge.**
-2. **User-hosted gateway alternative:** merchant configures own server secret and connects PWA to authenticated endpoint; no operator custody of user Key. Extra support/CORS/operations.
+1. **User-hosted gateway (selected direction):** The seller configures the provider key on their own server, outside the browser. The application uses authenticated provider authorization sessions; disconnect does not remove server configuration or revoke the provider key.
+2. **Hosted trusted-gateway model (alternative, not approved):** Merchant shares the provider key with a trusted first-party backend temporarily; public custody requires separate owner approval, authentication and security review.
 3. **Direct browser BYOK:** optional controlled developer experiment using disposable restricted Keys, but **not an acceptable default for a publicly operated product**.
 
-## Production hosted sequence
+## Selected self-hosted flow
 
-```mermaid
-sequenceDiagram
-participant B as Browser/PWA
-participant W as Worker API
-participant S as Encrypted session vault
-participant O as OpenAI
-B->>W: Authenticate + CSRF + POST /session/connect {Key}
-W->>S: Encrypt AES-GCM with server secret, principal binding and TTL
-W-->>B: HttpOnly Secure SameSite cookie + status (no Key)
-B->>W: POST /images/generate with cookie + CSRF + validated settings
-W->>S: Fetch & decrypt scoped ephemeral Key
-W->>O: Allowlisted API request with Authorization bearer
-O-->>W: Image response + usage when available
-W-->>B: Transient output and redacted metadata
-B->>W: DELETE /session
-W->>S: Delete entry + expire cookie
-W-->>B: 204 No Content
-```
+1. The owner configures the provider key on their server using an approved secret mechanism; provisioning, rotation and removal mechanics are still open.
+2. The browser authenticates to the same-origin gateway and requests a short-lived provider authorization using only the provider identifier and CSRF token. The provider key never enters the browser request or response.
+3. After explicit cost approval, the gateway validates and sends an allowlisted provider request. The restricted Pi host must not receive the key or gain general shell, filesystem or arbitrary network access.
+4. Disconnect revokes the provider authorization session. Removing the server configuration and revoking the key at OpenAI are separate owner actions.
+
+The proposed `/api/v2` contract describes this flow; no implementation or security verification is claimed. The prior hosted encrypted-vault sequence is not the selected initial path.
 
 ## MUST controls
 
 - HTTPS and same-origin cookie where deployed. Avoid cross-origin permissive CORS; CSRF token on state-changing requests, strict Origin/Fetch-Metadata handling as defense in depth.
-- Require authenticated user for publicly shared gateway; connect, job and disconnect always bound to same principal and server-side session. Session IDs random, not guessable; cookie `HttpOnly; Secure; SameSite=Strict; Path=/api`. Limit reauth/session fixation.
-- Encrypt at rest with server-only AEAD key binding, nonce uniqueness, AAD (`principalId`, schema version), Key ID for rotation. Store cipher only in short-lived vault; *Key plaintext only in controlled in-memory processing while needed*; do not promise instant zeroing of JS memory.
-- Proposed TTL: 60 minutes idle or shorter; hard absolute TTL optional; revoke on disconnect and auth logout. Durable Objects alarm best-effort cleanup with request-time expiry check; do not rely solely on alarms as instantaneous deletion.
-- No provider Key in browser localStorage, sessionStorage, IndexedDB, caches, URL, events, analytics, logs, exception messages, files, ZIP, client JSON, DOM after connect. Clear input and sensitive variables best-effort.
+- Require an authenticated user in every environment; local loopback is not authentication. Connect, approval, job and disconnect are bound to the same principal and server-side session. Reject unauthorized LAN/public exposure and enforce exact Origin/Host and CSRF checks. Session IDs are random, not guessable; deployed cookies are `HttpOnly; Secure; SameSite=Strict; Path=/api`. Limit reauth/session fixation.
+- Protect owner-configured server secrets from source control, browser code, logs, agent contexts and unauthorized processes; use least privilege and a reviewed provisioning, rotation and deletion procedure. Do not assume a provider session expiry deletes the configured key.
+- Proposed provider authorization TTL: 60 minutes idle or shorter; revoke on disconnect and auth logout. Enforce expiry at request time; cleanup timers are not a substitute.
+- No provider key in browser input, DOM, localStorage, sessionStorage, IndexedDB, caches, URL, events, analytics, logs, exception messages, ZIP or client JSON. Server secrets may be present only in the owner's protected server configuration and transient authorized provider processing.
 - Gateway validates upload MIME/size/pixels, model allowlist, `size`, `quality`, `background`, max request count and prompt length; no forwarding arbitrary URLs/headers or untrusted redirects.
 - Authentication is not identical to knowing a valid OpenAI Key. Require per-user session, rate limits, abuse prevention, quotas/soft spend threshold and proper authorization for every job.
-- Restrict metadata and redacted telemetry; no full plaintext prompts or product images by default. Incidents: revoke sessions and rotate encryption secrets, contact affected merchant where needed.
+- Require an explicit per-attempt user decision and a one-use, short-lived server authorization bound to the app/provider sessions and canonical attempt payload; atomically consume it with the attempt reservation. A compromised frontend can impersonate user intent, so this is not a substitute for authentication or a claim of human-presence proof.
+- Run Pi separately from the key-holding process under reviewed OS-level isolation. An in-process tool allowlist alone does not isolate secrets. Pi must not receive browser session, CSRF or approval credentials or issue approvals; the trusted gateway mediates approved session/attempt-bound work. Do not connect a real key before the isolation design and tests pass.
+- Restrict metadata and redacted telemetry; no full plaintext prompts or product images by default. Incidents: revoke sessions, rotate the configured provider key, and notify affected users where appropriate.
 - Strong CSP (no arbitrary inline JS, unsafe eval or third-party injection). Dependency/CI secret scans. Avoid supply-chain exfiltration paths.
 
 ## Consent and key handling UX
 
-Explain: Key is sent to operator-run backend and OpenAI; may generate provider charges. Provide "Connect", session TTL, "Disconnect / Forget key", delete local projects, and data flow notice. Do not falsely say "Key never leaves your device" for hosted gateway.
+Explain that the seller configures the key on their own server and that OpenAI receives submitted prompts and images, potentially incurring charges. Show provider authorization status, session expiry and Disconnect. Explicitly distinguish disconnect from removing server configuration or revoking the provider key.
 
 ## Failure conditions
 
-Vault unavailable/invalid: refuse cloud job, keep local work. Expired session: 401 and reconnect. Key invalid: provider auth error, never echo part of Key. Rate limit: stop and convey retry-after; do not attempt anonymous fallback using owner's key.
+Missing server configuration or invalid provider authorization: refuse cloud jobs and keep local work. Expired session: 401 and reconnect. Key invalid: provider auth error, never echo part of the key. Rate limit: stop and convey retry-after; no fallback to another key.
 
 ## Pre-release security evidence
 
-Threat model, test principal isolation, cross-origin/CSRF, Key absence in all stores/exports/logs, forced session expiry, deletion, encryption rotation, malicious model/URL inputs, image bombs and provider-error redaction. Any Key leak is STOP-SHIP.
+Threat model; principal isolation; cross-origin and CSRF tests; key absence from browser stores, exports, agent context and logs; forced session expiry and deletion; server-key rotation/removal procedure; malicious model/URL inputs, image bombs and provider-error redaction. Any key leak is STOP-SHIP.

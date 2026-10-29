@@ -5,7 +5,7 @@
 **SKU Source + Facts**: upload PNG/JPEG/WebP, preserve originals, validate dimensions/size, storage quota and rights acknowledgement; create verified facts.  
 **Brand Lock**: choose STRICT/BALANCED/CREATIVE, editable mask/transparent source, source-angle restrictions, product truth, approved-output gate.  
 **AI**: 7 independent style IDs, 1–7 selectable outputs, OpenAI Flare/Sunburst adapter with allowlist, explicit quality/size, separate job attempt history.  
-**BYOK**: protected session connect/refresh/disconnect, deployment decision, authenticated public gateway, CSRF, per-session limits, no browser Key persistence.  
+**BYOK**: owner-configured server key, authenticated provider authorization connect/refresh/disconnect, CSRF and per-session limits; no provider key in the browser.  
 **Cost**: before-submit estimate and soft budget; actual response usage if available; UNKNOWN retry protection.  
 **QA/Export**: weighted review + hard veto, manual approve, source comparison, approved-only export, hashes/manifests.  
 **PWA**: offline local view/edit/export; SW update UX, iOS safe areas and A11y.  

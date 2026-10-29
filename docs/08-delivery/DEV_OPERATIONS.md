@@ -23,7 +23,7 @@
 **Gateway 5xx:** avoid auto resubmission if request may have reached provider, preserve UNKNOWN.  
 **DB quota:** offer ZIP export/cleanup; do not overwrite original.  
 **Bad SW deployment:** show update recovery; rollback static build compatible with IndexedDB; avoid silent refresh.  
-**Secret incident:** revoke sessions, rotate vault encryption Key using planned keyring strategy, investigate logging/affected principals, notify per incident response. Re-encryption/migration must preserve revocation boundaries.
+**Secret incident:** revoke application/provider authorization sessions, remove and rotate the owner-configured server key and revoke it at the provider as appropriate; investigate redacted logs and affected users, then follow the incident response process. Disconnect alone does not remove or revoke the key.
 
 ## Release record
 

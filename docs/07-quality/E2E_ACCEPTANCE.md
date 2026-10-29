@@ -12,13 +12,13 @@
 | E2E-006 | Create all 7 presets | Stable IDs, appropriate scenes, no cross-category props |
 | E2E-007 | Select only Studio and submit | Exactly one logical job, one planned billable attempt; no other styles sent |
 | E2E-008 | Select unsupported model/size/quality | Client/server reject, no provider call |
-| E2E-009 | Connect BYOK, reload, disconnect | Server session expires, Key absent client stores/logs; reconnect required |
+| E2E-009 | Configure a fake server key; connect, reload and disconnect | Provider authorization expires or is revoked, no key enters the browser or logs, and disconnect is not described as deleting or revoking the server key |
 | E2E-010 | Submit three selected styles | Three separately trackable job IDs, statuses and receipts |
 | E2E-011 | Preview source and generated output, zoom | Both viewable; original asset untouched |
 | E2E-012 | Inject wrong Chinese label into result | Hard veto even if weighted QA >=85; human approval prevented |
 | E2E-013 | Mix approved and rejected assets and export | Approved bundle excludes rejected; drafts clearly labeled if opted in |
-| E2E-014 | Set spend soft limit below estimate | Explicit warning and confirmation; not charged without consent |
-| E2E-015 | Simulate provider accept then lost response / retry | UNKNOWN, no automatic duplicate paid call, retry requires acknowledgement |
+| E2E-014 | Set spend soft limit below estimate; confirm one attempt | Explicit warning, user approval and server-bound one-use attempt authorization; no provider call without consent |
+| E2E-015 | Simulate provider accept then lost response / retry | UNKNOWN, no automatic duplicate paid call; retry requires acknowledgement and a new attempt approval |
 | E2E-016 | Save and reopen large local product | IndexedDB consistent; quota failure safe and surfaced |
 | E2E-017 | Export/import ZIP, corrupt hash, upgrade old schema | Valid restores, corrupt rejects, no silent overwrites |
 | E2E-018 | Install/cache app, go offline, edit/export | Offline shell + local work; Generate disabled transparently |

@@ -2,6 +2,8 @@
 
 **Research date:** 2026-10-29 (Asia/Singapore). **Scope:** additional desk research; no app implementation, authenticated OpenAI request, product-image generation, paid experiment, seller interview or physical-device test was performed. Product decisions remain in the [decision register](../00-governance/DECISION_REGISTER.md); this document supplies evidence and open questions, not approval.
 
+**Later owner decision, 2026-10-30:** the initial path is a self-hosted gateway with the provider key configured on the owner's server, not in the browser. The comparisons below preserve the original research context; see [DEC-012](../00-governance/DECISION_REGISTER.md) and [ADR-002](../02-architecture/ADR.md) for current decisions.
+
 ## Executive findings
 
 1. A local companion changes key custody, but creates browser-to-local-service permission, pairing and deployment questions. On iPhone, the phone's `localhost` is the phone itself; a companion on a separate desktop is a LAN service, not the phone's loopback service. Desktop-only proof is not evidence for iOS.

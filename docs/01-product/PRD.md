@@ -1,6 +1,6 @@
 # PRD — AI Product Image Studio (BYOK PWA)
 
-**Version:** v1.0.0 draft · **Scope:** MVP/P0 · **Repo:** `PWA-AI-Product-Image-Studio-BYOK` · **Status:** PROPOSED product plan, implementation PENDING.
+**Version:** v2.0.0 draft · **Scope:** MVP/P0 · **Repo:** `PWA-AI-Product-Image-Studio-BYOK` · **Status:** PROPOSED product plan, implementation PENDING.
 
 ## Executive summary
 
@@ -17,7 +17,7 @@ Primary: Singapore/Malaysia small sellers using Shopee, Lazada, Shopify, Instagr
 - Exactly seven style presets in [style JSON](../../contracts/style-presets.json): studio, hero, lifestyle, flat_lay, macro, ugc, billboard.
 - Choose any subset; one style = one independent job; store job attempts, costs and outputs.
 - Mandatory product mask + original pixel compositor for STRICT. Manual mask edit and transparent PNG fallback; do not pretend a failed mask is reliable.
-- OpenAI Images generation/edit through authenticated, same-origin trusted backend; connect/disconnect BYOK; quality and model allowlist.
+- OpenAI Images generation/edit through an authenticated, self-hosted same-origin gateway; the owner configures the key on their server, and the browser connects/disconnects a provider authorization session; quality and model allowlist.
 - Visual source/output compare, weighted QA, hard veto and human approval.
 - Local-first saved SKU workspace, predictable offline shell, download assets/ZIP with manifests and export/import validation.
 - Product-grade iOS-first installed PWA, explicit update UX, security and accessibility release gates.
@@ -32,8 +32,8 @@ Primary: Singapore/Malaysia small sellers using Shopee, Lazada, Shopify, Instagr
 **PR-01 Truth:** Only verified or user-entered product facts may be included in prompt; no invented benefits, ingredients, claims, certification, star rating, origin or price.  
 **PR-02 Visual source:** Original product image / authorized brand assets are reference authority. UI banners/mock screenshots are not product label artwork.  
 **PR-03 STRICT compositing:** no generative redrawing of real SKU text/logo; use unchanged cutout when feasible. Reject impossible perspective requests or switch to marked Concept with explicit user action.  
-**PR-04 Billing:** each retry could incur cost; display status and spend before consent; timeout=UNKNOWN until reconciled.  
-**PR-05 Privacy:** BYOK credential never stored in browser persistent storage; server custody requires documented trust, expiry and revocation.  
+**PR-04 Billing:** each retry could incur cost; disclose estimate and obtain explicit per-attempt consent before a server-bound one-use authorization; timeout=UNKNOWN until reconciled. An approval token does not prove human intent if the frontend is compromised.  
+**PR-05 Privacy:** The browser never submits, receives or stores the provider key. The seller configures the self-hosted server key; app-session disconnect, server configuration removal and provider-side key revocation are distinct actions.
 **PR-06 QA:** >=85/100 is editorial candidate only; important material or label mismatch vetoes approval.  
 **PR-07 Publish:** No live product publishing in MVP. Assets can be exported only after explicit approval or as clearly labeled unverified drafts.
 
@@ -41,7 +41,7 @@ Primary: Singapore/Malaysia small sellers using Shopee, Lazada, Shopify, Instagr
 
 1. Seller opens PWA, creates SKU; uploads reference, chooses what facts are confirmed.
 2. Selects STRICT, reviews extracted visual invariants, accepts mask and supplied camera-angle bounds.
-3. Connects BYOK securely, chooses 1–7 styles, ratio, quality, model, spend estimate.
+3. Connects a provider authorization session to the server-configured BYOK, chooses 1–7 styles, ratio, quality, model, spend estimate.
 4. Submits each selected job, sees individual QUEUED/RUNNING/UNKNOWN/etc states.
 5. Reviews preview and original side-by-side; QA findings marked PASS/REVIEW/REJECT.
 6. Explicitly approves suitable outputs and exports PNG/JPEG/WebP + metadata ZIP.

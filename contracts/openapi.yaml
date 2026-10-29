@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
-  version: 1.0.0
+  version: 2.0.0
   description: >-
-    Versioned proposed same-origin API contract. NOT implemented or deployed.
-    Authenticated public users only; no secrets in responses, logs or browser storage.
+    Proposed self-hosted same-origin API contract. NOT implemented or deployed.
+    The owner configures the OpenAI key on their server; the browser never submits it.
     Source photo/brand QA remains local and requires human approval.
 servers:
-  - url: /api/v1
+  - url: /api/v2
     description: Same-origin authenticated gateway
 security:
   - AppSession: []
@@ -40,12 +40,13 @@ paths:
   /session/connect:
     post:
       tags: [Session]
-      operationId: connectByokSession
-      summary: Connect a user-supplied OpenAI API key in a short-lived server vault
+      operationId: connectProviderSession
+      summary: Activate access to the server-configured provider for this app session
       description: >-
-        Requires authenticated caller and CSRF token. Returns connection status;
-        server sets an HttpOnly Secure SameSite cookie for the BYOK session.
-        Application must not persist raw Key in client storage.
+        Requires an authenticated caller and CSRF token. The owner configures the
+        provider key on the self-hosted server, not through the browser. The
+        server creates a short-lived provider authorization session and returns
+        status only; it never returns or accepts a provider key in this request.
       parameters:
         - $ref: '#/components/parameters/CsrfToken'
         - $ref: '#/components/parameters/ClientRequestId'
@@ -56,20 +57,14 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [provider, apiKey]
+              required: [provider]
               properties:
                 provider:
                   type: string
                   const: openai
-                apiKey:
-                  type: string
-                  minLength: 10
-                  maxLength: 512
-                  writeOnly: true
-                  description: Ephemeral secret transmitted to trusted backend over HTTPS; never returned
       responses:
         '201':
-          description: Connected; BYOK cookie set by backend
+          description: Connected; provider-session cookie set by backend
           headers:
             Cache-Control:
               schema:
@@ -87,11 +82,16 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '503':
+          description: Provider is not configured or the service is unavailable
   /session/status:
     get:
       tags: [Session]
-      operationId: getByokSessionStatus
-      summary: Read safe connection status, never reveal key
+      operationId: getProviderSessionStatus
+      summary: Read provider configuration and connection status, never reveal the key
+      description: >-
+        Resolve only the provider authorization bound to the current app session.
+        Return no-store; do not reveal whether another session is connected.
       responses:
         '200':
           description: Connection status
@@ -104,17 +104,74 @@ paths:
   /session:
     delete:
       tags: [Session]
-      operationId: disconnectByokSession
-      summary: Revoke server-side encrypted key session and expire cookie
+      operationId: disconnectProviderSession
+      summary: Revoke the current provider authorization session, not the server key
+      description: >-
+        Revoke the provider authorization bound to the current app session on the
+        server and expire its cookie. Logout or app-session expiry must also revoke
+        it. Replayed old provider cookies and authorization from a previous login
+        must be rejected. This does not remove or revoke the configured key.
       parameters:
         - $ref: '#/components/parameters/CsrfToken'
       responses:
         '204':
-          description: Revoked; response has no body
+          description: Provider session revoked; server configuration and provider key remain unchanged
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /images/approvals:
+    post:
+      tags: [Images]
+      operationId: authorizeImageAttempt
+      summary: Create a short-lived authorization for one explicitly reviewed attempt
+      description: >-
+        Called after the user reviews and confirms the exact chargeable attempt
+        and cost disclosure. Bind the authorization to the current app and
+        provider sessions, clientAttemptId and a server-computed canonical digest
+        of the entire validated attempt payload. Do not send a provider request.
+        Only the browser-side user confirmation flow may request this approval.
+        Pi must not receive browser session, CSRF or approval credentials or gain
+        approval-issuance authority; the trusted gateway mediates approved work.
+        The approval is not proof of human intent if the frontend is compromised.
+        Keep the approval secret out of agent context, logs and persistent browser
+        storage. Return no-store. The server must not rely on client estimates as
+        authoritative pricing or on the approval alone as authentication.
+      security:
+        - AppSession: []
+          ProviderSession: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageAttemptRequest'
+      responses:
+        '201':
+          description: One-use authorization created without a provider request
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /images/generate:
     post:
       tags: [Images]
@@ -125,13 +182,18 @@ paths:
         require multiple separately disclosed stages. A network timeout after
         submission may have billed; client MUST mark UNKNOWN and MUST NOT auto-retry.
         STRICT may call only generate_scene and locally composite original product.
-        All authorization and input limits enforced server-side.
+        The server checks the one-use approval against the current app/provider
+        sessions and canonical request digest, and atomically consumes it with
+        duplicate-attempt reservation before sending. Changed inputs, expired or
+        replayed approvals are rejected; ambiguous outcomes remain UNKNOWN.
+        All authorization and input limits are enforced server-side.
       security:
         - AppSession: []
-          ByokSession: []
+          ProviderSession: []
       parameters:
         - $ref: '#/components/parameters/CsrfToken'
         - $ref: '#/components/parameters/ClientRequestId'
+        - $ref: '#/components/parameters/AttemptApprovalId'
       requestBody:
         required: true
         content:
@@ -173,11 +235,11 @@ components:
       in: cookie
       name: app_session
       description: Authenticated first-party user identity session; provider choice TBD
-    ByokSession:
+    ProviderSession:
       type: apiKey
       in: cookie
-      name: byok_session
-      description: Short-lived authenticated user-key session, HttpOnly Secure SameSite=Strict
+      name: provider_session
+      description: Short-lived provider authorization bound to the authenticated app session; HttpOnly Secure SameSite=Strict
   parameters:
     CsrfToken:
       name: X-CSRF-Token
@@ -196,20 +258,45 @@ components:
         type: string
         format: uuid
       description: Correlation/duplicate-request reservation before provider send; not OpenAI idempotency guarantee
+    AttemptApprovalId:
+      name: X-Attempt-Approval
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Cryptographically random one-use session-bound approval; never an OpenAI key or idempotency guarantee
   schemas:
     SessionStatus:
       type: object
       additionalProperties: false
-      required: [connected, provider, expiresAt]
+      required: [connected, configured, provider, expiresAt]
       properties:
         connected:
           type: boolean
+        configured:
+          type: boolean
+          description: Whether a server-side key is configured; does not verify provider access or validity
         provider:
           type: string
           const: openai
         expiresAt:
           type: [string, 'null']
           format: date-time
+          description: Provider authorization expiry, not server-key expiry
+    AttemptApproval:
+      type: object
+      additionalProperties: false
+      required: [approvalId, expiresAt]
+      properties:
+        approvalId:
+          type: string
+          format: uuid
+          description: Cryptographically random opaque one-use authorization identifier
+        expiresAt:
+          type: string
+          format: date-time
+          description: Authorization expiry enforced on submission
     ImageAttemptRequest:
       type: object
       additionalProperties: false
