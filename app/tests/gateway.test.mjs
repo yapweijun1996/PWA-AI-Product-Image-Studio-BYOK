@@ -147,7 +147,7 @@ test('provider allowlist, body limits and missing configuration fail closed', as
   assert.equal((await f.request('/api/v2/auth/session', { cookies: session.cookie })).status, 200);
   const nonJson = await f.request('/api/v2/session/connect', { method: 'POST', body: 'provider=openai', cookies: session.cookie, headers: { 'Content-Type': 'text/plain', 'X-CSRF-Token': session.csrf, 'X-Client-Request-Id': randomUUID() } });
   assert.equal(nonJson.status, 400);
-  assert.equal((await f.request('/api/v2/images/generate', { method: 'POST', cookies: session.cookie, headers: { 'X-CSRF-Token': session.csrf } })).status, 404);
+  assert.equal((await f.request('/api/v2/images/generate', { method: 'POST', cookies: session.cookie, headers: { 'X-CSRF-Token': session.csrf } })).status, 503);
 });
 
 test('login throttling and Host validation reject brute force and DNS rebinding', async (t) => {

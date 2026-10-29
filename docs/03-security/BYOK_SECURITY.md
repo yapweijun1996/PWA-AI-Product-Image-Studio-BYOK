@@ -15,7 +15,7 @@
 3. After explicit cost approval, the gateway validates and sends an allowlisted provider request. The restricted Pi host must not receive the key or gain general shell, filesystem or arbitrary network access.
 4. Disconnect revokes the provider authorization session. Removing the server configuration and revoking the key at OpenAI are separate owner actions.
 
-The `/api/v2` contract describes this flow. The local development gateway implements app/provider session controls with synthetic tests but makes no provider calls; it is not a production security verification. The prior hosted encrypted-vault sequence is not the selected initial path.
+The `/api/v2` contract describes this flow. The local development gateway implements app/provider session controls and a default-disabled Studio image path with synthetic tests; enabling it with a real key can incur charges. This is not production security verification. Do not enable real-key use until the required isolation and independent security reviews have passed. The prior hosted encrypted-vault sequence is not the selected initial path.
 
 ## MUST controls
 

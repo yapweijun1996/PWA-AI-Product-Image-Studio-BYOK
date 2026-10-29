@@ -1,6 +1,6 @@
 # Gateway API Contract — Versioned Boundary
 
-**Canonical machine-readable contract:** [`contracts/openapi.yaml`](../../contracts/openapi.yaml). This text explains semantics but does not override the OpenAPI schema. A loopback-only development authentication and provider-session subset is implemented; image and production endpoints remain unimplemented.
+**Canonical machine-readable contract:** [`contracts/openapi.yaml`](../../contracts/openapi.yaml). This text explains semantics but does not override the OpenAPI schema. A loopback-only development authentication, provider-session and default-disabled Studio-scene subset is implemented and synthetic-tested; production endpoints and the wider image contract remain unimplemented.
 
 ## Routing and authentication
 
@@ -15,20 +15,20 @@ Default same-origin base `/api/v2`. Cookie-based authenticated session; `X-CSRF-
 | `GET /api/v2/session/status` | Returns whether a key is configured, connection status and authorization expiry; configuration alone does not prove key validity | 200, 401 |
 | `DELETE /api/v2/session` | Revokes the current provider authorization and expires its cookie; it does not remove the server key or revoke it at OpenAI | 204, 401 |
 | `POST /api/v2/images/approvals` | After explicit user confirmation, create a short-lived authorization bound to the current sessions and canonical attempt payload; no provider call | 201, 400/401/403/409/413/429 |
-| `POST /api/v2/images/generate` | Atomically consume the matching one-use approval with attempt reservation, then submit one independent attempt | 200 (P0 synchronous), 400/401/403/409/413/429/502/504 |
+| `POST /api/v2/images/generate` | Consume the matching one-use approval, durably reserve the attempt before sending, then submit one independent attempt | 200 (P0 synchronous), 400/401/403/409/413/429/502/503/504 |
 | `GET /api/v2/health` | Public non-sensitive service status, no account/dependency leak | 200/503 |
 
 MVP is **synchronous generation** with local attempt state and a timeout UNKNOWN rule. The `202` route is reserved for an optional durable job mode once a server job store exists. Do not implement `GET /jobs/:id` as "working" until persistence exists; it is P1 extension.
 
-The owner supplies, rotates and removes the OpenAI key through their self-hosted server's secret configuration, outside the browser API. The local process reads only whether `OPENAI_API_KEY` is configured at startup and makes no provider request; restart after changing configuration. Provider-side revocation is a separate owner action. The old draft `/api/v1` accepted browser key submission and is superseded by `/api/v2`; there is no deployed migration or compatibility endpoint.
+The owner supplies, rotates and removes the OpenAI key through their self-hosted server's secret configuration, outside the browser API. The local process reads `OPENAI_API_KEY` at startup; generation is disabled by default. Explicitly setting `STUDIO_ENABLE_BILLABLE_IMAGES=1` also requires an existing absolute, owner-only `STUDIO_ATTEMPT_JOURNAL_DIRECTORY` and enables real billable provider requests when a key is configured. Use only synthetic credentials until the required isolation and security reviews pass; do not expose the development gateway. Restart after changing configuration. Provider-side revocation is a separate owner action. The old draft `/api/v1` accepted browser key submission and is superseded by `/api/v2`; there is no deployed migration or compatibility endpoint.
 
-The approval identifier is held only in transient browser memory and sent as `X-Attempt-Approval`; it is not given to Pi or persisted in local storage. The server binds it to both sessions, the attempt ID and the digest of the validated full payload, including disclosed estimates, and rejects expired, replayed or changed requests. Approval creation itself performs no provider call. This controls the authorized gateway workflow but cannot prove a human action when the frontend is compromised.
+The approval identifier is held only in transient browser memory and sent as `X-Attempt-Approval`; it is not given to Pi or persisted in local storage. The server binds it to both sessions, the attempt ID and the digest of the validated full payload, including disclosed estimates, and rejects expired, replayed or changed requests. In the local implementation, an approval is consumed before durable reservation; a crash can consume it without sending, but cannot authorize a duplicate. Approval creation itself performs no provider call. This controls the authorized gateway workflow but cannot prove a human action when the frontend is compromised.
 
 ## Image operation selection
 
 `operation="generate_scene"`: Image API generations with prompt to make environment alone. `operation="reference_edit"`: Image API edits with source image. `operation="concept"`: Image API generation explicitly labels non-faithful result. STRICT compositing takes place in browser; provider scene generation alone does not produce a truthful real SKU output.
 
-A request carries `clientAttemptId`, `productId`, `styleId`, `lockMode`, an allowlisted `model`, explicit output settings, `prompt`, `promptVersion`, `sourceAssetHashes` and `estimatedUSD`. `maxEstimatedUSD`, `imageDataBase64`, `imageMimeType` and `outputFormat` are optional in the current schema. Verified facts may inform the prompt, but a separate `verifiedFacts` request field is not defined. The proposed `X-Client-Request-Id` header and body `clientAttemptId` are distinct fields; their relationship remains [OPEN-008](../00-governance/DECISION_REGISTER.md). Validate all inputs and do not treat client product facts as identity authorization; model-safety/content policy still applies.
+A request carries `clientAttemptId`, `productId`, `styleId`, `lockMode`, an allowlisted `model`, explicit output settings, `prompt`, `promptVersion`, `sourceAssetHashes` and `estimatedUSD`. `maxEstimatedUSD`, `imageDataBase64`, `imageMimeType` and `outputFormat` are optional in the broader schema. For the current local subset, the gateway accepts only the fixed Studio `generate_scene` prompt, `STRICT`, `gpt-image-2.5-flare`, low quality, 1024×1024 PNG and one source hash; it sends no source image or product facts. The selected [ADR-008](../02-architecture/ADR.md) requires `X-Client-Request-Id` and `clientAttemptId` to be the same UUID. Verified facts may inform future prompts, but a separate `verifiedFacts` request field is not defined.
 
 ## Error format
 
@@ -48,6 +48,8 @@ Standard JSON:
 ```
 
 `outcome` may be `DEFINITIVE_FAILURE` or `UNKNOWN`. Never echo bearer token, raw provider error body or private image to the error payload. `requestId` is non-sensitive correlation, distinct from user key.
+
+The local implementation returns `ATTEMPT_BUSY` with `DEFINITIVE_FAILURE` before sending when another attempt is active or requires review. Other conflicts are conservatively treated as UNKNOWN by the client. A persisted UNKNOWN or interrupted attempt blocks subsequent sends; review and reconciliation are not yet implemented, and its records must not be deleted to bypass that block.
 
 ## Billing model
 

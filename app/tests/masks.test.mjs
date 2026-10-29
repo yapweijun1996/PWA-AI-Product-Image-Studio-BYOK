@@ -70,6 +70,10 @@ test('rejects corrupt, truncated, mismatched and over-opaque masks', async () =>
   }
 });
 
+test('rejects a mask that selects no visible source pixels', async () => {
+  await assert.rejects(validateBackupMasks(product, [mask(png(0))], sources), /at least one visible source pixel/);
+});
+
 test('rejects missing pointers, duplicate versions and unsupported metadata', async () => {
   const item = mask();
   await assert.rejects(validateBackupMasks(product, [], sources), /active mask/i);

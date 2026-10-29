@@ -1,4 +1,5 @@
 import validateProduct from 'virtual:product-validator';
+import validateGenerationJob from 'virtual:generation-job-validator';
 import { sha256, type PreparedSource } from './prepareSource';
 import { inspectImageHeader } from './imageHeader';
 
@@ -333,6 +334,7 @@ async function verifyMaskAlpha(source: BackupSource, mask: BackupMask): Promise<
       canvas.width = width; canvas.height = Math.min(height, 128);
       const context = canvas.getContext('2d', { willReadFrequently: true });
       if (!context) throw new Error('Mask alpha verification is unavailable on this device.');
+      let selected = false;
       for (let y = 0; y < height; y += canvas.height) {
         const rows = Math.min(canvas.height, height - y);
         context.clearRect(0, 0, width, rows);
@@ -343,8 +345,10 @@ async function verifyMaskAlpha(source: BackupSource, mask: BackupMask): Promise<
         const maskPixels = context.getImageData(0, 0, width, rows).data;
         for (let offset = 3; offset < maskPixels.length; offset += 4) {
           if (maskPixels[offset] > sourcePixels[offset]) throw new Error('The mask alpha exceeds the original source alpha.');
+          if (maskPixels[offset] > 0) selected = true;
         }
       }
+      if (!selected) throw new Error('The mask must select at least one visible source pixel.');
     } finally { selection.release(); }
   } finally { original.release(); }
 }
@@ -652,5 +656,182 @@ export async function restoreProduct(product: Product, sources: BackupSource[], 
     tx.onabort = () => reject(tx.error?.name === 'ConstraintError'
       ? new Error('This product, SKU, source ID or mask ID already exists. Nothing was imported.')
       : transactionError(tx));
+  });
+}
+
+export type StudioAttempt = {
+  attemptId: string; jobId: string; productId: string; sourceAssetId: string;
+  sourceSha256: string; maskId: string; maskSha256: string;
+  prompt: string; promptVersion: string; model: string; quality: string; size: string;
+  estimatedUSD: string; maxEstimatedUSD?: string; submittedAt: string;
+  status: 'PREPARED' | 'SUBMITTED' | 'DEFINITIVE_FAILURE' | 'UNKNOWN' | 'DEFINITIVE_SUCCESS';
+  usage: Record<string, unknown> | null; observedUSD: string | null;
+};
+export type StudioAsset = { assetId: string; attemptId: string; productId: string; blob: Blob; sha256: string };
+
+type StudioJob = {
+  schemaVersion: '1.0.0'; jobId: string; productId: string; styleId: 'studio';
+  lockMode: 'STRICT'; operation: 'generate_scene'; sourceHashes: string[];
+  promptVersion: string; promptSha256: string; model: string; quality: string; size: string;
+  status: string; createdAt: string;
+  attempts: Array<{ attemptId: string; state: string; createdAt: string; submittedAt: string | null;
+    completedAt: string | null; estimatedUSD: string; observedUSD: string | null;
+    providerRequestId: null; usage: Record<string, unknown> | null; outcome?: string }>;
+};
+
+function studioJob(attempt: StudioAttempt, promptHash: string, sentAt: string | null, completedAt: string | null): StudioJob {
+  const status = {
+    PREPARED: ['QUEUED', 'QUEUED'],
+    SUBMITTED: ['SUBMITTING', 'SUBMITTING'],
+    DEFINITIVE_FAILURE: ['FAILED', 'FAILED'],
+    UNKNOWN: ['UNKNOWN', 'UNKNOWN'],
+    DEFINITIVE_SUCCESS: ['GENERATED', 'SUCCEEDED'],
+  }[attempt.status];
+  const outcome = attempt.status === 'PREPARED' ? 'NOT_SUBMITTED' : attempt.status === 'SUBMITTED' ? undefined : attempt.status;
+  return {
+    schemaVersion: '1.0.0', jobId: attempt.jobId, productId: attempt.productId, styleId: 'studio',
+    lockMode: 'STRICT', operation: 'generate_scene', sourceHashes: [attempt.sourceSha256],
+    promptVersion: attempt.promptVersion, promptSha256: promptHash, model: attempt.model,
+    quality: attempt.quality, size: attempt.size, status: status[0], createdAt: attempt.submittedAt,
+    attempts: [{ attemptId: attempt.attemptId, state: status[1], createdAt: attempt.submittedAt,
+      submittedAt: sentAt, completedAt, estimatedUSD: attempt.estimatedUSD, observedUSD: attempt.observedUSD,
+      providerRequestId: null, usage: attempt.usage, ...(outcome ? { outcome } : {}) }],
+  };
+}
+
+function checkedStudioJob(job: StudioJob): StudioJob {
+  if (!validateGenerationJob(job)) throw new Error('The generation job is invalid. No changes were saved.');
+  return job;
+}
+
+export async function studioInput(productId: string): Promise<{ source: SourceMetadata; maskId: string; maskSha256: string }> {
+  const db = await openDatabase();
+  const snapshot = await new Promise<{ product: Product; mask: unknown }>((resolve, reject) => {
+    const tx = db.transaction(['products', 'masks'], 'readonly');
+    const request = tx.objectStore('products').get(productId);
+    let product: Product, mask: IDBRequest | undefined, failure: Error | undefined;
+    request.onsuccess = () => {
+      try {
+        product = checkedProduct(request.result);
+        if (!product.rightsAcknowledged || !product.brandLock.maskAssetId) throw new Error('A rights-acknowledged source and active saved mask are required.');
+        mask = tx.objectStore('masks').get(product.brandLock.maskAssetId);
+      } catch (error) { failure = error instanceof Error ? error : new Error('Project is unavailable.'); tx.abort(); }
+    };
+    tx.oncomplete = () => resolve({ product, mask: mask?.result });
+    tx.onabort = () => reject(failure ?? transactionError(tx));
+  });
+  const active = await verifyMask(snapshot.product, snapshot.mask);
+  const source = snapshot.product.sourceAssets.find((item) => item.assetId === active.metadata.sourceAssetId);
+  if (!source || active.metadata.maskId !== snapshot.product.brandLock.maskAssetId) throw new Error('The active mask does not match an owned source.');
+  const verified = await loadSourceMask(productId, source);
+  if (!verified || verified.sha256 !== active.metadata.sha256) throw new Error('The active saved mask could not be verified.');
+  return { source, maskId: active.metadata.maskId, maskSha256: active.metadata.sha256 };
+}
+
+export async function createStudioAttempt(attempt: StudioAttempt): Promise<void> {
+  if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null) throw new Error('A new attempt must be prepared without a result.');
+  const promptHash = await sha256(new TextEncoder().encode(attempt.prompt));
+  const job = checkedStudioJob(studioJob(attempt, promptHash, null, null));
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['products', 'masks', 'sourceAssets', 'jobs', 'attempts'], 'readwrite');
+    const product = tx.objectStore('products').get(attempt.productId);
+    const mask = tx.objectStore('masks').get(attempt.maskId);
+    const source = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
+    const attempts = tx.objectStore('attempts').getAll();
+    let failure: Error | undefined;
+    attempts.onsuccess = () => {
+      try {
+        const p = checkedProduct(product.result);
+        const m = mask.result as Record<string, unknown> | undefined;
+        const s = source.result as Record<string, unknown> | undefined;
+        if ((attempts.result as StudioAttempt[]).some((entry) => entry.productId === attempt.productId &&
+            (entry.status === 'SUBMITTED' || entry.status === 'UNKNOWN'))) {
+          throw new Error('Another attempt for this product is in progress or UNKNOWN. Review its history before generating.');
+        }
+        if (!p.rightsAcknowledged || p.brandLock.maskAssetId !== attempt.maskId ||
+            !p.sourceAssets.some((item) => item.assetId === attempt.sourceAssetId && item.sha256 === attempt.sourceSha256) ||
+            !m || m.productId !== attempt.productId || m.sourceAssetId !== attempt.sourceAssetId || m.sourceSha256 !== attempt.sourceSha256 || m.sha256 !== attempt.maskSha256 ||
+            !s || s.productId !== attempt.productId || s.sha256 !== attempt.sourceSha256) throw new Error('The source or active mask changed. Review it again before generating.');
+        tx.objectStore('jobs').add(job);
+        tx.objectStore('attempts').add(attempt);
+      } catch (error) { failure = error instanceof Error ? error : new Error('Could not save the attempt.'); tx.abort(); }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(failure ?? transactionError(tx));
+  });
+}
+
+export async function updateStudioAttempt(attempt: StudioAttempt, asset?: StudioAsset): Promise<void> {
+  const promptHash = await sha256(new TextEncoder().encode(attempt.prompt));
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['products', 'masks', 'sourceAssets', 'jobs', 'attempts', 'generatedAssets'], 'readwrite');
+    const previousRequest = tx.objectStore('attempts').get(attempt.attemptId);
+    const jobRequest = tx.objectStore('jobs').get(attempt.jobId);
+    const productRequest = tx.objectStore('products').get(attempt.productId);
+    const maskRequest = tx.objectStore('masks').get(attempt.maskId);
+    const sourceRequest = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
+    const allAttempts = tx.objectStore('attempts').getAll();
+    let failure: Error | undefined;
+    allAttempts.onsuccess = () => {
+      try {
+        const previous = previousRequest.result as StudioAttempt | undefined;
+        const job = jobRequest.result as StudioJob | undefined;
+        if (!previous || !job || !validateGenerationJob(job)) throw new Error('The saved attempt or job is missing or invalid.');
+        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'submittedAt'];
+        if (immutable.some((key) => previous[key] !== attempt[key])) throw new Error('Attempt identity or input changed.');
+        const allowed = previous.status === 'PREPARED' ? ['SUBMITTED', 'DEFINITIVE_FAILURE'] : previous.status === 'SUBMITTED' ? ['DEFINITIVE_FAILURE', 'DEFINITIVE_SUCCESS', 'UNKNOWN'] : [];
+        if (attempt.status === 'SUBMITTED' && (allAttempts.result as StudioAttempt[]).some((entry) =>
+          entry.productId === attempt.productId && entry.attemptId !== attempt.attemptId &&
+          (entry.status === 'SUBMITTED' || entry.status === 'UNKNOWN'))) {
+          throw new Error('Another attempt for this product is in progress or UNKNOWN. Review its history before generating.');
+        }
+        if (!allowed.includes(attempt.status)) throw new Error('Invalid or repeated attempt transition.');
+        if (attempt.status === 'SUBMITTED') {
+          const product = checkedProduct(productRequest.result);
+          const mask = maskRequest.result as Record<string, unknown> | undefined;
+          const source = sourceRequest.result as Record<string, unknown> | undefined;
+          if (!product.rightsAcknowledged || product.brandLock.maskAssetId !== attempt.maskId ||
+              !product.sourceAssets.some((item) => item.assetId === attempt.sourceAssetId && item.sha256 === attempt.sourceSha256) ||
+              !mask || mask.productId !== attempt.productId || mask.sourceAssetId !== attempt.sourceAssetId ||
+              mask.sourceSha256 !== attempt.sourceSha256 || mask.sha256 !== attempt.maskSha256 ||
+              !source || source.productId !== attempt.productId || source.sha256 !== attempt.sourceSha256) {
+            throw new Error('The source or active mask changed. Review it again before generating.');
+          }
+        }
+        if ((attempt.status === 'DEFINITIVE_SUCCESS') !== Boolean(asset) ||
+            (asset && (asset.attemptId !== attempt.attemptId || asset.productId !== attempt.productId || !(asset.blob instanceof Blob) || !hashPattern.test(asset.sha256))) ||
+            (attempt.status !== 'DEFINITIVE_SUCCESS' && (attempt.usage !== null || attempt.observedUSD !== null))) throw new Error('Attempt outcome and asset do not match.');
+        const oldEntry = job.attempts[0];
+        if (!oldEntry || JSON.stringify(job) !== JSON.stringify(studioJob(previous, promptHash, oldEntry.submittedAt, oldEntry.completedAt))) throw new Error('The saved job does not match its attempt.');
+        const now = new Date().toISOString();
+        const sentAt = attempt.status === 'SUBMITTED' ? now : oldEntry.submittedAt;
+        const completedAt = attempt.status === 'SUBMITTED' ? null : now;
+        const next = checkedStudioJob(studioJob(attempt, promptHash, sentAt, completedAt));
+        tx.objectStore('jobs').put(next);
+        tx.objectStore('attempts').put(attempt);
+        if (asset) tx.objectStore('generatedAssets').add(asset);
+      } catch (error) { failure = error instanceof Error ? error : new Error('Could not update the attempt.'); tx.abort(); }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(failure ?? transactionError(tx));
+  });
+}
+
+export async function listStudioAttempts(productId: string): Promise<Array<{ attempt: StudioAttempt; asset: StudioAsset | null }>> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['jobs', 'attempts', 'generatedAssets'], 'readonly');
+    const jobs = tx.objectStore('jobs').index('productId').getAll(productId);
+    const attempts = tx.objectStore('attempts').getAll();
+    const assets = tx.objectStore('generatedAssets').index('productId').getAll(productId);
+    tx.oncomplete = () => {
+      const ids = new Set((jobs.result as Array<{ jobId: string }>).map((job) => job.jobId));
+      resolve((attempts.result as StudioAttempt[]).filter((attempt) => ids.has(attempt.jobId))
+        .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+        .map((attempt) => ({ attempt, asset: (assets.result as StudioAsset[]).find((asset) => asset.attemptId === attempt.attemptId) ?? null })));
+    };
+    tx.onabort = () => reject(transactionError(tx));
   });
 }

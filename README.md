@@ -4,7 +4,7 @@
 **Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 
-> The `app/` directory provides local SKU projects, confirmed facts, immutable source-image upload, manual local mask editing, a portable backup for those supported records, a static-only offline/update worker, and a loopback-only development gateway with a settings UI for app/provider sessions. The gateway makes no provider requests and is not approved for production. Backup of jobs, outputs, QA and receipts and migration from older schema versions remain unimplemented; unsupported data is rejected rather than omitted. Generation remains unimplemented. Synthetic Chromium checks exercised mask persistence, offline editing and draft protection; device, full performance and compositor acceptance remain open. No production deployment, real-brand fidelity or complete application release is claimed.
+> The `app/` directory provides local SKU projects, confirmed facts, immutable source-image upload, manual mask editing, subset backup, an offline/update worker and a loopback-only development gateway. A default-disabled Studio path can generate one **unapproved empty background**, not a finished product image; only synthetic-provider browser tests have exercised this path. Do not enable billable generation or use a real key before the required isolation and security reviews. Jobs, outputs, QA and receipts cannot yet be backed up, and the app refuses backup rather than omitting them; back up before generating. UNKNOWN attempts cannot yet be reconciled in the UI. Composition, QA, approved export, real-device acceptance and production release remain open.
 
 ## Start here
 
@@ -50,7 +50,7 @@ npm ci
 npm run dev
 ```
 
-`npm run build` type-checks and builds the shell and workers; `npm test` runs image-header, mask-validation, backup and local gateway security regression tests on Node 22.12 or newer (Node 22/23 may warn that type stripping is experimental). Static hosting needs HTTPS (or localhost), an `index.html` fallback for application routes, and revalidation of `/sw.js` and HTML rather than immutable caching. The shell can load offline only after a successful online installation. Browser data may be evicted: export backups to a trusted location. Backups are unencrypted and can include confidential photos and EXIF; see the [backup contract](docs/04-data/EXPORT_IMPORT.md) for supported data and limits.
+`npm run build` type-checks and builds the shell and workers; `npm test` runs image-header, mask, backup, gateway and Studio-attempt regression tests on Node 22.12 or newer (Node 22/23 may warn that type stripping is experimental). Static hosting needs HTTPS (or localhost), an `index.html` fallback for application routes, and revalidation of `/sw.js` and HTML rather than immutable caching. The shell can load offline only after a successful online installation. Browser data may be evicted: export supported backups to a trusted location. Backups are unencrypted and can include confidential photos and EXIF; see the [backup contract](docs/04-data/EXPORT_IMPORT.md) for supported data and limits.
 
 For a **local synthetic-data development gateway**, first build the app. The following command generates a random app access token and its SHA-256 digest. Its output is sensitive: do not copy the token into source, logs, URLs, shell history or provider-key fields. This token is not an OpenAI API key. The command avoids the `sk-` prefix so it is not mistaken for one.
 
@@ -61,7 +61,7 @@ export STUDIO_ACCESS_TOKEN_SHA256
 OPENAI_API_KEY=synthetic-local-only npm run gateway
 ```
 
-Open `http://127.0.0.1:4173/settings`, sign in with the local app access token, and connect the synthetic provider session. Do not enter a provider API key in the browser. `STUDIO_PORT` may select another loopback port. The gateway does not load `.env` files or call OpenAI; its API is described in the [gateway contract](docs/05-api/API_CONTRACT.md). Never expose this development gateway to a LAN or public network, or treat it as a production authentication or key-management system. Sessions are invalidated on restart.
+Open `http://127.0.0.1:4173/settings`, sign in with the local app access token, and connect the synthetic provider session. Do not enter a provider API key in the browser. `STUDIO_PORT` may select another loopback port. The gateway does not load `.env` files. Billable generation is disabled by default; explicitly enabling it with a configured provider key can send real requests and incur charges. Do not enable it or use real keys until the required isolation and security reviews have passed. See the [gateway contract](docs/05-api/API_CONTRACT.md). Never expose this development gateway to a LAN or public network, or treat it as a production authentication or key-management system. Sessions are invalidated on restart.
 
 
 ## Machine-readable content

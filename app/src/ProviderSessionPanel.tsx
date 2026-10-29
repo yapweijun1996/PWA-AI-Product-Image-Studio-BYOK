@@ -149,7 +149,7 @@ export function ProviderSessionPanel() {
   }
 
   return <section className="notice provider-session" aria-labelledby="provider-heading"><h2 id="provider-heading">Provider connection</h2>
-    <p>Local development only. Use synthetic credentials; this gateway makes no provider calls and is not approved for production.</p>
+    <p>Local development only. Billable image generation is disabled by default; enabling it can incur provider charges. Use synthetic credentials until security review is complete. This gateway is not approved for production.</p>
     {state.kind === 'checking' && <p role="status">Checking local gateway…</p>}
     {state.kind === 'unavailable' && <><p>The local gateway is unavailable. Start the app using the loopback gateway, then check again.</p><button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void refresh()}>Check gateway</button></>}
     {state.kind === 'signed-out' && <form className="provider-login" onSubmit={signIn}><p>Sign in with the separate local app access token. Never enter your OpenAI API key in the browser.</p><label htmlFor="local-access-token">Local app access token</label><input id="local-access-token" type="password" autoComplete="off" maxLength={128} value={accessToken} onChange={(event) => onToken(event.target.value)} onBlur={() => { rejectUntilBlur.current = false; }} onPaste={onPaste} disabled={Boolean(busy)} /><button type="submit" className="primary-button" disabled={Boolean(busy) || !accessToken}>Sign in locally</button></form>}
