@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasUnsavedChanges } from './useUnsavedChanges';
 
 type UpdateState = 'idle' | 'waiting' | 'activating' | 'activated-elsewhere' | 'error';
 
 export function useServiceWorker() {
   const [state, setState] = useState<UpdateState>('idle');
+  const [blockedByDraft, setBlockedByDraft] = useState(false);
   const registration = useRef<ServiceWorkerRegistration | null>(null);
   const requestedUpdate = useRef(false);
   const timeout = useRef<number | null>(null);
@@ -71,7 +73,12 @@ export function useServiceWorker() {
   }, []);
 
   function updateNow() {
-    if (state === 'activated-elsewhere') {
+    if (hasUnsavedChanges()) {
+      setBlockedByDraft(true);
+      return;
+    }
+    setBlockedByDraft(false);
+    if (state === 'activated-elsewhere' || state === 'error') {
       window.location.reload();
       return;
     }
@@ -91,5 +98,5 @@ export function useServiceWorker() {
     }, 100);
   }
 
-  return { state, updateNow };
+  return { state, updateNow, blockedByDraft };
 }

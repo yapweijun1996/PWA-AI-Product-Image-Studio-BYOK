@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import { useServiceWorker } from './useServiceWorker';
+import { NewProduct, ProductDetails, Workspace } from './ProductPages';
 
 type Theme = 'system' | 'light' | 'dark';
 const themeKey = 'image-studio.theme';
@@ -55,29 +56,6 @@ function Mark() {
   return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><rect x="4" y="4" width="24" height="24" rx="5" stroke="currentColor" strokeWidth="1.7"/><circle cx="21" cy="11" r="2" fill="currentColor"/><path d="M8 23l7-8 5 5 3-3 3 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></span>;
 }
 
-function Home() {
-  return <>
-    <div className="eyebrow">YOUR WORKSPACE</div>
-    <h1>Product Image Studio</h1>
-    <p className="lead">A considered workspace for product images, built around the details that make your product yours.</p>
-    <section className="overview" aria-labelledby="workspace-heading">
-      <div className="overview-copy">
-        <span className="section-kicker">WORKSPACE STATUS</span>
-        <h2 id="workspace-heading">A careful start.</h2>
-        <p>Project creation, image upload and generation are not available in this build. No image requests or charges can be made here yet.</p>
-        <Link className="text-link" to="/help">Read the workflow guide <span aria-hidden="true">↗</span></Link>
-      </div>
-      <div className="overview-art" aria-hidden="true">
-        <div className="art-frame"><span className="art-corner art-corner-one"/><span className="art-corner art-corner-two"/><div className="art-shape"/><span className="art-line"/></div>
-      </div>
-    </section>
-    <div className="principles" aria-label="Workspace principles">
-      <article><span className="principle-number">01</span><h3>Start with the original</h3><p>Your product reference is the foundation for a truthful image.</p></article>
-      <article><span className="principle-number">02</span><h3>Understand each attempt</h3><p>Generation is intended to be separately approved and may incur provider charges.</p></article>
-      <article><span className="principle-number">03</span><h3>Review before export</h3><p>Human review remains essential for labels, geometry and product identity.</p></article>
-    </div>
-  </>;
-}
 
 function Settings({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) => void }) {
   return <>
@@ -128,15 +106,15 @@ export function App() {
       {update.state !== 'idle' && <section className="update-notice" aria-label="Application update" aria-live="polite">
         <div>
           <strong>{update.state === 'activating' ? 'Updating application…' : update.state === 'error' ? 'Update unavailable' : 'New version available'}</strong>
-          <p>{update.state === 'activating' ? 'Please keep this page open.' : update.state === 'error' ? 'The update could not be completed. Save your work, check your connection and reload when ready.' : 'Save any work before updating. This page will reload only when you choose to update.'}</p>
+          <p>{update.blockedByDraft ? 'Save or discard your changes before updating.' : update.state === 'activating' ? 'Please keep this page open.' : update.state === 'error' ? 'The update could not be completed. Save your work, check your connection and reload when ready.' : 'Save any work before updating. This page will reload only when you choose to update.'}</p>
         </div>
         {update.state === 'activating' && <span className="update-spinner" aria-hidden="true" />}
         {update.state !== 'activating' && (update.state === 'error'
-          ? <button type="button" onClick={() => window.location.reload()}>Reload when ready</button>
+          ? <button type="button" onClick={update.updateNow}>Reload when ready</button>
           : <button type="button" onClick={update.updateNow}>Update now</button>)}
       </section>}
       <main id="main-content" tabIndex={-1}>
-        <Routes><Route path="/" element={<Home/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes>
+        <Routes><Route path="/" element={<Workspace/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes>
       </main>
       <footer><span>PRODUCT IMAGE STUDIO</span><span>Local-first by design</span></footer>
     </div>

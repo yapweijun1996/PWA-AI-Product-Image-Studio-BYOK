@@ -10,7 +10,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-002 | EP-07 | Correct documentation validator checkout scope without hiding unexpected package payloads | T-001 | VERIFIED — checkout and isolated package validated; regression tests reject unexpected, missing, modified and symlinked payloads. See T-002 record below. |
 | T-010 | EP-06 | React TS Vite PWA shell, routing, theme/status bar | T-001 | VERIFIED for the shell in Chromium; installed iOS and offline/update lifecycle remain separate release gates. See T-010 record below. |
 | T-011 | EP-06 | SW cache/version and user-controlled update loader | T-010 | IMPLEMENTED_UNVERIFIED — shell update verified; real draft/mask flush and no-loss acceptance require T-020/T-050 integration. See T-011 record below. |
-| T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | E2E-001..003,016, corrupt/duplicate test |
+| T-020 | EP-01 | SKU/fact/source data schema and IndexedDB stores | T-010 | IMPLEMENTED_UNVERIFIED — SKU/fact paths verified; upload, large-source and generation-dependent acceptance await T-021/T-040. |
 | T-021 | EP-01 | Upload MIME/EXIF/resize/provenance; original immutable Blob | T-020 | E2E-002; large image safe |
 | T-022 | EP-01 | Portable backup ZIP/import and version migration | T-020 | E2E-017; hash/path/bomb cases |
 | T-030 | EP-02 | Self-hosted gateway authentication, CSRF, allowlist, server-configured secret and provider authorization session | T-001 | SEC-001..008; Key scan = 0 |
@@ -104,9 +104,17 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 
 - **Change:** Each production build emits a distinct static-only service worker. The user must choose the waiting-worker update; the initiating tab displays a loader and reloads after activation. Other tabs receive an update notice rather than an automatic reload. API and non-shell content are not cached.
 - **Evidence:** Two separately generated build IDs were served from a local test server. Chromium loaded the first, reloaded it offline, and navigated offline. A second build waited until the user action; a DOM-observed loader appeared; the selected tab reloaded and the old shell cache was removed. A second tab retained an injected unsaved control without a reload and reloaded only after its own action. A synthetic `/api/probe` response was absent from the cache and failed offline.
-- **Open acceptance:** No actual product draft, pending transaction or mask editor exists yet. The initiating tab's injected unsaved control was lost after its explicit update; the current warning is not automatic draft preservation. Integrate and verify real save/flush and error handling with T-020 and T-050 before marking T-011 VERIFIED or claiming E2E-019 no-loss acceptance.
+- **Open acceptance at T-011:** No actual product draft, pending transaction or mask editor existed at this stage. The initiating tab's injected unsaved control was lost after its explicit update; the warning alone was not automatic draft preservation. See the later T-020 form-protection evidence; mask and pending-transaction protection remain open.
 - **Limits:** Chromium localhost is not an installed iPhone test. First-load offline is not supported. Hosting must revalidate the worker and HTML. No provider request or real key was used.
 - **Rollback:** Revert the worker, build plugin, update UI and related documentation; preserve local data and review active browser caches before any release rollback.
+
+## T-020 product persistence record — 2026-10-30
+
+- **Change:** Added browser-local product creation, listing, reopening and user-confirmed fact add/remove. IndexedDB v1 creates the documented stores and an exact, trimmed, case-sensitive unique SKU index. Product reads and writes use the canonical schema; successful UI state follows transaction completion.
+- **Evidence:** Chromium created and reloaded a synthetic SKU, rejected the same SKU without a duplicate, rejected an injected malformed record without changing the valid product, required explicit fact confirmation, persisted fact add/remove, reopened the product offline and rejected a future database version without downgrading it. The 320 px product view had no horizontal overflow. `npm run build` passed; `npm audit --audit-level=high` reported zero vulnerabilities and the application-source credential-pattern scan found no match.
+- **Update integration:** In two builds served under a CSP without `unsafe-eval`, a real unsaved product form blocked update activation and retained its input. After the product was saved, explicit update reloaded to the persisted product. Navigation cancellation also retained a dirty form. Mask and pending-transaction protection still require their own implementation and test.
+- **Open acceptance:** T-021 must implement and test real image upload, immutable source Blob and large-source/quota behavior (E2E-002/016). T-040 must prove generation only consumes confirmed facts (E2E-003). T-020 remains IMPLEMENTED_UNVERIFIED for those named cross-feature criteria; its validated product-store implementation can serve as T-021's prerequisite.
+- **Rollback:** Revert product source, forms, validator plugin and docs together. Do not delete the IndexedDB database or user-created products; future rollback must preserve or explicitly export data.
 
 ## Task execution record template
 

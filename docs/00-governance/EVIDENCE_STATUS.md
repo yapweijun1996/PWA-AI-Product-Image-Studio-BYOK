@@ -2,11 +2,11 @@
 
 | Subject | Current evidence | Not verified / not claimed |
 |---|---|---|
-| Repository | T-010 adds a React/Vite shell under `app/`; T-001 and T-002 were merged locally before it. See the [task ledger](../08-delivery/TASK.md) and Git history for task-level evidence. | No complete product workflow or deployment. Working-tree and remote state can change; recheck before work. |
+| Repository | The React/Vite shell supports local SKU creation, reopening and confirmed facts; task commits and remaining acceptance are in the [task ledger](../08-delivery/TASK.md). | No complete product workflow or deployment. Working-tree and remote state can change; recheck before work. |
 | Project decision | Owner selected self-hosted gateway, server-configured provider key, seven styles and Pi direction. | Public custody, production deployment and real-key gateway security are not approved. |
 | OpenAI images | A prior owner-requested Pi text call and separate direct image call succeeded; see [spike evidence](../09-research/PI_OPENAI_SPIKE.md). | No Pi-to-image gateway workflow or complete cost benchmark. |
 | Security | The shell contains no provider-key input; the provider boundary remains a proposed contract. | No implemented secure gateway, OS-level Pi isolation or penetration test. |
-| PWA | Chromium exercised the shell offline after installation and a two-build, user-consented update with two tabs; static cache and API bypass were inspected. | No real editor draft/mask preservation proof, actual iOS installed-mode or full PWA release test. |
+| PWA | Chromium exercised offline shell/product reload, two-build update and protection of an unsaved product form before update. | No real mask/pending-transaction preservation proof, actual iOS installed-mode or full PWA release test. |
 | Brand fidelity | Reusable Brand Lock methodology and source-preservation requirement documented. | No real-brand output or pixel-fidelity validation. |
 | Documentation | T-002 checkout and isolated-package validator runs passed with optional dependencies; five synthetic regression tests passed. | Documentation validation does not test the separate application tree, provider, runtime security or visual fidelity. |
 

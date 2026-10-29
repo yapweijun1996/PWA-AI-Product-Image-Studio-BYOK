@@ -41,8 +41,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4231,
-      "sha256": "b87ac86c46229a6111c4bb775f51f64e13b04f337c32d77d3c9f9732fa39c601"
+      "bytes": 4283,
+      "sha256": "f01d78879f95909181de2ed6bdab05cf3ead1dab9faccfee5aafe787252f2a2b"
     },
     {
       "path": "ROADMAP.md",
@@ -56,8 +56,8 @@
     },
     {
       "path": "START_HERE_中文.md",
-      "bytes": 2797,
-      "sha256": "3d64c32f06ee516f0d86ad5c3fd28b1df3bede76a738ec5f16532f34ae2cc602"
+      "bytes": 2786,
+      "sha256": "6501f2b5fc7dd581d3d34c80d4d3213fce408a754aceb1ea38034057634063fc"
     },
     {
       "path": "TASK.md",
@@ -101,8 +101,8 @@
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 2487,
-      "sha256": "e913a6225124439b74bb948708ccac3ce23cbf2e53eec160d3bb7b3696d68dc7"
+      "bytes": 2454,
+      "sha256": "67b25f64bd187b790873bac66aa1b120bc59182baa4ba0a7355ef7abe89711ca"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -206,8 +206,8 @@
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
-      "bytes": 3045,
-      "sha256": "0bd06f60cce4dd6e4c11e3792151f85df31b4d563b03a3968f7467f03dbc5da4"
+      "bytes": 3512,
+      "sha256": "2f5a303eec2046b0ecbddde5326d2a5697877984c852d12e9c11a82036769b5a"
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
@@ -291,8 +291,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 18487,
-      "sha256": "50d1ef2312ef439247c036d520797bdc0a8c061eae0caa2ebb8f106df1ccc323"
+      "bytes": 20395,
+      "sha256": "517ce963bbc6ec47a30eb75233ca6f65b7997d0f059d7b706c1bd7214bcf3f41"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
