@@ -208,6 +208,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is one Chromium localhost scenario, not real installed iOS or proof of every transaction, crash or cross-tab race. The previously observed older cached-asset mismatch remains unexplained; no reproduction or fix is claimed here. The screenshot operation timed out. No application code or provider request was changed or used.
 - **Rollback:** Revert this evidence record and matching documentation checksums only; preserve all browser product data and existing caches.
 
+## T-011 cache-limit cleanup Chromium observation — 2026-10-30
+
+- **Setup:** Two actual builds from a disposable copy were served successively to an isolated desktop Chromium origin. After A activated, seven empty synthetic shell caches and one unrelated cache were created to reach the configured eight-shell limit; a second app tab was opened. This tests the application cache-count limit, not actual browser quota exhaustion or eviction.
+- **Evidence:** B's installation paused and the UI showed the cache-limit notice. Confirming cleanup with the second tab open returned the close-other-tabs message and retained all eight shell caches. After closing the second tab and confirming again, all seven synthetic old shells were removed, A's active shell and the unrelated cache remained, and B was installed as a waiting update with a visible update notice. The browser console reported no errors or warnings. UI buttons were exercised through DOM clicks in the real browser; no seller data or provider key was used.
+- **Limits:** This does not verify product-data persistence during cleanup, concurrent new-tab races, browser quota/eviction, no-Web-Locks devices, installed iOS or user activation of B. T-011 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence record and documentation hashes only; preserve user data and caches.
+
 ## T-011 two-build unsaved-draft observation — 2026-10-30
 
 - **Setup:** In an isolated desktop Chromium context, two actual builds from a disposable source copy served distinct worker IDs and hashed assets; B differed by a synthetic CSS rule. One tab had an unsaved synthetic SKU in the actual new-product form, while another tab remained on the workspace. No provider key or seller data was used.
