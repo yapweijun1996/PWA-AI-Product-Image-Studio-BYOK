@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createGateway } from '../../gateway.mjs';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, mkdir, writeFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -311,6 +311,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
       const pixel=await evaluate(client, `(async () => {const bytes=Uint8Array.from(atob(${JSON.stringify(Buffer.from(output).toString('base64'))}),c=>c.charCodeAt(0));const image=await createImageBitmap(new Blob([bytes],{type:'image/png'}));const c=document.createElement('canvas');c.width=image.width;c.height=image.height;const ctx=c.getContext('2d');ctx.drawImage(image,0,0);image.close();return {width:c.width,height:c.height,pixel:[...ctx.getImageData(512,512,1,1).data]};})()`);
       assert.deepEqual(pixel,{width:1024,height:1024,pixel:[170,51,17,255]});
     } finally { await zip.close(); }
+    await unlink(join(userDir,download));
     await client.call('Page.navigate',{url:`${origin}/settings`});
     await until(() => evaluate(client, `!!document.querySelector('#local-access-token')`),'local gateway sign-in');
     await evaluate(client, `(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(token)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
@@ -331,13 +332,46 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.deepEqual(Object.keys(providerPayload).sort(),['model','n','output_format','prompt','quality','size']);
     assert.equal(providerPayload.n,1);assert.equal(providerPayload.output_format,'png');
     assert.ok(providerPayload.prompt.includes('Synthetic region test'));
-    const generated=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const entries=await p.listStudioAttempts(${JSON.stringify(productId)});const e=entries.find(x=>x.attempt.styleId==='studio' && x.attempt.status==='DEFINITIVE_SUCCESS');return {source:e.attempt.sourceSha256,scene:e.asset.sha256};})()`);
+    const generated=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const entries=await p.listStudioAttempts(${JSON.stringify(productId)});const e=entries.find(x=>x.attempt.styleId==='studio' && x.attempt.status==='DEFINITIVE_SUCCESS');return {attemptId:e.attempt.attemptId,source:e.attempt.sourceSha256,scene:e.asset.sha256};})()`);
     assert.equal(generated.source,originalHash);
     assert.equal(generated.scene,createHash('sha256').update(Buffer.from(imageData,'base64')).digest('hex'));
     assert.equal(await evaluate(client, `document.body.innerText.includes('synthetic-provider-fixture') || JSON.stringify(localStorage).includes('synthetic-provider-fixture') || JSON.stringify(sessionStorage).includes('synthetic-provider-fixture')`),false);
     await client.call('Page.reload');
     await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'persisted synthetic scene');
     assert.equal(providerCalls,1,'Reload does not resend the synthetic request.');
+    const attemptSelector=`.studio-history li`;
+    await until(() => evaluate(client, `[...document.querySelectorAll(${JSON.stringify(attemptSelector)})].some(li=>li.innerText.includes(${JSON.stringify(generated.attemptId)})&&[...li.querySelectorAll('button')].some(b=>b.textContent==='Prepare local composite'&&!b.disabled))`),'generated scene composition');
+    await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));[...li.querySelectorAll('button')].find(b=>b.textContent==='Prepare local composite').click();})()`);
+    await until(() => evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));return [...li.querySelectorAll('button')].some(b=>b.textContent==='Save unapproved composite');})()`),'generated composite preview');
+    await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));[...li.querySelectorAll('button')].find(b=>b.textContent==='Save unapproved composite').click();})()`);
+    await until(() => evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));return [...li.querySelectorAll('summary')].some(s=>s.textContent==='Review this composite');})()`),'generated composite saved');
+    const generatedComposite=await evaluate(client, `(async () => {const p=await import('/src/products.ts');return (await p.listStrictComposites(${JSON.stringify(productId)},${JSON.stringify(generated.attemptId)}))[0].assetId;})()`);
+    await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));[...li.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').click();})()`);
+    await until(() => evaluate(client, `!!document.querySelector(${JSON.stringify('#review-heading-'+generatedComposite)})?.closest('.visual-review')?.querySelector('form')`),'generated composite review');
+    const reviewSelector=`#review-heading-${generatedComposite}`;
+    assert.ok(await evaluate(client, `document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').innerText.includes('Style-specific evidence')`),'Studio-specific checks are present.');
+    await evaluate(client, `(() => {const f=document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelector('form');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const input of f.querySelectorAll('input[type="number"]')) {setter.call(input,'5');input.dispatchEvent(new Event('input',{bubbles:true}));}for(const select of f.querySelectorAll('select')) {select.value=select.id.startsWith('qa-variant-')?'default':'MATCH';select.dispatchEvent(new Event('change',{bubbles:true}));}})()`);
+    await until(() => evaluate(client, `document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').innerText.includes('Proposed status: PASS_CANDIDATE')`),'generated passing review');
+    await evaluate(client, `(() => {const f=document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelector('form');[...f.querySelectorAll('label')].find(l=>l.innerText.includes('I personally compared')).querySelector('input').click();})()`);
+    await until(() => evaluate(client, `![...document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelectorAll('button')].find(b=>b.textContent==='Save this human review').disabled`),'generated review confirmation');
+    await evaluate(client, `[...document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelectorAll('button')].find(b=>b.textContent==='Save this human review').click()`);
+    await until(() => evaluate(client, `[...document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelectorAll('button')].some(b=>b.textContent==='Choose approval'&&!b.disabled)`),'generated review saved');
+    await evaluate(client, `[...document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelectorAll('button')].find(b=>b.textContent==='Choose approval').click()`);
+    await evaluate(client, `[...document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelectorAll('label')].find(l=>l.innerText.includes('I explicitly approve')).querySelector('input').click()`);
+    await until(() => evaluate(client, `![...document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelectorAll('button')].find(b=>b.textContent==='Record approved decision').disabled`),'generated decision confirmation');
+    await evaluate(client, `[...document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').querySelectorAll('button')].find(b=>b.textContent==='Record approved decision').click()`);
+    await until(() => evaluate(client, `document.querySelector(${JSON.stringify(reviewSelector)}).closest('.visual-review').innerText.includes('decision APPROVED')`),'generated composite approved');
+    const generatedDecision=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const h=await p.listVisualReviews(${JSON.stringify(productId)},${JSON.stringify(generated.attemptId)},${JSON.stringify(generatedComposite)});const d=h.decisions.find(x=>x.current);return {reviewId:d.reportId,decisionId:d.qaId};})()`);
+    await client.call('Page.reload');
+    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(generatedComposite)})`),'generated approved export candidate');
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes(${JSON.stringify(generatedComposite)})).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click();})()`);
+    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`),'generated export preview');
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes('I inspected every converted output')).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').click();})()`);
+    const secondDownload=await until(async () => (await readdir(userDir)).find(name=>name.startsWith('approved-outputs-')&&name.endsWith('.zip')),'generated approved ZIP');
+    const secondZip=new ZipReader(new Uint8ArrayReader(await readFile(join(userDir,secondDownload))));
+    try {const entries=await secondZip.getEntries();const proof=entries.find(e=>e.filename===`provenance/${generatedComposite}.json`), output=entries.find(e=>e.filename===`outputs/${generatedComposite}.png`);assert.ok(proof&&output,'Generated composite and provenance are in the ZIP.');const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter())));const bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.attemptId,generated.attemptId);assert.equal(receipt.sceneSha256,generated.scene);assert.equal(receipt.sourceSha256,originalHash);assert.equal(receipt.reviewId,generatedDecision.reviewId);assert.equal(receipt.decisionId,generatedDecision.decisionId);assert.equal(createHash('sha256').update(bytes).digest('hex'),receipt.outputSha256);} finally {await secondZip.close();}
+    assert.equal(providerCalls,1,'Composition, review and export do not resend the provider request.');
+
 
 
     assert.equal(await evaluate(client, `document.documentElement.scrollWidth===innerWidth`),true);
