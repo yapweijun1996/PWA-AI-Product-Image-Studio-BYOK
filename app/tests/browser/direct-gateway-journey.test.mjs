@@ -57,11 +57,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client;let providerCalls=0,providerImage='', failNext=false;
+  let gateway,browser,client;let providerCalls=0,providerImage='', failNext=false;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
-    gateway=await createGateway({authTokenHash:createHash('sha256').update(token).digest('hex'),providerConfigured:true,staticDirectory:web,imageGeneration:{enabled:true,apiKey:'synthetic-provider-fixture',journalDirectory:journal,transport:async()=>{providerCalls++;if(failNext){failNext=false;throw new Error('synthetic-provider-fixture');}return new Response(JSON.stringify({data:[{b64_json:providerImage}]}),{status:200,headers:{'content-type':'application/json'}});}}});
+    gateway=await createGateway({authTokenHash:createHash('sha256').update(token).digest('hex'),providerConfigured:true,staticDirectory:web,imageGeneration:{enabled:true,apiKey:'synthetic-provider-fixture',journalDirectory:journal,transport:async(_url,request)=>{providerCalls++;providerPrompts.push(JSON.parse(request.body).prompt);if(failNext){failNext=false;throw new Error('synthetic-provider-fixture');}return new Response(JSON.stringify({data:[{b64_json:providerImage}]}),{status:200,headers:{'content-type':'application/json'}});}}});
     await new Promise((resolve,reject)=>{gateway.once('error',reject);gateway.listen(0,'127.0.0.1',resolve)});
     const origin=`http://127.0.0.1:${gateway.address().port}`;
     const crossOrigin=await fetch(`${origin}/api/v2/auth/login`,{method:'POST',headers:{'content-type':'application/json',origin:'http://untrusted.invalid'},body:JSON.stringify({token})});
@@ -174,6 +174,34 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await client.call('Page.reload');
     await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('UNKNOWN')&&li.innerText.includes('Reviewed at'))&&[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(retryId)})&&li.innerText.includes('DEFINITIVE_SUCCESS'))`),'reloaded retry lineage');
     assert.equal(providerCalls,3,'Reload preserves both outcomes without another request.');
+    const attemptsBefore=await evaluate(client, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const q=db.transaction('attempts').objectStore('attempts').getAll();q.onsuccess=()=>resolve(q.result.map(x=>x.attemptId));q.onerror=()=>reject(q.error)})}finally{db.close()}})()`);
+    for(const style of ['Hero','Lifestyle','Flat Lay','Macro','UGC','Billboard']) {
+      await evaluate(client, `(() => {const group=[...document.querySelectorAll('.studio-panel fieldset')].find(f=>f.querySelector('legend')?.textContent==='Choose styles');const label=[...group.querySelectorAll('label')].find(l=>l.innerText.trim()===${JSON.stringify(style)});if(!label.querySelector('input').checked)label.querySelector('input').click()})()`);
+    }
+    await until(()=>evaluate(client,`document.querySelectorAll('.style-plan').length===7`),'seven independent style plans');
+    for(const style of ['Studio','Hero','Lifestyle','Flat Lay','Macro','UGC']) {
+      await evaluate(client, `[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes(${JSON.stringify('I authorize this single '+style+' attempt')})).querySelector('input').click()`);
+    }
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Every style needs its own consent.');
+    assert.equal(providerCalls,3,'Partial queue consent sends nothing.');
+    await evaluate(client, `[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Billboard attempt')).querySelector('input').click()`);
+    await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'seven-style consent');
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('7 independent scene attempts completed') && [...document.querySelectorAll('.studio-panel button')].some(b=>b.textContent==='Authorize and generate selected scenes')`),'completed seven-style queue');
+    assert.equal(providerCalls,10,'Exactly seven new synthetic provider calls occur.');
+    assert.equal(new Set(providerPrompts.slice(3)).size,7,'Each style has a distinct provider prompt.');
+    const queue=await evaluate(client, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const q=db.transaction('attempts').objectStore('attempts').getAll();q.onsuccess=()=>resolve(q.result.filter(x=>!${JSON.stringify(attemptsBefore)}.includes(x.attemptId)).map(x=>({id:x.attemptId,job:x.jobId,style:x.styleId,status:x.status,source:x.sourceSha256,mask:x.maskId})));q.onerror=()=>reject(q.error)})}finally{db.close()}})()`);
+    assert.equal(queue.length,7);assert.equal(new Set(queue.map(x=>x.id)).size,7);assert.equal(new Set(queue.map(x=>x.job)).size,7);
+    assert.deepEqual(queue.map(x=>x.style).sort(),['billboard','flat_lay','hero','lifestyle','macro','studio','ugc']);
+    assert.ok(queue.every(x=>x.status==='DEFINITIVE_SUCCESS'&&x.source===sourceHash));assert.equal(new Set(queue.map(x=>x.mask)).size,1);
+    const queueIds=queue.map(x=>x.id);
+    const scenes=await evaluate(client, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const q=db.transaction('generatedAssets').objectStore('generatedAssets').getAll();q.onsuccess=()=>resolve(q.result.filter(x=>!x.kind&&${JSON.stringify(queueIds)}.includes(x.attemptId)).map(x=>({asset:x.assetId,attempt:x.attemptId,hash:x.sha256})));q.onerror=()=>reject(q.error)})}finally{db.close()}})()`);
+    assert.equal(scenes.length,7);assert.equal(new Set(scenes.map(x=>x.asset)).size,7);assert.deepEqual(scenes.map(x=>x.attempt).sort(),[...queueIds].sort());
+    assert.ok(scenes.every(x=>x.hash===createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex')),'Each attempt retains its own synthetic scene record.');
+
+    await client.call('Page.reload');await until(()=>evaluate(client,`document.querySelectorAll('.studio-history li').length>=10`),'persisted seven-style history');
+    assert.equal(providerCalls,10,'Reload does not resend the seven-style queue.');
+
 
 
     await until(()=>evaluate(client, `(async()=> (await caches.keys()).length>0)()`),'installed shell cache');
