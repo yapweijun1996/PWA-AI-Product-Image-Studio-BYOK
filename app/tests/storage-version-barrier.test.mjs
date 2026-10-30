@@ -67,6 +67,7 @@ test('a non-cooperating old tab blocks upgrade until it closes', async () => {
   db.onversionchange = () => {};
   const runtime = await import(`${moduleUrl}#blocked`);
   await assert.rejects(runtime.getProduct(product.productId), /blocked by another open tab/i);
+  await assert.rejects(runtime.getProduct(product.productId), /blocked by another open tab/i);
   assert.equal((await read(db, 'products', product.productId)).sku, 'SYNTH-V1');
   db.close();
   const current = await open(factory);

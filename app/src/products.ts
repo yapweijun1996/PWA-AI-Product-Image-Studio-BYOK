@@ -57,8 +57,11 @@ function notifyProductChanged(productId: string): void {
 }
 const DB_VERSION = 3;
 let connection: Promise<IDBDatabase> | null = null;
+let blockedUpgrade = false;
+const blockedUpgradeError = () => new Error('Storage upgrade is blocked by another open tab. Close the other tab and try again.');
 
 function openDatabase(): Promise<IDBDatabase> {
+  if (blockedUpgrade) return Promise.reject(blockedUpgradeError());
   if (connection) return connection;
   const pending = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -126,14 +129,15 @@ function openDatabase(): Promise<IDBDatabase> {
     };
     request.onblocked = () => {
       abandoned = true;
-      reject(new Error('Storage upgrade is blocked by another open tab. Close the other tab and try again.'));
+      blockedUpgrade = true;
+      reject(blockedUpgradeError());
     };
-    request.onerror = () => reject(upgradeFailure ?? (request.error?.name === 'VersionError'
+    request.onerror = () => { blockedUpgrade = false; reject(upgradeFailure ?? (request.error?.name === 'VersionError'
       ? new Error('This workspace requires a newer version of the app. No data was changed.')
-      : request.error ?? new Error('Could not open local storage.')));
+      : request.error ?? new Error('Could not open local storage.'))); };
     request.onsuccess = () => {
       const db = request.result;
-      if (abandoned) { db.close(); return; }
+      if (abandoned) { blockedUpgrade = false; db.close(); return; }
       db.onversionchange = () => { db.close(); connection = null; };
       resolve(db);
     };

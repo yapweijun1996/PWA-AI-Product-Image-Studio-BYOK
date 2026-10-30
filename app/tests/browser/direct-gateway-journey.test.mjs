@@ -57,7 +57,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
+  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient,legacyClient,recoveryClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
@@ -334,6 +334,29 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(providerCalls,10,'Backup inspection and discard make no provider calls.');
     const browserPath=(await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[1];
     browserClient=await connect(`ws://127.0.0.1:${port}${browserPath}`);
+    const {browserContextId:legacyContext}=await browserClient.call('Target.createBrowserContext');
+    const {targetId:legacyId}=await browserClient.call('Target.createTarget',{url:'about:blank',browserContextId:legacyContext});
+    const legacyTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===legacyId),'legacy storage tab');
+    legacyClient=await connect(legacyTarget.webSocketDebuggerUrl);await legacyClient.call('Runtime.enable');await legacyClient.call('Page.enable');
+    await legacyClient.call('Page.navigate',{url:`${origin}/manifest.webmanifest`});
+    await until(()=>evaluate(legacyClient,`location.origin===${JSON.stringify(origin)}`),'legacy same-origin document');
+    const legacyProduct=await evaluate(legacyClient, `(async()=>{const product={schemaVersion:'1.0.0',productId:crypto.randomUUID(),sku:'UPGRADE-SYNTHETIC',name:'Synthetic upgrade recovery',category:'Test',rightsAcknowledged:true,facts:[],sourceAssets:[],brandLock:{mode:'STRICT',protectedText:[],forbiddenChanges:[],maskAssetId:null},createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z'};const q=indexedDB.open('product-image-studio',2);q.onupgradeneeded=()=>{const db=q.result,p=db.createObjectStore('products',{keyPath:'productId'});p.createIndex('sku','sku',{unique:true});p.createIndex('updatedAt','updatedAt');for(const [name,key,indexes] of [['sourceAssets','assetId',['productId','sha256']],['masks','maskId',['sourceAssetId','version']],['jobs','jobId',['productId','status','createdAt']],['attempts','attemptId',['jobId','status','submittedAt']],['generatedAssets','assetId',['attemptId','productId']],['qaReports','qaId',['assetId','createdAt']],['userSettings','key',[]],['migrations','version',['appliedAt']]]){const store=db.createObjectStore(name,{keyPath:key});for(const index of indexes)store.createIndex(index,index)}q.transaction.objectStore('products').add(product);q.transaction.objectStore('migrations').add({version:2,appliedAt:'2026-01-01T00:00:00.000Z'})};await new Promise((resolve,reject)=>{q.onsuccess=resolve;q.onerror=()=>reject(q.error)});window.__legacyWorkspace=q.result;window.__legacyWorkspace.onversionchange=()=>{};return product})()`);
+    const {targetId:recoveryId}=await browserClient.call('Target.createTarget',{url:'about:blank',browserContextId:legacyContext});
+    const recoveryTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===recoveryId),'workspace recovery tab');
+    recoveryClient=await connect(recoveryTarget.webSocketDebuggerUrl);await recoveryClient.call('Runtime.enable');await recoveryClient.call('Page.enable');
+    await recoveryClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});await recoveryClient.call('Page.navigate',{url:origin});
+    await until(()=>evaluate(recoveryClient, `document.querySelector('[role=alert]')?.innerText.includes('blocked by another open tab')`),'blocked storage guidance');
+    assert.equal(await evaluate(recoveryClient, `document.documentElement.scrollWidth<=innerWidth`),true,'Storage recovery controls fit mobile width.');
+    await evaluate(recoveryClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Retry loading products').click()`);
+    await until(()=>evaluate(recoveryClient, `document.querySelector('[role=alert]')?.innerText.includes('blocked by another open tab')`),'blocked retry guidance');
+    assert.equal(await evaluate(legacyClient, `(async()=>{const tx=window.__legacyWorkspace.transaction('products'),q=tx.objectStore('products').get(${JSON.stringify(legacyProduct.productId)});return await new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve(q.result.sku);tx.onabort=()=>reject(tx.error)})})()`),'UPGRADE-SYNTHETIC','Blocked retries do not modify the old workspace.');
+    await evaluate(legacyClient, `window.__legacyWorkspace.close()`);
+    await evaluate(legacyClient, `(async()=>{const q=indexedDB.open('product-image-studio');const db=await new Promise((resolve,reject)=>{q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});db.close()})()`);
+    await evaluate(recoveryClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Retry loading products').click()`);
+    await until(()=>evaluate(recoveryClient, `document.querySelector('.product-list')?.innerText.includes('Synthetic upgrade recovery')`),'workspace retry after old tab closes');
+    const legacyRestored=await evaluate(recoveryClient, `(async()=>{const q=indexedDB.open('product-image-studio');const db=await new Promise((resolve,reject)=>{q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('products'),get=tx.objectStore('products').get(${JSON.stringify(legacyProduct.productId)});tx.oncomplete=()=>resolve({version:db.version,product:get.result});tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
+    assert.deepEqual(legacyRestored,{version:3,product:legacyProduct},'Migration retains the exact synthetic product.');
+    assert.equal(providerCalls,10,'Storage recovery does not call the synthetic provider.');
     const {browserContextId}=await browserClient.call('Target.createBrowserContext');
     const {targetId}=await browserClient.call('Target.createTarget',{url:'about:blank',browserContextId});
     const restoreTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===targetId),'isolated restore tab');
@@ -507,7 +530,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(providerCalls,14,'Only the explicitly authorized retry is sent.');
     assert.equal(await evaluate(client, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.innerText.includes('The image request was not sent.')})`),true,'Remaining unsent attempts retain their outcomes.');
   } finally {
-    observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    recoveryClient?.close();legacyClient?.close();observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
     await rm(root,{recursive:true,force:true});
   }

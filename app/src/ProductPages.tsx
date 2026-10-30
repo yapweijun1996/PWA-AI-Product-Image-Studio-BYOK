@@ -10,18 +10,19 @@ function message(error: unknown): string {
 export function Workspace() {
   const [products, setProducts] = useState<Product[] | null>(null);
   const [error, setError] = useState('');
+  const [loadVersion, setLoadVersion] = useState(0);
   useEffect(() => {
     let mounted = true;
     listProducts().then((value) => { if (mounted) setProducts(value); })
       .catch((reason: unknown) => { if (mounted) setError(message(reason)); });
     return () => { mounted = false; };
-  }, []);
+  }, [loadVersion]);
   return <>
     <div className="eyebrow">YOUR WORKSPACE</div>
     <div className="page-heading"><div><h1>Product Image Studio</h1><p className="lead">Keep each product's details together, starting with what you know to be true.</p></div><div className="page-actions"><Link className="secondary-button" to="/import">Import backup</Link><Link className="primary-button" to="/products/new">Create product</Link></div></div>
     <section className="product-section" aria-labelledby="projects-heading">
       <div className="section-heading"><div><span className="section-kicker">LOCAL WORKSPACE</span><h2 id="projects-heading">Your products</h2></div><span>Stored in this browser</span></div>
-      {error ? <p className="error-message" role="alert">{error}</p> : products === null ? <p className="muted" role="status">Loading products…</p> : products.length === 0 ? <div className="empty-state"><h3>No products yet</h3><p>Create a product to start recording its SKU and confirmed facts.</p><Link className="text-link" to="/products/new">Create your first product <span aria-hidden="true">→</span></Link></div> : <ul className="product-list">{products.map((product) => <li key={product.productId}><Link to={`/products/${product.productId}`}><span className="product-icon" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span><span className="product-summary"><strong>{product.name}</strong><small>{product.sku} · {product.category}</small></span><span aria-hidden="true">→</span></Link></li>)}</ul>}
+      {error ? <div><p className="error-message" role="alert">{error}</p><button className="secondary-button" type="button" onClick={() => { setError(''); setProducts(null); setLoadVersion((value) => value + 1); }}>Retry loading products</button></div> : products === null ? <p className="muted" role="status">Loading products…</p> : products.length === 0 ? <div className="empty-state"><h3>No products yet</h3><p>Create a product to start recording its SKU and confirmed facts.</p><Link className="text-link" to="/products/new">Create your first product <span aria-hidden="true">→</span></Link></div> : <ul className="product-list">{products.map((product) => <li key={product.productId}><Link to={`/products/${product.productId}`}><span className="product-icon" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span><span className="product-summary"><strong>{product.name}</strong><small>{product.sku} · {product.category}</small></span><span aria-hidden="true">→</span></Link></li>)}</ul>}
     </section>
     <p className="workspace-note">Browser data can be cleared or evicted. Keep a private backup of important projects.</p>
   </>;
