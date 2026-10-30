@@ -32,6 +32,8 @@ The approval identifier is held only in transient browser memory and sent as `X-
 
 A request carries `clientAttemptId`, `productId`, `styleId`, `lockMode`, an allowlisted `model`, explicit output settings, `prompt`, `promptVersion`, `sourceAssetHashes`, `reviewRevision` and `estimatedUSD`. `maxEstimatedUSD`, `imageDataBase64`, `imageMimeType` and `outputFormat` are optional in the broader schema. For the current local subset, the gateway accepts only the fixed Studio `generate_scene` prompt, `STRICT`, `gpt-image-2.5-flare`, low quality, 1024×1024 PNG and one source hash; it sends no source image or product facts. The selected [ADR-008](../02-architecture/ADR.md) requires `X-Client-Request-Id` and `clientAttemptId` to be the same UUID. Verified facts may inform future prompts, but a separate `verifiedFacts` request field is not defined.
 
+For the local Studio subset, optional `maxEstimatedUSD` and `sessionLimitUSD` are user soft thresholds. A below-threshold limit requires its corresponding one-attempt `softLimitOverride` or `sessionLimitOverride`; the submitted `sessionPriorUSD` is a client-reported estimate, not server-verified spend. Every field is bound into the approval digest. The server's configured per-attempt estimate guard remains non-overridable by these user fields. Successful responses retain sanitized provider token usage when available; complete compatible usage can produce a snapshot-based `observedUSD` with `pricingSnapshot`, never an invoice.
+
 ## Error format
 
 Standard JSON:

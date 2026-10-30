@@ -73,6 +73,30 @@ function retryAfterSeconds(response) {
   } else return null;
   return seconds <= 86400 ? seconds : null;
 }
+function parseUsage(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const validToken = (n) => Number.isSafeInteger(n) && n >= 0;
+  const { input_tokens, output_tokens, total_tokens } = value;
+  if (![input_tokens, output_tokens, total_tokens].every(validToken) ||
+      input_tokens > total_tokens || output_tokens !== total_tokens - input_tokens) return null;
+  const usage = { input_tokens, output_tokens, total_tokens };
+  for (const [key, limit] of [['input_tokens_details', input_tokens], ['output_tokens_details', output_tokens]]) {
+    if (!(key in value)) continue;
+    const source = value[key];
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
+    const details = {};
+    let remaining = limit;
+    for (const field of ['image_tokens', 'text_tokens']) {
+      if (!(field in source)) continue;
+      if (!validToken(source[field]) || source[field] > remaining) return null;
+      details[field] = source[field];
+      remaining -= source[field];
+    }
+    if (Object.keys(details).length) usage[key] = details;
+  }
+  return usage;
+}
+
 export async function generateStudioScene({ apiKey, transport, timeoutMs }) {
   const controller = new AbortController();
   let timer;
@@ -89,7 +113,7 @@ export async function generateStudioScene({ apiKey, transport, timeoutMs }) {
       if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) throw new Error('Invalid provider response');
       const payload = JSON.parse(await limitedText(response));
       if (!payload || !Array.isArray(payload.data) || payload.data.length !== 1) throw new Error('Invalid provider response');
-      return { outcome: 'DEFINITIVE_SUCCESS', image: validatePng(payload.data[0]?.b64_json) };
+      return { outcome: 'DEFINITIVE_SUCCESS', image: validatePng(payload.data[0]?.b64_json), usage: parseUsage(payload.usage) };
     })();
     return await Promise.race([operation, timeout]);
   } catch { return { outcome: 'UNKNOWN' }; }

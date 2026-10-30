@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, STUDIO_MAX_PNG_BYTES, studioEstimateUSD } from '../studio-policy.mjs';
-import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, studioAttemptBlocks, studioInput, updateStudioAttempt, validStudioAcknowledgement, type Product, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
+import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, STUDIO_MAX_PNG_BYTES, STUDIO_PRICING_SNAPSHOT, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
+import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
 import { inspectImageHeader } from './imageHeader';
 import { sha256 } from './prepareSource';
 import { useUnsavedChanges } from './useUnsavedChanges';
@@ -75,9 +75,10 @@ function rateLimitMessage(status: number, envelope: Record<string, unknown>): st
     ? `${guidance} Wait at least ${seconds} seconds before separately authorizing a new attempt; no automatic retry will occur.`
     : `${guidance} A new attempt requires separate authorization; no automatic retry will occur.`;
 }
-export async function decodeScene(value: unknown, attemptId: string): Promise<{ blob: Blob; hash: string; usage: Record<string, unknown> | null; observedUSD: string | null }> {
+export async function decodeScene(value: unknown, attemptId: string): Promise<{ blob: Blob; hash: string; usage: Record<string, unknown> | null; observedUSD: string | null; pricingSnapshot?: string }> {
   const result = record(value), image = record(result.image);
   if (result.clientAttemptId !== attemptId || result.outcome !== 'DEFINITIVE_SUCCESS' || result.model !== STUDIO_MODEL || image.mimeType !== 'image/png' || image.width !== 1024 || image.height !== 1024 || typeof image.dataBase64 !== 'string' || image.dataBase64.length > Math.ceil(STUDIO_MAX_PNG_BYTES / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.dataBase64) || !image.dataBase64.length || (result.usage !== null && (typeof result.usage !== 'object' || Array.isArray(result.usage))) || (result.observedUSD !== null && (typeof result.observedUSD !== 'string' || !/^\d+\.\d{1,6}$/.test(result.observedUSD)))) throw new Error('The returned scene response is invalid.');
+  if (result.observedUSD === null ? result.pricingSnapshot !== undefined : result.pricingSnapshot !== STUDIO_PRICING_SNAPSHOT || studioObservedUSD(result.usage) !== result.observedUSD) throw new Error('The returned usage estimate is invalid.');
   const raw = atob(image.dataBase64), bytes = Uint8Array.from(raw, (char) => char.charCodeAt(0));
   if (bytes.byteLength > STUDIO_MAX_PNG_BYTES) throw new Error('The returned scene exceeds the size limit.');
   const header = inspectImageHeader(bytes);
@@ -86,7 +87,7 @@ export async function decodeScene(value: unknown, attemptId: string): Promise<{ 
   const bitmap = await createImageBitmap(blob);
   try { if (bitmap.width !== 1024 || bitmap.height !== 1024) throw new Error('The decoded scene dimensions do not match.'); }
   finally { bitmap.close(); }
-  return { blob, hash: await sha256(bytes), usage: result.usage as Record<string, unknown> | null, observedUSD: result.observedUSD as string | null };
+  return { blob, hash: await sha256(bytes), usage: result.usage as Record<string, unknown> | null, observedUSD: result.observedUSD as string | null, ...(result.pricingSnapshot === undefined ? {} : { pricingSnapshot: result.pricingSnapshot as string }) };
 }
 
 function Scene({ asset }: { asset: StudioAsset }) {
@@ -94,22 +95,46 @@ function Scene({ asset }: { asset: StudioAsset }) {
   useEffect(() => { const next = URL.createObjectURL(asset.blob); setUrl(next); return () => URL.revokeObjectURL(next); }, [asset]);
   return url ? <img className="studio-scene" src={url} alt="Unapproved generated empty studio background" /> : null;
 }
+function initialBudgetSession(): string | null {
+  try {
+    let id = sessionStorage.getItem('studio-budget-session');
+    if (id !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) return null;
+    if (id === null) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem('studio-budget-session', id);
+    }
+    return id;
+  } catch { return null; }
+}
+
+function moneyUnits(value: string): bigint {
+  const [whole, fraction] = value.split('.');
+  return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+}
+
 
 export function StudioPanel({ product, onBusyChange }: { product: Product; onBusyChange: (busy: boolean) => void }) {
   const [gateway, setGateway] = useState<Gateway>('checking');
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [reviewFingerprint, setReviewFingerprint] = useState<string | null>(null);
-  const [consent, setConsent] = useState<{ fingerprint: string; reviewRevision: number } | null>(null);
-  const [max, setMax] = useState('');
+  const [consent, setConsent] = useState<{ fingerprint: string; reviewRevision: number; sessionPriorUSD: string } | null>(null);
+  const [max, setMax] = useState(() => { try { return sessionStorage.getItem('studio-attempt-limit') ?? ''; } catch { return ''; } });
+  const [softLimitOverride, setSoftLimitOverride] = useState(false);
+  const [budgetSessionId, setBudgetSessionId] = useState(initialBudgetSession);
+  const [sessionTotal, setSessionTotal] = useState<string | null>(null);
+  const [sessionLimit, setSessionLimit] = useState(() => { try { return sessionStorage.getItem('studio-session-limit') ?? ''; } catch { return ''; } });
+  const [sessionLimitOverride, setSessionLimitOverride] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const running = useRef(false);
   const gatewayCheck = useRef(0);
-  useUnsavedChanges(confirmed || Boolean(max) || busy || Object.values(reviewConfirmed).some(Boolean));
+  useUnsavedChanges(confirmed || busy || Object.values(reviewConfirmed).some(Boolean));
   const unresolved = entries?.some(({ attempt }) => studioAttemptBlocks(attempt)) ?? false;
+  const exceedsSoftLimit = /^\d{1,9}\.\d{1,6}$/.test(max) && moneyUnits(max) < moneyUnits(studioEstimateUSD());
+  const exceedsSessionLimit = sessionTotal !== null && /^\d{1,9}\.\d{1,6}$/.test(sessionLimit) && moneyUnits(sessionTotal) + moneyUnits(studioEstimateUSD()) > moneyUnits(sessionLimit);
 
   async function refreshGateway() {
     const check = ++gatewayCheck.current;
@@ -135,18 +160,18 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   }
   async function refreshEntries() {
     setReviewFingerprint(null);
-    const [value, fingerprint] = await Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint()]);
-    setEntries(value); setReviewFingerprint(fingerprint);
+    const [value, fingerprint, total] = await Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null)]);
+    setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total);
   }
   useEffect(() => {
     let active = true;
-    setEntries(null); setReviewFingerprint(null); setConfirmed(false); setConsent(null);
-    Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint()]).then(([value, fingerprint]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); } }).catch(() => { if (active) setError('Local attempt history is unavailable. Generation is disabled.'); });
+    setEntries(null); setReviewFingerprint(null); setSessionTotal(null); setConfirmed(false); setConsent(null);
+    Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null)]).then(([value, fingerprint, total]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); } }).catch(() => { if (active) setError('Local attempt history is unavailable. Generation is disabled.'); });
     void refreshGateway();
     const offline = () => { gatewayCheck.current++; setConfirmed(false); setConsent(null); setGateway('unavailable'); };
     window.addEventListener('offline', offline);
     return () => { active = false; gatewayCheck.current++; window.removeEventListener('offline', offline); };
-  }, [product.productId]);
+  }, [product.productId, budgetSessionId]);
 
   async function review(attempt: StudioAttempt) {
     if (running.current || !studioAttemptBlocks(attempt) || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || !((attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') || ((attempt.status === 'DEFINITIVE_SUCCESS' || attempt.status === 'DEFINITIVE_FAILURE') && attempt.cleanupPending === true))) return;
@@ -188,13 +213,17 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     let submitted = false, persisted = false;
     try {
       if (!gatewayAvailable()) throw new Error('Offline or local gateway unavailable. No request was sent.');
-      if (max && (!/^\d+\.\d{1,6}$/.test(max) || Number(max) < Number(studioEstimateUSD()))) throw new Error('Enter a decimal soft limit at least equal to the estimate, or leave it empty.');
+      if (max && !/^\d{1,9}\.\d{1,6}$/.test(max)) throw new Error('Enter a decimal soft limit with up to nine whole and six fractional digits, or leave it empty.');
+      if (exceedsSoftLimit && !softLimitOverride) throw new Error('The estimate exceeds your soft limit. Approve the one-time override or cancel.');
+      if (!budgetSessionId || sessionTotal === null || consent.sessionPriorUSD !== sessionTotal) throw new Error('The local session estimate is unavailable or changed. No request was sent.');
+      if (sessionLimit && !/^\d{1,9}\.\d{1,6}$/.test(sessionLimit)) throw new Error('Enter a valid session soft limit, or leave it empty.');
+      if (exceedsSessionLimit && !sessionLimitOverride) throw new Error('The estimated session total exceeds your soft limit. Approve the one-time override or cancel.');
       const input = await studioInput(product.productId);
       const id = crypto.randomUUID();
       await withStudioAttemptLock(id, navigator.locks, async () => {
       try {
-      const body = { clientAttemptId: id, productId: product.productId, styleId: 'studio', lockMode: 'STRICT', operation: 'generate_scene', model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, prompt: STUDIO_PROMPT, promptVersion: STUDIO_PROMPT_VERSION, sourceAssetHashes: [input.source.sha256], estimatedUSD: studioEstimateUSD(), ...(max ? { maxEstimatedUSD: max } : {}), outputFormat: 'png', reviewRevision: consent.reviewRevision };
-      attempt = { attemptId: id, jobId: crypto.randomUUID(), productId: product.productId, sourceAssetId: input.source.assetId, sourceSha256: input.source.sha256, maskId: input.maskId, maskSha256: input.maskSha256, prompt: STUDIO_PROMPT, promptVersion: STUDIO_PROMPT_VERSION, model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, estimatedUSD: studioEstimateUSD(), ...(max ? { maxEstimatedUSD: max } : {}), submittedAt: new Date().toISOString(), status: 'PREPARED', usage: null, observedUSD: null, recoveryLockVersion: 1 };
+      const body = { clientAttemptId: id, productId: product.productId, styleId: 'studio', lockMode: 'STRICT', operation: 'generate_scene', model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, prompt: STUDIO_PROMPT, promptVersion: STUDIO_PROMPT_VERSION, sourceAssetHashes: [input.source.sha256], estimatedUSD: studioEstimateUSD(), ...(max ? { maxEstimatedUSD: max } : {}), ...(exceedsSoftLimit ? { softLimitOverride: true } : {}), sessionPriorUSD: consent.sessionPriorUSD, ...(sessionLimit ? { sessionLimitUSD: sessionLimit } : {}), ...(exceedsSessionLimit ? { sessionLimitOverride: true } : {}), outputFormat: 'png', reviewRevision: consent.reviewRevision };
+      attempt = { attemptId: id, jobId: crypto.randomUUID(), productId: product.productId, sourceAssetId: input.source.assetId, sourceSha256: input.source.sha256, maskId: input.maskId, maskSha256: input.maskSha256, prompt: STUDIO_PROMPT, promptVersion: STUDIO_PROMPT_VERSION, model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, estimatedUSD: studioEstimateUSD(), ...(max ? { maxEstimatedUSD: max } : {}), ...(exceedsSoftLimit ? { softLimitOverride: true as const } : {}), budgetSessionId, sessionPriorUSD: consent.sessionPriorUSD, ...(sessionLimit ? { sessionLimitUSD: sessionLimit } : {}), ...(exceedsSessionLimit ? { sessionLimitOverride: true as const } : {}), submittedAt: new Date().toISOString(), status: 'PREPARED', usage: null, observedUSD: null, recoveryLockVersion: 1 };
       await createStudioAttempt(attempt, consent.fingerprint); persisted = true;
       const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': gateway.csrf };
       const approvalResponse = await request('/images/approvals', { method: 'POST', headers, body: JSON.stringify(body) });
@@ -225,7 +254,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
         throw new Error(failure.message);
       }
       const scene = await decodeScene(await json(response), id);
-      attempt = { ...attempt, status: 'DEFINITIVE_SUCCESS', usage: scene.usage, observedUSD: scene.observedUSD, ...(cleanupPending(response.headers) ? { cleanupPending: true as const } : {}) };
+      attempt = { ...attempt, status: 'DEFINITIVE_SUCCESS', usage: scene.usage, observedUSD: scene.observedUSD, ...(scene.pricingSnapshot === undefined ? {} : { pricingSnapshot: scene.pricingSnapshot }), ...(cleanupPending(response.headers) ? { cleanupPending: true as const } : {}) };
       await updateStudioAttempt(attempt, { assetId: crypto.randomUUID(), attemptId: id, productId: product.productId, blob: scene.blob, sha256: scene.hash });
       setNotice('Unapproved empty background saved locally. The original source and mask were not modified.');
     } catch (reason) {
@@ -239,7 +268,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Local storage or gateway is unavailable.');
     } finally {
-      setConfirmed(false); setConsent(null); setMax('');
+      setConfirmed(false); setConsent(null); setSoftLimitOverride(false); setSessionLimitOverride(false);
       try { await refreshEntries(); } catch { setEntries(null); setError('Local attempt history could not be read. Generation is disabled.'); }
       running.current = false; onBusyChange(false); setBusy(false);
     }
@@ -255,12 +284,17 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
     <button className="secondary-button" type="button" disabled={busy} onClick={() => void refreshGateway()}>Check gateway</button>
     <form onSubmit={generate}>
-      <label htmlFor="studio-limit">Optional estimated USD soft limit</label><input id="studio-limit" value={max} onChange={(event) => setMax(event.target.value)} placeholder="e.g. 0.010000" disabled={busy} inputMode="decimal" />
-      <label className="checkbox-label"><input type="checkbox" checked={confirmed} onChange={(event) => { const checked = event.target.checked; setConfirmed(checked); setConsent(checked && reviewFingerprint !== null && typeof gateway === 'object' ? { fingerprint: reviewFingerprint, reviewRevision: gateway.reviewRevision } : null); }} disabled={busy || entries === null || reviewFingerprint === null || typeof gateway !== 'object'} /><span>I explicitly authorize this single attempt and acknowledge the estimate, backup warning, and possible unknown charge.</span></label>
-      <button className="primary-button" type="submit" disabled={busy || unresolved || !confirmed || consent === null || entries === null || !navigator.locks || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate one scene'}</button>
+      <p>Session estimate so far: {sessionTotal === null ? 'unavailable' : `$${sessionTotal} USD`}. Includes all saved attempts in this browser-tab session, even pre-send failures; it is not actual spend or a provider cap.</p>
+      <label htmlFor="studio-session-limit">Optional session estimated USD soft limit</label><input id="studio-session-limit" value={sessionLimit} onChange={(event) => { const value = event.target.value; setSessionLimit(value); setSessionLimitOverride(false); setConfirmed(false); setConsent(null); try { sessionStorage.setItem('studio-session-limit', value); } catch { setBudgetSessionId(null); setError('Session settings are unavailable. Generation is disabled.'); } }} placeholder="e.g. 0.050000" disabled={busy} inputMode="decimal" />
+      {exceedsSessionLimit && <><p role="alert">The projected session estimate exceeds your soft limit. This override is for this attempt only.</p><label className="checkbox-label"><input type="checkbox" checked={sessionLimitOverride} onChange={(event) => { setSessionLimitOverride(event.target.checked); setConfirmed(false); setConsent(null); }} disabled={busy} /><span>I approve exceeding my session soft limit for this single attempt.</span></label></>}
+      <label htmlFor="studio-limit">Optional per-attempt estimated USD soft limit</label><input id="studio-limit" value={max} onChange={(event) => { const value = event.target.value; setMax(value); setSoftLimitOverride(false); setConfirmed(false); setConsent(null); try { sessionStorage.setItem('studio-attempt-limit', value); } catch { setBudgetSessionId(null); setError('Session settings are unavailable. Generation is disabled.'); } }} placeholder="e.g. 0.010000" disabled={busy} inputMode="decimal" />
+      {exceedsSoftLimit && <><p role="alert">The estimate exceeds your soft limit. This override applies only to this attempt and does not change the gateway owner limit.</p><label className="checkbox-label"><input type="checkbox" checked={softLimitOverride} onChange={(event) => { setSoftLimitOverride(event.target.checked); setConfirmed(false); setConsent(null); }} disabled={busy} /><span>I approve exceeding my soft limit for this single attempt.</span></label></>}
+      <label className="checkbox-label"><input type="checkbox" checked={confirmed} onChange={(event) => { const checked = event.target.checked; setConfirmed(checked); setConsent(checked && reviewFingerprint !== null && sessionTotal !== null && typeof gateway === 'object' ? { fingerprint: reviewFingerprint, reviewRevision: gateway.reviewRevision, sessionPriorUSD: sessionTotal } : null); }} disabled={busy || entries === null || reviewFingerprint === null || sessionTotal === null || typeof gateway !== 'object'} /><span>I explicitly authorize this single attempt and acknowledge the estimate, backup warning, and possible unknown charge.</span></label>
+      <button className="primary-button" type="submit" disabled={busy || unresolved || !confirmed || consent === null || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || typeof gateway !== 'object' || (exceedsSoftLimit && !softLimitOverride) || (exceedsSessionLimit && !sessionLimitOverride)}>{busy ? 'Working…' : 'Authorize and generate one scene'}</button>
     </form>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-    <h3>Local attempt history</h3>{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset }) => <li key={attempt.attemptId}><p><strong>{attempt.status === 'SUBMITTED' ? 'UNKNOWN (interrupted or in progress)' : attempt.status === 'PREPARED' ? 'Prepared; no image send recorded' : attempt.status}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · estimate ${attempt.estimatedUSD} USD · observed {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD`}</p>
+    <h3>Local attempt history</h3>{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset }) => <li key={attempt.attemptId}><p><strong>{attempt.status === 'SUBMITTED' ? 'UNKNOWN (interrupted or in progress)' : attempt.status === 'PREPARED' ? 'Prepared; no image send recorded' : attempt.status}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
+      {attempt.usage !== null && <p>Provider-reported token usage: {Object.entries(attempt.usage).map(([key, value]) => `${key}: ${typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}`).join(' · ')}. Provider invoice remains authoritative.</p>}
       {(attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED' || attempt.cleanupPending !== undefined) && (studioAttemptBlocks(attempt) ? <div>
         <p>{attempt.cleanupPending === true ? `The gateway could not clear its active marker after recording ${attempt.status}. The saved outcome is unchanged. Review provider billing externally before acknowledging; this does not send an image request.` : attempt.cleanupPending !== undefined ? 'Invalid cleanup metadata. Generation remains blocked; preserve the saved records for owner review.' : 'A charge may have occurred. Review provider billing externally before proceeding. An interrupted submission may still be active; the gateway will refuse review while active or without a reviewable result. This acknowledgement does not resolve the original outcome or send an image request.'}</p>
         <label className="checkbox-label"><input type="checkbox" checked={Boolean(reviewConfirmed[attempt.attemptId])} onChange={(event) => setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: event.target.checked }))} disabled={busy} /><span>I have reviewed provider billing externally and acknowledge the previous attempt may have incurred a charge.</span></label>

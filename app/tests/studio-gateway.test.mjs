@@ -104,6 +104,60 @@ test('strict validation, estimated-cost guard, body cap, and binding reject with
   const guarded = await fixture(t, { maxEstimatedUSD: '0.001000' }), c = await guarded.login(); assert.equal((await guarded.approve(c, attempt())).status, 403); assert.equal(guarded.calls.length, 0);
 });
 
+test('below-limit consent is bound to one attempt and cannot override the gateway owner guard', async (t) => {
+  const f = await fixture(t), session = await f.login();
+  const body = { ...attempt(), maxEstimatedUSD: '0.001000' };
+  assert.equal((await f.approve(session, body)).status, 400);
+  assert.equal((await f.approve(session, { ...body, softLimitOverride: false })).status, 400);
+  assert.equal(f.calls.length, 0);
+  const approved = { ...body, softLimitOverride: true };
+  const id = await approval(f, session, approved);
+  const changed = { ...approved, maxEstimatedUSD: '0.002000' };
+  assert.equal((await f.generate(session, changed, id)).status, 409);
+  assert.equal(f.calls.length, 0);
+  assert.equal((await f.generate(session, approved, id)).status, 200);
+  assert.equal(f.calls.length, 1);
+  assert.equal((await f.generate(session, approved, id)).status, 409);
+  const guarded = await fixture(t, { maxEstimatedUSD: '0.001000' }), other = await guarded.login();
+  assert.equal((await guarded.approve(other, { ...attempt(), maxEstimatedUSD: '0.001000', softLimitOverride: true })).status, 403);
+  assert.equal(guarded.calls.length, 0);
+});
+
+test('session estimate boundary requires a separately bound single-attempt override', async (t) => {
+  const f = await fixture(t), session = await f.login();
+  const body = { ...attempt(), sessionPriorUSD: '0.006380', sessionLimitUSD: '0.012759' };
+  assert.equal((await f.approve(session, body)).status, 400);
+  assert.equal((await f.approve(session, { ...body, sessionLimitOverride: false })).status, 400);
+  const approved = { ...body, sessionLimitOverride: true };
+  const id = await approval(f, session, approved);
+  assert.equal((await f.generate(session, { ...approved, sessionPriorUSD: '0.006381' }, id)).status, 409);
+  assert.equal(f.calls.length, 0);
+  assert.equal((await f.generate(session, approved, id)).status, 200);
+  assert.equal(f.calls.length, 1);
+  const equal = { ...attempt(), sessionPriorUSD: '0.006380', sessionLimitUSD: '0.012760' };
+  assert.equal((await f.approve(session, equal)).status, 201);
+  assert.equal((await f.approve(session, { ...equal, sessionLimitOverride: true })).status, 400);
+});
+
+test('validated provider usage is returned without untrusted metadata', async (t) => {
+  const usage = { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { text_tokens: 12, image_tokens: 0, secret: fakeKey }, untrusted: fakeKey };
+  const f = await fixture(t, { transport: async () => new Response(JSON.stringify({ data: [{ b64_json: image }], usage }), { headers: { 'content-type': 'application/json' } }) });
+  const session = await f.login(), body = attempt(), id = await approval(f, session, body);
+  const result = await (await f.generate(session, body, id)).json();
+  assert.deepEqual(result.usage, { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { image_tokens: 0, text_tokens: 12 } });
+  assert.equal(result.observedUSD, null);
+  assert.doesNotMatch(JSON.stringify(result), /synthetic-provider-secret/);
+});
+
+test('complete usage yields a snapshot-based calculation, not an invoice', async (t) => {
+  const usage = { input_tokens: 12, output_tokens: 4, total_tokens: 16, input_tokens_details: { text_tokens: 10, image_tokens: 2 }, output_tokens_details: { text_tokens: 0, image_tokens: 4 } };
+  const f = await fixture(t, { transport: async () => new Response(JSON.stringify({ data: [{ b64_json: image }], usage }), { headers: { 'content-type': 'application/json' } }) });
+  const session = await f.login(), body = attempt(), id = await approval(f, session, body);
+  const result = await (await f.generate(session, body, id)).json();
+  assert.equal(result.observedUSD, '0.000186');
+  assert.equal(result.pricingSnapshot, '2026-10-29 Images API USD/1M: text input 5, image input 8, image output 30');
+});
+
 test('approval expires, disconnect invalidates, and in-flight body cannot submit after logout', async (t) => {
   const f = await fixture(t), a = await f.login(), body = attempt(), id = await approval(f, a, body);
   f.advance(5 * 60 * 1000 + 1); assert.equal((await f.generate(a, body, id)).status, 409);

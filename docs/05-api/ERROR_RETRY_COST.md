@@ -17,12 +17,16 @@
 
 `estimatedUSD`: before-call model, dimensions, quality and assumed token count; never labeled exact. `observedUsage`: token details when provider returns them. `observedUSD`: calculated only if rates and usage are sufficient, with pricing snapshot; otherwise `null` and "unknown". Provider bill remains the authoritative actual charge.
 
+The local Studio subset keeps only validated, allowlisted token counters. The current Images API reference describes usage as optional and does not guarantee it for the selected Flare model. When complete text/image input and image-only output details are available, `observedUSD` is a calculation using the stored 2026-10-29 rate snapshot, not the provider invoice; incomplete or inconsistent usage leaves it `null`. Synthetic fixtures do not establish actual provider response or charges.
+
 ## Budget guardrails
 
 1. User soft session limit and per-attempt budget stored as non-secret settings; before each chargeable attempt require explicit consent.
 2. Gateway enforces count, concurrency, body/prompt restrictions and account rate limits, preventing unlimited calls; may enforce conservative estimated cost threshold but cannot guarantee exact token spend.
 3. Recommend provider-side project alerts/limits. Do not claim a provider hard cap without validating account-level semantics. Batch mode must display estimated *total* across styles and pipeline stages.
 4. Never silently regenerate or call another model because previous attempt failed.
+
+The current local implementation stores the two non-secret soft limits in browser `sessionStorage`; the session is a browser-tab session, not the provider account or a global spend ceiling. Its conservative estimated total counts every saved attempt in that session, including pre-send failures and UNKNOWN outcomes. The prior total is checked atomically against IndexedDB when preparing an attempt; stale consent fails before network submission. A limit below the projected estimate requires a separate one-attempt override and fresh consent, bound into the gateway approval. The gateway validates the supplied arithmetic but cannot independently verify browser-reported session history. Its owner-configured per-attempt estimate guard and hourly count remain separate. Clearing storage, using a separate browser session or other provider clients is outside this soft limit.
 
 ## Estimation formula
 

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
-  version: 3.0.0
+  version: 3.1.0
   description: >-
-    Draft contract revision 3.0.0 requires reviewRevision for image attempts.
+    Draft contract revision 3.1.0 adds budget override and usage receipt fields; 3.0.0 required reviewRevision for image attempts.
     The local-only gateway retains /api/v2 as the server-key route namespace;
     no deployed compatibility endpoint or production deployment is claimed.
     A default-disabled Studio scene subset has only synthetic-provider evidence.
@@ -640,6 +640,23 @@ components:
         maxEstimatedUSD:
           type: string
           pattern: '^\d+\.\d{1,6}$'
+          description: User's per-attempt soft estimate threshold, not a provider charge cap.
+        softLimitOverride:
+          type: boolean
+          const: true
+          description: Required only when the estimate exceeds maxEstimatedUSD. Explicit approval for this attempt only; included in the one-use approval binding and cannot override the gateway owner's estimate guard.
+        sessionPriorUSD:
+          type: string
+          pattern: '^\d{1,9}\.\d{1,6}$'
+          description: Client-reported conservative sum of estimates for the browser-tab budget session before this attempt; not verified provider spend.
+        sessionLimitUSD:
+          type: string
+          pattern: '^\d{1,9}\.\d{1,6}$'
+          description: Optional client-reported session soft estimate threshold; requires sessionPriorUSD and is not an account-wide provider cap.
+        sessionLimitOverride:
+          type: boolean
+          const: true
+          description: Required only if sessionPriorUSD plus estimatedUSD exceeds sessionLimitUSD; single attempt only and bound to its approval.
         outputFormat:
           type: string
           enum: [png, jpeg, webp]
@@ -680,11 +697,15 @@ components:
         usage:
           type: [object, 'null']
           additionalProperties: true
-          description: Provider usage when supplied; null does not mean zero tokens
+          description: Allowlisted nonnegative provider token counters when available and internally consistent; null does not mean zero tokens. Observed billing remains unknown until rates and usage are reliably reconciled.
         observedUSD:
           type: [string, 'null']
           pattern: '^\d+\.\d{1,6}$'
-          description: Null if provider usage insufficient to calculate cost
+          description: Snapshot-based calculation only when complete supported usage details are present; otherwise null. This is not the provider invoice.
+        pricingSnapshot:
+          type: string
+          maxLength: 200
+          description: Snapshot date, route and rates used when observedUSD is calculated.
     ErrorEnvelope:
       type: object
       additionalProperties: false

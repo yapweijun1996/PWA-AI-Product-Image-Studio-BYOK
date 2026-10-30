@@ -1,10 +1,12 @@
 # PWA-AI-Product-Image-Studio-BYOK
 
-**Version:** 3.0.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
+**Version:** 3.1.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
 **Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 
 > The `app/` directory provides local SKU projects, confirmed facts, immutable source-image upload, manual mask editing, subset backup, an offline/update worker and a loopback-only development gateway. A default-disabled Studio path can generate one **unapproved empty background**, not a finished product image; only synthetic-provider browser tests have exercised this path. Do not enable billable generation or use a real key before the required isolation and security reviews. Jobs, outputs, QA and receipts cannot yet be backed up, and the app refuses backup rather than omitting them; back up before generating. A user may record external billing review for eligible UNKNOWN attempts without rewriting their outcome. Generation and interrupted-submission review require browser Web Locks; legacy or interrupted records without a provable terminal result remain blocked. Composition, QA, approved export, real-device acceptance and production release remain open.
+
+The local Studio screen supports estimate-only per-attempt and browser-tab session soft limits with separate single-attempt overrides. Synthetic responses can record sanitized usage and a snapshot-based estimate; these are not the provider invoice or an account-wide spending cap.
 
 ## Start here
 

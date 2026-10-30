@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, readdir, lstat } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, studioEstimateUSD } from './studio-policy.mjs';
+import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, STUDIO_PRICING_SNAPSHOT, studioEstimateUSD, studioObservedUSD } from './studio-policy.mjs';
 import { createAttemptJournal } from './studio-journal.mjs';
 import { generateStudioScene } from './studio-provider.mjs';
 
@@ -91,7 +91,7 @@ function money(value) {
 }
 function validAttempt(body) {
   const required = ['clientAttemptId', 'productId', 'styleId', 'lockMode', 'operation', 'model', 'quality', 'size', 'prompt', 'promptVersion', 'sourceAssetHashes', 'estimatedUSD', 'outputFormat', 'reviewRevision'];
-  if (Object.keys(body).some((key) => !required.includes(key) && key !== 'maxEstimatedUSD') || required.some((key) => !Object.hasOwn(body, key))) return false;
+  if (Object.keys(body).some((key) => !required.includes(key) && !['maxEstimatedUSD', 'softLimitOverride', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride'].includes(key)) || required.some((key) => !Object.hasOwn(body, key))) return false;
   return typeof body.clientAttemptId === 'string' && UUID.test(body.clientAttemptId) && body.clientAttemptId === body.clientAttemptId.toLowerCase()
     && typeof body.productId === 'string' && UUID.test(body.productId) && body.productId === body.productId.toLowerCase()
     && body.styleId === 'studio' && body.lockMode === 'STRICT' && body.operation === 'generate_scene'
@@ -99,10 +99,14 @@ function validAttempt(body) {
     && body.prompt === STUDIO_PROMPT && body.promptVersion === STUDIO_PROMPT_VERSION && body.outputFormat === 'png'
     && Array.isArray(body.sourceAssetHashes) && body.sourceAssetHashes.length === 1 && typeof body.sourceAssetHashes[0] === 'string' && /^[a-f0-9]{64}$/.test(body.sourceAssetHashes[0])
     && body.estimatedUSD === studioEstimateUSD() && Number.isSafeInteger(body.reviewRevision) && body.reviewRevision >= 0
-    && (!Object.hasOwn(body, 'maxEstimatedUSD') || (money(body.maxEstimatedUSD) !== null && money(body.maxEstimatedUSD) >= money(studioEstimateUSD())));
+    && (!Object.hasOwn(body, 'maxEstimatedUSD') ? !Object.hasOwn(body, 'softLimitOverride')
+      : money(body.maxEstimatedUSD) !== null && (money(body.maxEstimatedUSD) < money(studioEstimateUSD()) ? body.softLimitOverride === true : !Object.hasOwn(body, 'softLimitOverride')))
+    && (!Object.hasOwn(body, 'sessionPriorUSD') ? !Object.hasOwn(body, 'sessionLimitUSD') && !Object.hasOwn(body, 'sessionLimitOverride')
+      : money(body.sessionPriorUSD) !== null && (!Object.hasOwn(body, 'sessionLimitUSD') ? !Object.hasOwn(body, 'sessionLimitOverride')
+        : money(body.sessionLimitUSD) !== null && (money(body.sessionPriorUSD) + money(studioEstimateUSD()) > money(body.sessionLimitUSD) ? body.sessionLimitOverride === true : !Object.hasOwn(body, 'sessionLimitOverride'))));
 }
 function attemptDigest(body) {
-  return digest(JSON.stringify([body.clientAttemptId, body.productId, body.styleId, body.lockMode, body.operation, body.model, body.quality, body.size, body.prompt, body.promptVersion, body.sourceAssetHashes, body.estimatedUSD, Object.hasOwn(body, 'maxEstimatedUSD') ? body.maxEstimatedUSD : null, body.outputFormat, body.reviewRevision]));
+  return digest(JSON.stringify([body.clientAttemptId, body.productId, body.styleId, body.lockMode, body.operation, body.model, body.quality, body.size, body.prompt, body.promptVersion, body.sourceAssetHashes, body.estimatedUSD, Object.hasOwn(body, 'maxEstimatedUSD') ? body.maxEstimatedUSD : null, body.softLimitOverride === true, body.sessionPriorUSD ?? null, body.sessionLimitUSD ?? null, body.sessionLimitOverride === true, body.outputFormat, body.reviewRevision]));
 }
 
 
@@ -326,7 +330,10 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
                 reply = { status: 429, code: 'PROVIDER_LIMIT', message: 'Provider returned 429; check rate limits, quota and billing.', retryAfterSeconds };
               }
               else if (result.outcome === 'DEFINITIVE_FAILURE') reply = { status: 502, code: 'PROVIDER_ERROR', message: 'The provider rejected the attempt.' };
-              else reply = { status: 200, value: { clientAttemptId: body.clientAttemptId, outcome: 'DEFINITIVE_SUCCESS', model: STUDIO_MODEL, image: { mimeType: 'image/png', dataBase64: result.image, width: 1024, height: 1024 }, usage: null, observedUSD: null, providerRequestId: null } };
+              else {
+                const observedUSD = studioObservedUSD(result.usage);
+                reply = { status: 200, value: { clientAttemptId: body.clientAttemptId, outcome: 'DEFINITIVE_SUCCESS', model: STUDIO_MODEL, image: { mimeType: 'image/png', dataBase64: result.image, width: 1024, height: 1024 }, usage: result.usage, observedUSD, ...(observedUSD === null ? {} : { pricingSnapshot: STUDIO_PRICING_SNAPSHOT }), providerRequestId: null } };
+              }
             } catch { retainInflight = true; reply = { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' }; }
           }
           if (!submitted) {

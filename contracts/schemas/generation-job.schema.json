@@ -183,6 +183,11 @@
             ],
             "pattern": "^[0-9]+\\.[0-9]{1,6}$"
           },
+          "pricingSnapshot": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Rate snapshot used for the usage-based estimate; not the provider invoice."
+          },
           "providerRequestId": {
             "type": [
               "string",

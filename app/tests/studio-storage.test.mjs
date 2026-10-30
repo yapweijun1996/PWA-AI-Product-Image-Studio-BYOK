@@ -9,7 +9,7 @@ const built = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
   build: { write: false, minify: false, lib: { entry: 'src/products.ts', formats: ['es'], fileName: 'products' } } });
 const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { createProduct, saveSource, createStudioAttempt: createWithConsent, updateStudioAttempt: updateWithConsent, listStudioAttempts, acknowledgeStudioAttempt, globalStudioReviewFingerprint } =
+const { createProduct, saveSource, createStudioAttempt: createWithConsent, updateStudioAttempt: updateWithConsent, listStudioAttempts, acknowledgeStudioAttempt, globalStudioReviewFingerprint, studioSessionEstimate } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 const consentByAttempt = new Map();
 async function createStudioAttempt(attempt, fingerprint) {
@@ -43,6 +43,36 @@ async function fixture() {
   }
   return { productId: product.productId, makeAttempt, db };
 }
+
+test('session estimate is reserved atomically across products and stale consent cannot send', async () => {
+  const first = await fixture(), second = await fixture(), sessionId = randomUUID();
+  const a = { ...first.makeAttempt(), budgetSessionId: sessionId, sessionPriorUSD: '0.000000' };
+  const b = { ...second.makeAttempt(), budgetSessionId: sessionId, sessionPriorUSD: '0.000000' };
+  const results = await Promise.allSettled([createStudioAttempt(a), createStudioAttempt(b)]);
+  assert.equal(results.filter((item) => item.status === 'fulfilled').length, 1);
+  assert.match(results.find((item) => item.status === 'rejected').reason.message, /session estimate changed/);
+  assert.equal(await studioSessionEstimate(sessionId), studioEstimateUSD());
+  const winner = results[0].status === 'fulfilled' ? a : b;
+  await updateStudioAttempt({ ...winner, status: 'DEFINITIVE_FAILURE' });
+  assert.equal(await studioSessionEstimate(sessionId), studioEstimateUSD());
+  assert.equal(await studioSessionEstimate(randomUUID()), '0.000000');
+});
+
+test('corrupt session association blocks totals instead of treating an attempt as free', async () => {
+  const { makeAttempt, db } = await fixture(), sessionId = randomUUID();
+  const attempt = { ...makeAttempt(), budgetSessionId: sessionId, sessionPriorUSD: '0.000000' };
+  await createStudioAttempt(attempt);
+  const storeAttempt = (value) => new Promise((resolve, reject) => {
+    const tx = db.transaction('attempts', 'readwrite'); tx.objectStore('attempts').put(value);
+    tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+  });
+  const { budgetSessionId: ignored, ...corrupt } = attempt;
+  try {
+    await storeAttempt(corrupt);
+    await assert.rejects(studioSessionEstimate(sessionId), /session metadata is invalid/);
+  } finally { await storeAttempt(attempt); }
+  assert.equal(await studioSessionEstimate(sessionId), studioEstimateUSD());
+});
 
 test('concurrent tabs cannot submit a second attempt while one is in flight or UNKNOWN', async () => {
   const { productId, makeAttempt } = await fixture();

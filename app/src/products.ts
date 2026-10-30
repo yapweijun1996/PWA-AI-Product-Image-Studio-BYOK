@@ -663,9 +663,10 @@ export type StudioAttempt = {
   attemptId: string; jobId: string; productId: string; sourceAssetId: string;
   sourceSha256: string; maskId: string; maskSha256: string;
   prompt: string; promptVersion: string; model: string; quality: string; size: string;
-  estimatedUSD: string; maxEstimatedUSD?: string; submittedAt: string;
+  estimatedUSD: string; maxEstimatedUSD?: string; softLimitOverride?: true; submittedAt: string;
+  budgetSessionId?: string; sessionPriorUSD?: string; sessionLimitUSD?: string; sessionLimitOverride?: true;
   status: 'PREPARED' | 'SUBMITTED' | 'DEFINITIVE_FAILURE' | 'UNKNOWN' | 'DEFINITIVE_SUCCESS';
-  usage: Record<string, unknown> | null; observedUSD: string | null;
+  usage: Record<string, unknown> | null; observedUSD: string | null; pricingSnapshot?: string;
   acknowledgedAt?: string; recordedOutcome?: StudioRecordedOutcome;
   cleanupPending?: true;
   recoveryLockVersion?: 1;
@@ -785,7 +786,7 @@ type StudioJob = {
   status: string; createdAt: string;
   attempts: Array<{ attemptId: string; state: string; createdAt: string; submittedAt: string | null;
     completedAt: string | null; estimatedUSD: string; observedUSD: string | null;
-    providerRequestId: null; usage: Record<string, unknown> | null; outcome?: string }>;
+    providerRequestId: null; usage: Record<string, unknown> | null; pricingSnapshot?: string; outcome?: string }>;
 };
 
 function studioJob(attempt: StudioAttempt, promptHash: string, sentAt: string | null, completedAt: string | null): StudioJob {
@@ -804,7 +805,7 @@ function studioJob(attempt: StudioAttempt, promptHash: string, sentAt: string | 
     quality: attempt.quality, size: attempt.size, status: status[0], createdAt: attempt.submittedAt,
     attempts: [{ attemptId: attempt.attemptId, state: status[1], createdAt: attempt.submittedAt,
       submittedAt: sentAt, completedAt, estimatedUSD: attempt.estimatedUSD, observedUSD: attempt.observedUSD,
-      providerRequestId: null, usage: attempt.usage, ...(outcome ? { outcome } : {}) }],
+      providerRequestId: null, usage: attempt.usage, ...(attempt.pricingSnapshot === undefined ? {} : { pricingSnapshot: attempt.pricingSnapshot }), ...(outcome ? { outcome } : {}) }],
   };
 }
 
@@ -812,6 +813,44 @@ function checkedStudioJob(job: StudioJob): StudioJob {
   if (!validateGenerationJob(job)) throw new Error('The generation job is invalid. No changes were saved.');
   return job;
 }
+function studioMoney(value: string): bigint {
+  if (!/^\d{1,9}\.\d{1,6}$/.test(value)) throw new Error('Invalid saved session estimate. Generation is disabled.');
+  const [whole, fraction] = value.split('.');
+  return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+}
+
+function studioSessionTotal(attempts: StudioAttempt[], sessionId: string): string {
+  for (const entry of attempts) {
+    const hasSessionMetadata = entry.budgetSessionId !== undefined || entry.sessionPriorUSD !== undefined || entry.sessionLimitUSD !== undefined || entry.sessionLimitOverride !== undefined;
+    if (!hasSessionMetadata) continue;
+    if (typeof entry.budgetSessionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(entry.budgetSessionId) ||
+        typeof entry.sessionPriorUSD !== 'string' || (entry.sessionLimitUSD !== undefined && typeof entry.sessionLimitUSD !== 'string') ||
+        (entry.sessionLimitOverride !== undefined && entry.sessionLimitOverride !== true)) throw new Error('Saved session metadata is invalid. Generation is disabled.');
+    studioMoney(entry.sessionPriorUSD);
+    if (entry.sessionLimitUSD !== undefined) studioMoney(entry.sessionLimitUSD);
+  }
+  const total = attempts.filter((entry) => entry.budgetSessionId === sessionId)
+    .reduce((sum, entry) => sum + studioMoney(entry.estimatedUSD), 0n);
+  const whole = total / 1_000_000n;
+  if (whole > 999_999_999n) throw new Error('The saved session estimate exceeds the supported limit.');
+  return `${whole}.${String(total % 1_000_000n).padStart(6, '0')}`;
+}
+
+export async function studioSessionEstimate(sessionId: string): Promise<string> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('attempts', 'readonly');
+    const request = tx.objectStore('attempts').getAll();
+    let total: string, failure: Error | undefined;
+    request.onsuccess = () => {
+      try { total = studioSessionTotal(request.result as StudioAttempt[], sessionId); }
+      catch (error) { failure = error instanceof Error ? error : new Error('Session estimate unavailable.'); tx.abort(); }
+    };
+    tx.oncomplete = () => resolve(total);
+    tx.onabort = () => reject(failure ?? transactionError(tx));
+  });
+}
+
 
 export async function studioInput(productId: string): Promise<{ source: SourceMetadata; maskId: string; maskSha256: string }> {
   const db = await openDatabase();
@@ -838,7 +877,7 @@ export async function studioInput(productId: string): Promise<{ source: SourceMe
 }
 
 export async function createStudioAttempt(attempt: StudioAttempt, consentReviewFingerprint: string): Promise<void> {
-  if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null || attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined || attempt.cleanupPending !== undefined || (attempt.recoveryLockVersion !== undefined && attempt.recoveryLockVersion !== 1)) throw new Error('A new attempt must be prepared without a result and with a valid recovery lock version.');
+  if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null || attempt.pricingSnapshot !== undefined || attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined || attempt.cleanupPending !== undefined || (attempt.recoveryLockVersion !== undefined && attempt.recoveryLockVersion !== 1)) throw new Error('A new attempt must be prepared without a result and with a valid recovery lock version.');
   const promptHash = await sha256(new TextEncoder().encode(attempt.prompt));
   const job = checkedStudioJob(studioJob(attempt, promptHash, null, null));
   const db = await openDatabase();
@@ -859,6 +898,10 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
         }
         if (studioReviewFingerprint(attempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
           throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
+        }
+        if (attempt.budgetSessionId !== undefined &&
+            (attempt.sessionPriorUSD === undefined || studioSessionTotal(attempts.result as StudioAttempt[], attempt.budgetSessionId) !== attempt.sessionPriorUSD)) {
+          throw new Error('The session estimate changed after consent. Review the updated total and authorize a new attempt.');
         }
         if (!p.rightsAcknowledged || p.brandLock.maskAssetId !== attempt.maskId ||
             !p.sourceAssets.some((item) => item.assetId === attempt.sourceAssetId && item.sha256 === attempt.sourceSha256) ||
@@ -890,7 +933,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
         const previous = previousRequest.result as StudioAttempt | undefined;
         const job = jobRequest.result as StudioJob | undefined;
         if (!previous || !job || !validateGenerationJob(job)) throw new Error('The saved attempt or job is missing or invalid.');
-        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion'];
+        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion'];
         if (immutable.some((key) => previous[key] !== attempt[key])) throw new Error('Attempt identity or input changed.');
         const allowed = previous.status === 'PREPARED' ? ['SUBMITTED', 'DEFINITIVE_FAILURE'] : previous.status === 'SUBMITTED' ? ['DEFINITIVE_FAILURE', 'DEFINITIVE_SUCCESS', 'UNKNOWN'] : [];
         if (attempt.status === 'SUBMITTED' && (allAttempts.result as StudioAttempt[]).some((entry) =>
@@ -919,7 +962,8 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
         }
         if ((attempt.status === 'DEFINITIVE_SUCCESS') !== Boolean(asset) ||
             (asset && (asset.attemptId !== attempt.attemptId || asset.productId !== attempt.productId || !(asset.blob instanceof Blob) || !hashPattern.test(asset.sha256))) ||
-            (attempt.status !== 'DEFINITIVE_SUCCESS' && (attempt.usage !== null || attempt.observedUSD !== null))) throw new Error('Attempt outcome and asset do not match.');
+            (attempt.status !== 'DEFINITIVE_SUCCESS' && (attempt.usage !== null || attempt.observedUSD !== null || attempt.pricingSnapshot !== undefined)) ||
+            ((attempt.observedUSD === null) !== (attempt.pricingSnapshot === undefined))) throw new Error('Attempt outcome and asset do not match.');
         const oldEntry = job.attempts[0];
         if (!oldEntry || JSON.stringify(job) !== JSON.stringify(studioJob(previous, promptHash, oldEntry.submittedAt, oldEntry.completedAt))) throw new Error('The saved job does not match its attempt.');
         const now = new Date().toISOString();
