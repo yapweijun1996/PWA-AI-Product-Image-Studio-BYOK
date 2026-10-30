@@ -42,8 +42,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 6793,
-      "sha256": "338e66080eeca9c18bbd6a6ede72b85aaa27b04e72b22f78c1b172e8f69700ba"
+      "bytes": 6829,
+      "sha256": "899c6685918297ff7810ed224a1ed3452fa7eab6faf7eb34cc1b18a9ca64665e"
     },
     {
       "path": "ROADMAP.md",
@@ -162,8 +162,8 @@
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
-      "bytes": 5871,
-      "sha256": "37cb3ab97880ec762ab3951811ee4060785ad3ad260a4d1b93784366a74d86e0"
+      "bytes": 6150,
+      "sha256": "d37b8e7a960f1fc4aa5c625194b08015be466beccd18da5888daed1558d67336"
     },
     {
       "path": "docs/02-architecture/JOB_ORCHESTRATION.md",
@@ -207,8 +207,8 @@
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
-      "bytes": 4964,
-      "sha256": "457ddfde6a1543d553b4f3852aee120c1e7f2539e4188e400344481f28dc1c9c"
+      "bytes": 5478,
+      "sha256": "bca1ff4055b41213174cbcde975d0d529a74e235f2bf36c2b5cd17c3df5912ab"
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
@@ -287,13 +287,13 @@
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 3671,
-      "sha256": "a899261a9cb8b54c9e38b39dca15b64519a416f7885b96afee2a25706dff8395"
+      "bytes": 3770,
+      "sha256": "9c3796e5ccf8e67f319f9c5d29568204330acef7acfcab7e7da2f5fb21022a1d"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 52762,
-      "sha256": "41ca89994f2c3b282038ec0c6f9822c978632269d974ed22d90ba0b4cdfe38a1"
+      "bytes": 55487,
+      "sha256": "a400fb1d718e0b49b8abc56a34b6a97f4a4d035b342df2d5359b930dcd256c76"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

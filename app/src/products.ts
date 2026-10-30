@@ -2,6 +2,8 @@ import validateProduct from 'virtual:product-validator';
 import validateGenerationJob from 'virtual:generation-job-validator';
 import { sha256, type PreparedSource } from './prepareSource';
 import { inspectImageHeader } from './imageHeader';
+import { STUDIO_MAX_PNG_BYTES } from '../studio-policy.mjs';
+import { renderStrictComposite } from './strictComposite';
 
 export type Fact = {
   factId: string;
@@ -779,6 +781,13 @@ export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt
 }
 export type StudioAsset = { assetId: string; attemptId: string; productId: string; blob: Blob; sha256: string };
 
+function isStudioScene(value: unknown): value is StudioAsset {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  const keys = ['assetId', 'attemptId', 'productId', 'blob', 'sha256'];
+  return Object.keys(row).length === keys.length && keys.every((key) => Object.hasOwn(row, key));
+}
+
 type StudioJob = {
   schemaVersion: '1.0.0'; jobId: string; productId: string; styleId: 'studio';
   lockMode: 'STRICT'; operation: 'generate_scene'; sourceHashes: string[];
@@ -991,8 +1000,310 @@ export async function listStudioAttempts(productId: string): Promise<Array<{ att
       const ids = new Set((jobs.result as Array<{ jobId: string }>).map((job) => job.jobId));
       resolve((attempts.result as StudioAttempt[]).filter((attempt) => ids.has(attempt.jobId))
         .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
-        .map((attempt) => ({ attempt, asset: (assets.result as StudioAsset[]).find((asset) => asset.attemptId === attempt.attemptId) ?? null })));
+        .map((attempt) => ({ attempt, asset: (assets.result as unknown[]).find((asset): asset is StudioAsset => isStudioScene(asset) && asset.attemptId === attempt.attemptId) ?? null })));
     };
     tx.onabort = () => reject(transactionError(tx));
   });
+}
+
+export type StrictMapping = {
+  x: number; y: number; width: number; height: number; sourceWidth: number; sourceHeight: number;
+};
+export type StrictCompositeInputs = {
+  source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number;
+  sourceAssetId: string; sourceSha256: string; maskId: string; maskSha256: string;
+  sceneAssetId: string; sceneSha256: string;
+};
+export type StrictComposite = {
+  kind: 'strict-composite'; assetId: string; productId: string; attemptId: string;
+  blob: Blob; sha256: string; sourceAssetId: string; sourceSha256: string;
+  maskId: string; maskSha256: string; sceneAssetId: string; sceneSha256: string;
+  mapping: StrictMapping; createdAt: string;
+};
+
+async function verifyStrictPng(blob: Blob, expectedHash?: string): Promise<string> {
+  if (!(blob instanceof Blob) || blob.type !== 'image/png' || blob.size < 1 || blob.size > STUDIO_MAX_PNG_BYTES) {
+    throw new Error('The scene or composite PNG is empty, too large, or has an invalid MIME type.');
+  }
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const header = inspectImageHeader(bytes);
+  if (header.mimeType !== 'image/png' || header.orientation !== 1 || header.width !== 1024 || header.height !== 1024) {
+    throw new Error('The scene or composite must be a 1024 by 1024 PNG.');
+  }
+  verifyPngChunks(bytes);
+  const hash = await sha256(bytes);
+  if (expectedHash !== undefined && hash !== expectedHash) throw new Error('The scene or composite hash does not match its bytes.');
+  if (typeof createImageBitmap === 'function') {
+    let image: ImageBitmap;
+    try { image = await createImageBitmap(blob); }
+    catch { throw new Error('The scene or composite PNG could not be decoded.'); }
+    try {
+      if (image.width !== 1024 || image.height !== 1024) throw new Error('The decoded scene or composite dimensions do not match.');
+    } finally { image.close(); }
+  } else {
+    const url = URL.createObjectURL(blob);
+    try {
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('The scene or composite PNG could not be decoded.'));
+        image.src = url;
+      });
+      if (image.naturalWidth !== 1024 || image.naturalHeight !== 1024) throw new Error('The decoded scene or composite dimensions do not match.');
+    } finally { URL.revokeObjectURL(url); }
+  }
+  return hash;
+}
+
+function verifyStrictMapping(mapping: StrictMapping, sourceWidth: number, sourceHeight: number): void {
+  if (!mapping || typeof mapping !== 'object' || Object.keys(mapping).length !== 6 ||
+      !Number.isSafeInteger(sourceWidth) || !Number.isSafeInteger(sourceHeight) || sourceWidth < 1 || sourceHeight < 1 ||
+      mapping.sourceWidth !== sourceWidth || mapping.sourceHeight !== sourceHeight) throw new Error('The composite mapping is invalid.');
+  const scale = Math.min(819.2 / sourceWidth, 819.2 / sourceHeight);
+  const width = sourceWidth * scale, height = sourceHeight * scale;
+  const expected = [width, height, (1024 - width) / 2, (1024 - height) / 2];
+  const actual = [mapping.width, mapping.height, mapping.x, mapping.y];
+  if (actual.some((value, index) => typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value - expected[index]) > 1e-7)) {
+    throw new Error('The composite mapping is not the fixed centered fit.');
+  }
+}
+
+// The readwrite transaction holds all input stores locked until both verification
+// and the append complete. The keep-alive request permits asynchronous Blob
+// hashing and image decoding without letting IndexedDB close the transaction.
+async function strictCompositeTransaction(
+  productId: string, attemptId: string, sceneAssetId: string,
+  save?: { inputs: StrictCompositeInputs; expected: StrictCompositeInputs; blob: Blob; mapping: StrictMapping },
+  signal?: AbortSignal,
+): Promise<StrictCompositeInputs | StrictComposite> {
+  if (![productId, attemptId, sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id))) {
+    throw new Error('The composite input identity is invalid.');
+  }
+  const db = await openDatabase();
+  if (signal?.aborted) throw new DOMException('Composite operation was cancelled.', 'AbortError');
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets'], save ? 'readwrite' : 'readonly');
+    const products = tx.objectStore('products'), assets = tx.objectStore('generatedAssets');
+    const productRequest = products.get(productId), attemptRequest = tx.objectStore('attempts').get(attemptId);
+    let failure: Error | undefined, result: StrictCompositeInputs | StrictComposite;
+    let verifying = true, ready = false;
+    const abort = () => {
+      // An add can already be queued; abort still rolls it back until commit.
+      failure = new DOMException('Composite operation was cancelled.', 'AbortError');
+      verifying = false;
+      try { tx.abort(); } catch { /* The transaction has already finished. */ }
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    const keepAlive = () => {
+      if (!verifying) return;
+      if (ready) {
+        if (save) assets.add(result as StrictComposite);
+        verifying = false;
+      } else {
+        const request = products.get(productId);
+        request.onsuccess = keepAlive;
+      }
+    };
+    keepAlive();
+    attemptRequest.onsuccess = () => {
+      try {
+        const attempt = attemptRequest.result as StudioAttempt | undefined;
+        if (!attempt || attempt.attemptId !== attemptId || attempt.productId !== productId ||
+            attempt.status !== 'DEFINITIVE_SUCCESS' ||
+            ![attempt.jobId, attempt.sourceAssetId, attempt.maskId].every((id) => typeof id === 'string' && uuidPattern.test(id)) ||
+            ![attempt.sourceSha256, attempt.maskSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash))) {
+          throw new Error('A definitive successful attempt with valid input identities is required.');
+        }
+        const sourceRequest = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
+        const maskRequest = tx.objectStore('masks').get(attempt.maskId);
+        const versionsRequest = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
+        const jobRequest = tx.objectStore('jobs').get(attempt.jobId);
+        const scenesRequest = assets.index('attemptId').getAll(attemptId);
+        scenesRequest.onsuccess = () => {
+          void (async () => {
+            try {
+              const product = checkedProduct(productRequest.result);
+              validateBackupReferences(product);
+              if (product.productId !== productId || !product.rightsAcknowledged || product.brandLock.maskAssetId !== attempt.maskId) {
+                throw new Error('The rights or active mask changed since this attempt.');
+              }
+              const source = product.sourceAssets.find((item) => item.assetId === attempt.sourceAssetId);
+              if (!source || source.sha256 !== attempt.sourceSha256) throw new Error('The attempt source no longer belongs to this project.');
+              ownedSource(product, source);
+              const job = jobRequest.result as StudioJob | undefined;
+              if (!job || !validateGenerationJob(job) || job.productId !== productId || job.jobId !== attempt.jobId ||
+                  !job.attempts[0] || typeof attempt.prompt !== 'string' ||
+                  JSON.stringify(job) !== JSON.stringify(studioJob(attempt, await sha256(new TextEncoder().encode(attempt.prompt)),
+                    job.attempts[0].submittedAt, job.attempts[0].completedAt))) {
+                throw new Error('The successful generation job does not match its attempt.');
+              }
+              if (!verifying) return;
+              const scenes = (scenesRequest.result as unknown[]).filter(isStudioScene);
+              const scene = scenes[0];
+              if (scenes.length !== 1 || !scene || scene.assetId !== sceneAssetId || scene.productId !== productId ||
+                  scene.attemptId !== attemptId || !hashPattern.test(scene.sha256)) {
+                throw new Error('The original scene is missing, duplicated, or does not belong to this attempt.');
+              }
+              const original = await verifyStoredSource(productId, source, sourceRequest.result);
+              if (!verifying) return;
+              const mask = await verifyMask(product, maskRequest.result);
+              if (!verifying) return;
+              if (mask.metadata.maskId !== attempt.maskId || mask.metadata.sha256 !== attempt.maskSha256 ||
+                  mask.metadata.sourceAssetId !== attempt.sourceAssetId || mask.metadata.sourceSha256 !== attempt.sourceSha256) {
+                throw new Error('The active mask does not match the attempt.');
+              }
+              const versions: BackupMask[] = [];
+              for (const row of versionsRequest.result) {
+                const version = await verifyMask(product, row);
+                if (!verifying) return;
+                await verifyMaskAlpha(original, version);
+                if (!verifying) return;
+                versions.push(version);
+              }
+              validateMaskReferences(product, versions);
+              await verifyStrictPng(scene.blob, scene.sha256);
+              if (!verifying) return;
+              const inputs: StrictCompositeInputs = { source: original.blob, mask: mask.blob, scene: scene.blob,
+                sourceWidth: source.width, sourceHeight: source.height, sourceAssetId: source.assetId, sourceSha256: source.sha256,
+                maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId, sceneSha256: scene.sha256 };
+              if (save) {
+                if ((['sourceWidth', 'sourceHeight', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256'] as const)
+                  .some((key) => save.expected[key] !== inputs[key])) throw new Error('The verified composite inputs changed before saving.');
+                const given = save.inputs;
+                if (!given || (['sourceWidth', 'sourceHeight', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256'] as const)
+                  .some((key) => given[key] !== inputs[key]) ||
+                    !(given.source instanceof Blob) || !(given.mask instanceof Blob) || !(given.scene instanceof Blob) ||
+                    given.source.size < 1 || given.source.size > 20 * 1024 * 1024 ||
+                    given.mask.size < 1 || given.mask.size > MAX_MASK_BYTES ||
+                    given.scene.size < 1 || given.scene.size > STUDIO_MAX_PNG_BYTES ||
+                    await sha256(new Uint8Array(await given.source.arrayBuffer())) !== inputs.sourceSha256 ||
+                    await sha256(new Uint8Array(await given.mask.arrayBuffer())) !== inputs.maskSha256 ||
+                    await sha256(new Uint8Array(await given.scene.arrayBuffer())) !== inputs.sceneSha256) {
+                  throw new Error('The composite inputs changed after loading.');
+                }
+                if (!verifying) return;
+                verifyStrictMapping(save.mapping, source.width, source.height);
+                const hash = await verifyStrictPng(save.blob);
+                if (!verifying) return;
+                result = { kind: 'strict-composite', assetId: crypto.randomUUID(), productId, attemptId, blob: save.blob,
+                  sha256: hash, sourceAssetId: inputs.sourceAssetId, sourceSha256: inputs.sourceSha256,
+                  maskId: inputs.maskId, maskSha256: inputs.maskSha256, sceneAssetId: inputs.sceneAssetId,
+                  sceneSha256: inputs.sceneSha256, mapping: { ...save.mapping }, createdAt: new Date().toISOString() };
+              } else result = inputs;
+              ready = true;
+            } catch (error) {
+              if (!verifying) return;
+              verifying = false; failure = error instanceof Error ? error : new Error('Could not verify the composite inputs.'); tx.abort();
+            }
+          })();
+        };
+      } catch (error) {
+        if (!verifying) return;
+        verifying = false; failure = error instanceof Error ? error : new Error('Could not load the attempt.'); tx.abort();
+      }
+    };
+    tx.oncomplete = () => { signal?.removeEventListener('abort', abort); resolve(result); };
+    tx.onabort = () => { signal?.removeEventListener('abort', abort); reject(failure ?? transactionError(tx)); };
+  });
+}
+
+export async function loadStrictCompositeInputs(productId: string, attemptId: string, sceneAssetId: string, signal?: AbortSignal): Promise<StrictCompositeInputs> {
+  return await strictCompositeTransaction(productId, attemptId, sceneAssetId, undefined, signal) as StrictCompositeInputs;
+}
+
+function checkCompositeCancellation(signal: AbortSignal): void {
+  if (signal.aborted) throw new DOMException('Composite save was cancelled.', 'AbortError');
+}
+
+async function compareCompositePixels(expected: Blob, actual: Blob, signal: AbortSignal): Promise<void> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 1024;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    canvas.width = 0; canvas.height = 0;
+    throw new Error('Composite pixel verification is unavailable on this device.');
+  }
+  const readPixels = async (blob: Blob): Promise<Uint8ClampedArray> => {
+    checkCompositeCancellation(signal);
+    if (typeof createImageBitmap === 'function') {
+      const image = await createImageBitmap(blob);
+      try {
+        checkCompositeCancellation(signal);
+        if (image.width !== 1024 || image.height !== 1024) throw new Error('Composite pixel dimensions do not match.');
+        context.clearRect(0, 0, 1024, 1024);
+        context.drawImage(image, 0, 0);
+      } finally { image.close(); }
+    } else {
+      const url = URL.createObjectURL(blob);
+      try {
+        const image = new Image();
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error('The composite could not be decoded for pixel verification.'));
+          image.src = url;
+        });
+        checkCompositeCancellation(signal);
+        if (image.naturalWidth !== 1024 || image.naturalHeight !== 1024) throw new Error('Composite pixel dimensions do not match.');
+        context.clearRect(0, 0, 1024, 1024);
+        context.drawImage(image, 0, 0);
+      } finally { URL.revokeObjectURL(url); }
+    }
+    return context.getImageData(0, 0, 1024, 1024).data;
+  };
+  try {
+    const reference = await readPixels(expected), preview = await readPixels(actual);
+    for (let index = 0; index < reference.length; index++) {
+      if (reference[index] !== preview[index]) throw new Error('The preview pixels do not match the verified strict composite.');
+    }
+    checkCompositeCancellation(signal);
+  } finally { canvas.width = 0; canvas.height = 0; }
+}
+
+export async function saveStrictComposite(productId: string, attemptId: string, inputs: StrictCompositeInputs, blob: Blob, mapping: StrictMapping, signal?: AbortSignal): Promise<StrictComposite> {
+  const cancellation = signal ?? new AbortController().signal;
+  checkCompositeCancellation(cancellation);
+  const given = inputs && { ...inputs }, placement = mapping && { ...mapping };
+  if (!given) throw new Error('The composite inputs are invalid.');
+  verifyStrictMapping(placement, given.sourceWidth, given.sourceHeight);
+  await verifyStrictPng(blob);
+  checkCompositeCancellation(cancellation);
+  const expected = await loadStrictCompositeInputs(productId, attemptId, given.sceneAssetId, cancellation);
+  checkCompositeCancellation(cancellation);
+  let rendered: { blob: Blob; mapping: StrictMapping };
+  try {
+    rendered = await renderStrictComposite({ source: expected.source, mask: expected.mask, scene: expected.scene,
+      sourceWidth: expected.sourceWidth, sourceHeight: expected.sourceHeight, signal: cancellation });
+  } catch (error) {
+    checkCompositeCancellation(cancellation);
+    throw error;
+  }
+  verifyStrictMapping(rendered.mapping, expected.sourceWidth, expected.sourceHeight);
+  verifyStrictMapping(placement, expected.sourceWidth, expected.sourceHeight);
+  await compareCompositePixels(rendered.blob, blob, cancellation);
+  checkCompositeCancellation(cancellation);
+  return await strictCompositeTransaction(productId, attemptId, given.sceneAssetId,
+    { inputs: given, expected, blob, mapping: placement }, cancellation) as StrictComposite;
+}
+
+export async function listStrictComposites(productId: string, attemptId: string): Promise<StrictComposite[]> {
+  const db = await openDatabase();
+  const rows = await new Promise<unknown[]>((resolve, reject) => {
+    const tx = db.transaction('generatedAssets', 'readonly');
+    const request = tx.objectStore('generatedAssets').index('attemptId').getAll(attemptId);
+    tx.oncomplete = () => resolve(request.result);
+    tx.onabort = () => reject(transactionError(tx));
+  });
+  const composites: StrictComposite[] = [];
+  for (const value of rows) {
+    const row = value as StrictComposite;
+    if (row.kind !== 'strict-composite' || row.productId !== productId || row.attemptId !== attemptId) continue;
+    if (![row.assetId, row.productId, row.attemptId, row.sourceAssetId, row.maskId, row.sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id)) ||
+        ![row.sha256, row.sourceSha256, row.maskSha256, row.sceneSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash)) ||
+        !row.mapping || typeof row.createdAt !== 'string' || !Number.isFinite(Date.parse(row.createdAt))) throw new Error('A stored composite has invalid metadata.');
+    verifyStrictMapping(row.mapping, row.mapping.sourceWidth, row.mapping.sourceHeight);
+    await verifyStrictPng(row.blob, row.sha256);
+    composites.push(row);
+  }
+  return composites.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

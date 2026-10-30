@@ -135,6 +135,6 @@ export function ProductDetails() {
     </div>
     </fieldset>
     <BackupExport productId={product.productId} />
-    <p className="workspace-note">Generated scenes are unapproved backgrounds; product composition and approved-output export are not available.</p>
+    <p className="workspace-note">Generated scenes and local composites are unapproved; human QA and approved-output export are not available.</p>
   </>;
 }
