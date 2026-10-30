@@ -3,6 +3,7 @@ import { createServer, createConnection } from 'node:net';
 import { Worker } from 'node:worker_threads';
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai';
 import { createAgentSession, createExtensionRuntime, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
+import { runSyntheticProviderBridge } from './provider-bridge.mjs';
 
 const expected = process.argv[2];
 if (!['filtered', 'control'].includes(expected)) throw new Error('Choose filtered or control.');
@@ -18,6 +19,8 @@ const { session } = await createAgentSession({ cwd: '/probe', agentDir: '/tmp/pr
   resourceLoader: resources, noTools: true, sessionManager: SessionManager.inMemory('/probe'),
   settingsManager: SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } }) });
 try {
+  const bridge = await runSyntheticProviderBridge(resources);
+  console.log(JSON.stringify({ mode: expected, syntheticProviderBridge: bridge }));
   const faux = fauxProvider();
   runtime.registerNativeProvider(faux.provider);
   faux.setResponses([

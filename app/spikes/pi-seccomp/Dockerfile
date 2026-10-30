@@ -11,6 +11,6 @@ FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf
 WORKDIR /probe
 COPY --from=build /probe/node_modules ./node_modules
 COPY --from=build /probe/filter.so ./filter.so
-COPY probe.mjs ./
+COPY probe.mjs provider-bridge.mjs ./
 USER node
 ENTRYPOINT ["node", "/probe/probe.mjs"]

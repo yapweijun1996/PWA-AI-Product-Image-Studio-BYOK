@@ -4,3 +4,4 @@
 !package-lock.json
 !filter.c
 !probe.mjs
+!provider-bridge.mjs
