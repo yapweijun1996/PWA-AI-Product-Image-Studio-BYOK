@@ -18,9 +18,9 @@ export function BackupExport({ productId }: { productId: string }) {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.abort(); }; }, []);
 
   async function download() {
-    if (busy || !window.confirm('This unencrypted backup contains product details, original photos including EXIF metadata, and all mask versions. Download it to a trusted location?')) return;
+    if (busy || !window.confirm('This full backup is unencrypted. It contains product metadata, exact prompts and confirmed facts, reviewer notes, original photos including EXIF metadata, masks, generated outputs and project history. Anyone with the file can read them. Download it to a trusted location?')) return;
     const active = new AbortController(); controller.current = active;
-    setBusy(true); setError(''); setMessage('Preparing backup…');
+    setBusy(true); setError(''); setMessage('Preparing full backup, including originals, outputs and history…');
     try {
       const blob = await createBackup(productId, active.signal, (value) => { if (mounted.current) setMessage(value); });
       if (active.signal.aborted || !mounted.current) return;
@@ -38,7 +38,7 @@ export function BackupExport({ productId }: { productId: string }) {
     }
   }
 
-  return <section className="notice" aria-labelledby="backup-heading"><h2 id="backup-heading">Portable backup</h2><p>Backups are unencrypted and include originals, product details and all mask versions. This version refuses to omit unsupported project data.</p><div className="form-actions"><button type="button" className="secondary-button" onClick={download} disabled={busy}>Download backup</button>{busy && <button type="button" className="secondary-button" onClick={() => controller.current?.abort()}>Cancel</button>}</div>{message && <p className="muted" role="status">{message}</p>}{error && <p className="error-message" role="alert">{error}</p>}</section>;
+  return <section className="notice" aria-labelledby="backup-heading"><h2 id="backup-heading">Full portable backup</h2><p>The unencrypted archive contains product metadata, exact prompts and confirmed facts, reviewer notes, original photos including EXIF metadata, all mask versions, generated outputs and project history. Keep it private; anyone with the file can read it.</p><div className="form-actions"><button type="button" className="secondary-button" onClick={download} disabled={busy}>Download full backup</button>{busy && <button type="button" className="secondary-button" onClick={() => controller.current?.abort()}>Cancel</button>}</div>{message && <p className="muted" role="status">{message}</p>}{error && <p className="error-message" role="alert">{error}</p>}</section>;
 }
 
 export function BackupImport() {
@@ -61,7 +61,7 @@ export function BackupImport() {
     setBusy('inspect'); setError(''); setMessage('Inspecting backup…');
     try {
       const result = await inspectBackup(file, active.signal, (value) => { if (mounted.current) setMessage(value); });
-      if (mounted.current && !active.signal.aborted) { setPreview(result); setPreviewFilename(file.name); setMessage('Backup verified. Review the details before importing.'); }
+      if (mounted.current && !active.signal.aborted) { setPreview(result); setPreviewFilename(file.name); setMessage('Backup integrity checked. Review the details before importing.'); }
     } catch (reason) {
       if (mounted.current) { setMessage(''); setError(describe(reason)); }
     } finally {
@@ -72,9 +72,9 @@ export function BackupImport() {
 
   async function commit() {
     if (!preview || preview.conflict || busy) return;
-    setBusy('import'); setError(''); setMessage('Saving the project, originals and masks…');
+    setBusy('import'); setError(''); setMessage('Saving the project, originals, masks, outputs and history…');
     try {
-      await restoreProduct(preview.product, preview.sources, preview.masks);
+      await restoreProduct(preview.product, preview.sources, preview.masks, preview.history);
       markSaved();
       navigate(`/products/${preview.product.productId}`, { replace: true });
     } catch (reason) {
@@ -83,8 +83,8 @@ export function BackupImport() {
   }
 
   return <><Link className="back-link" to="/">← All products</Link><div className="eyebrow">PORTABLE BACKUP</div><h1>Import a product</h1><p className="lead">Inspect an unencrypted backup locally before choosing to restore it. Nothing is uploaded.</p>
-    <section className="form-card" aria-labelledby="import-heading"><h2 id="import-heading">Choose a backup</h2><label htmlFor="backup-file">ZIP file</label><input id="backup-file" type="file" accept=".zip,application/zip" onChange={choose} disabled={Boolean(busy)} /><p className="muted">Backups can contain confidential product details, photos, EXIF metadata and mask versions. Unsupported versions or project data are rejected, not discarded.</p>{busy === 'inspect' && <button type="button" className="secondary-button" onClick={() => controller.current?.abort()}>Cancel inspection</button>}{message && <p className="muted" role="status">{message}</p>}{error && <p className="error-message" role="alert">{error}</p>}</section>
+    <section className="form-card" aria-labelledby="import-heading"><h2 id="import-heading">Choose a backup</h2><label htmlFor="backup-file">ZIP file</label><input id="backup-file" type="file" accept=".zip,application/zip" onChange={choose} disabled={Boolean(busy)} /><p className="muted">Unencrypted backups can contain product metadata, exact prompts and confirmed facts, reviewer notes, original photos and EXIF metadata, masks, outputs and project history. Unsupported versions or project data are rejected, not discarded. Integrity checks detect corruption, not forgery.</p>{busy === 'inspect' && <button type="button" className="secondary-button" onClick={() => controller.current?.abort()}>Cancel inspection</button>}{message && <p className="muted" role="status">{message}</p>}{error && <p className="error-message" role="alert">{error}</p>}</section>
     {preview && <p className="muted">Currently reviewed file: {previewFilename}</p>}
-    {preview && <section className="product-section import-preview" aria-labelledby="preview-heading"><span className="section-kicker">REVIEW BEFORE IMPORT</span><h2 id="preview-heading">{preview.product.name}</h2><dl><div><dt>Products</dt><dd>1</dd></div><div><dt>SKU</dt><dd>{preview.product.sku}</dd></div><div><dt>Category</dt><dd>{preview.product.category}</dd></div><div><dt>Original images</dt><dd>{preview.sources.length}</dd></div><div><dt>Mask versions</dt><dd>{preview.masks.length}</dd></div><div><dt>Uncompressed archive data</dt><dd>{preview.totalBytes.toLocaleString()} bytes ({(preview.totalBytes / (1024 * 1024)).toFixed(2)} MiB)</dd></div></dl><p className="muted">Browser storage use may differ from the archive size.</p>{preview.conflict && <p className="error-message" role="alert">This product, SKU, source ID or mask ID already exists. Nothing will be overwritten.</p>}<div className="form-actions"><button className="primary-button" type="button" disabled={Boolean(busy) || preview.conflict} onClick={commit}>{busy === 'import' ? 'Importing…' : 'Import product'}</button><button className="secondary-button" type="button" disabled={Boolean(busy)} onClick={() => { setPreview(null); setMessage(''); }}>Discard preview</button></div></section>}
+    {preview && <section className="product-section import-preview" aria-labelledby="preview-heading"><span className="section-kicker">REVIEW BEFORE IMPORT</span><h2 id="preview-heading">{preview.product.name}</h2><dl><div><dt>Products</dt><dd>1</dd></div><div><dt>SKU</dt><dd>{preview.product.sku}</dd></div><div><dt>Category</dt><dd>{preview.product.category}</dd></div><div><dt>Original images</dt><dd>{preview.sources.length}</dd></div><div><dt>Mask versions</dt><dd>{preview.masks.length}</dd></div><div><dt>Jobs</dt><dd>{preview.history.jobs.length}</dd></div><div><dt>Attempts</dt><dd>{preview.history.attempts.length}</dd></div><div><dt>Generated assets</dt><dd>{preview.history.assets.length}</dd></div><div><dt>QA reports and decisions</dt><dd>{preview.history.reviews.length}</dd></div><div><dt>Uncompressed archive data</dt><dd>{preview.totalBytes.toLocaleString()} bytes ({(preview.totalBytes / (1024 * 1024)).toFixed(2)} MiB)</dd></div></dl><p className="muted">Browser storage use may differ from the archive size. Imported reviews and decisions are untrusted history; approval requires a fresh local human review and a new decision. Imported attempts cannot be retried in the same job or acknowledged through the gateway. Review imported uncertainty and rate limits externally before recording a local-only review; a separate gateway journal may still block new requests.</p>{preview.conflict && <p className="error-message" role="alert">This backup conflicts with existing project data. Nothing will be overwritten.</p>}<div className="form-actions"><button className="primary-button" type="button" disabled={Boolean(busy) || preview.conflict} onClick={commit}>{busy === 'import' ? 'Importing…' : 'Import product'}</button><button className="secondary-button" type="button" disabled={Boolean(busy)} onClick={() => { setPreview(null); setMessage(''); }}>Discard preview</button></div></section>}
   </>;
 }

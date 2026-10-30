@@ -572,49 +572,44 @@ export function validateBackupProduct(value: unknown): Product {
   return product;
 }
 
-export async function getBackupSnapshot(productId: string): Promise<{ product: Product; sources: BackupSource[]; masks: BackupMask[] }> {
+export type BackupHistory = {
+  jobs: StudioJob[]; attempts: StudioAttempt[]; assets: Array<StudioAsset | StrictComposite>;
+  reviews: Array<VisualReviewRecord | StoredVisualDecision>; heads: Array<{ key: string; entries: string[] }>;
+};
+const emptyBackupHistory = (): BackupHistory => ({ jobs: [], attempts: [], assets: [], reviews: [], heads: [] });
+const importAttemptKey = (id: string) => `backup-import-unresolved:${id}`;
+const importReviewKey = (id: string) => `backup-import-review:${id}`;
+
+export async function getBackupSnapshot(productId: string): Promise<{ product: Product; sources: BackupSource[]; masks: BackupMask[]; history: BackupHistory }> {
   const db = await openDatabase();
-  const snapshot = await new Promise<{ product: Product; rows: unknown[]; masks: unknown[] }>((resolve, reject) => {
-    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'generatedAssets'], 'readonly');
+  const snapshot = await new Promise<{ product: Product; rows: unknown[]; masks: unknown[]; history: BackupHistory }>((resolve, reject) => {
+    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets', 'qaReports', 'userSettings'], 'readonly');
     const productRequest = tx.objectStore('products').get(productId);
     const sourceRequest = tx.objectStore('sourceAssets').index('productId').getAll(productId);
-    const jobCount = tx.objectStore('jobs').index('productId').count(productId);
-    const assetCount = tx.objectStore('generatedAssets').index('productId').count(productId);
-    const maskRequest = tx.objectStore('masks').openCursor();
-    const maskRows: unknown[] = [];
-    let product: Product;
-    let failure: Error | undefined;
-    productRequest.onsuccess = () => {
+    const maskRequest = tx.objectStore('masks').getAll();
+    const jobRequest = tx.objectStore('jobs').getAll();
+    const attemptRequest = tx.objectStore('attempts').getAll();
+    const assetRequest = tx.objectStore('generatedAssets').getAll();
+    const reviewRequest = tx.objectStore('qaReports').getAll();
+    const settingsRequest = tx.objectStore('userSettings').getAll();
+    tx.oncomplete = () => {
       try {
         if (productRequest.result === undefined) throw new Error('This project no longer exists.');
-        product = checkedProduct(productRequest.result);
-        validateBackupReferences(product);
-      } catch (error) {
-        failure = error instanceof Error ? error : new Error('The project cannot be backed up.');
-        tx.abort();
-      }
+        const product = validateBackupProduct(productRequest.result);
+        const sourceIds = new Set(product.sourceAssets.map((row) => row.assetId));
+        const masks = (maskRequest.result as MaskMetadata[]).filter((row) => row.productId === productId || sourceIds.has(row.sourceAssetId));
+        const jobs = (jobRequest.result as StudioJob[]).filter((row) => row.productId === productId);
+        const jobIds = new Set(jobs.map((row) => row.jobId));
+        const attempts = (attemptRequest.result as StudioAttempt[]).filter((row) => row.productId === productId || jobIds.has(row.jobId));
+        const attemptIds = new Set(attempts.map((row) => row.attemptId));
+        const assets = (assetRequest.result as Array<StudioAsset | StrictComposite>).filter((row) => row.productId === productId || attemptIds.has(row.attemptId));
+        const assetIds = new Set(assets.map((row) => row.assetId));
+        const reviews = (reviewRequest.result as Array<VisualReviewRecord | StoredVisualDecision>).filter((row) => row.productId === productId || assetIds.has(row.assetId) || attemptIds.has(row.attemptId));
+        const heads = (settingsRequest.result as Array<{ key: string; entries: string[] }>).filter((row) => typeof row?.key === 'string' && row.key.startsWith('visual-review-head:') && assetIds.has(row.key.slice('visual-review-head:'.length)));
+        resolve({ product, rows: sourceRequest.result, masks, history: { jobs, attempts, assets, reviews, heads } });
+      } catch (error) { reject(error); }
     };
-    maskRequest.onsuccess = () => {
-      const cursor = maskRequest.result;
-      if (!cursor) return;
-      const row = cursor.value as Record<string, unknown>;
-      if (row && (row.productId === productId || product.sourceAssets.some((source) => source.assetId === row.sourceAssetId))) {
-        maskRows.push(row);
-        if (maskRows.length > 512) {
-          failure = new Error('This project has too many mask versions for one backup. No data was omitted.');
-          tx.abort(); return;
-        }
-      }
-      cursor.continue();
-    };
-    tx.oncomplete = () => {
-      if (jobCount.result || assetCount.result) {
-        reject(new Error('This project contains jobs or outputs that this backup version cannot safely include.'));
-      } else {
-        resolve({ product, rows: sourceRequest.result, masks: maskRows });
-      }
-    };
-    tx.onabort = () => reject(failure ?? transactionError(tx));
+    tx.onabort = () => reject(transactionError(tx));
   });
   if (snapshot.rows.length !== snapshot.product.sourceAssets.length) {
     throw new Error('The source records do not match the project. Backup was not created.');
@@ -630,46 +625,125 @@ export async function getBackupSnapshot(productId: string): Promise<{ product: P
   }
   const masks: BackupMask[] = [];
   for (const row of snapshot.masks) masks.push(await verifyMask(snapshot.product, row));
-  return { product: snapshot.product, sources, masks: await validateBackupMasks(snapshot.product, masks, sources) };
+  const verifiedMasks = await validateBackupMasks(snapshot.product, masks, sources);
+  await validateBackupHistory(snapshot.product, sources, verifiedMasks, snapshot.history);
+  return { product: snapshot.product, sources, masks: verifiedMasks, history: snapshot.history };
 }
 
-export async function hasImportConflict(product: Product, masks: BackupMask[] = []): Promise<boolean> {
+function importForeignReferences(tx: IDBTransaction, product: Product, history: BackupHistory): IDBRequest<number>[] {
+  return [
+    tx.objectStore('sourceAssets').index('productId').count(product.productId),
+    tx.objectStore('jobs').index('productId').count(product.productId),
+    tx.objectStore('generatedAssets').index('productId').count(product.productId),
+    ...product.sourceAssets.map((row) => tx.objectStore('masks').index('sourceAssetId').count(row.assetId)),
+    ...history.jobs.map((row) => tx.objectStore('attempts').index('jobId').count(row.jobId)),
+    ...history.attempts.map((row) => tx.objectStore('generatedAssets').index('attemptId').count(row.attemptId)),
+    ...history.assets.filter((row) => 'kind' in row).map((row) => tx.objectStore('userSettings').count(`visual-review-head:${row.assetId}`)),
+    ...history.assets.map((row) => tx.objectStore('qaReports').index('assetId').count(row.assetId)),
+  ];
+}
+function importCrossReferenceConflict(product: Product, masks: BackupMask[], history: BackupHistory, attempts: StudioAttempt[], reviews: Array<VisualReviewRecord | StoredVisualDecision>): boolean {
+  const sourceIds = new Set(product.sourceAssets.map((row) => row.assetId));
+  const maskIds = new Set(masks.map((row) => row.metadata.maskId));
+  const attemptIds = new Set(history.attempts.map((row) => row.attemptId));
+  const reviewIds = new Set(history.reviews.map((row) => row.qaId));
+  return attempts.some((row) => row.productId === product.productId || sourceIds.has(row.sourceAssetId) || maskIds.has(row.maskId) ||
+    (row.retryOf !== undefined && attemptIds.has(row.retryOf))) ||
+    reviews.some((row) => row.productId === product.productId || attemptIds.has(row.attemptId) ||
+      (row.kind === 'visual-decision' && reviewIds.has(row.reportId)));
+}
+
+
+export async function hasImportConflict(product: Product, masks: BackupMask[] = [], history: BackupHistory = emptyBackupHistory()): Promise<boolean> {
   const db = await openDatabase();
   return new Promise<boolean>((resolve, reject) => {
-    const tx = db.transaction(['products', 'sourceAssets', 'masks'], 'readonly');
+    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets', 'qaReports', 'userSettings'], 'readonly');
     const products = tx.objectStore('products');
     const checks = [products.getKey(product.productId), products.index('sku').getKey(product.sku),
       ...product.sourceAssets.map((asset) => tx.objectStore('sourceAssets').getKey(asset.assetId)),
-      ...masks.map((mask) => tx.objectStore('masks').getKey(mask.metadata.maskId))];
-    tx.oncomplete = () => resolve(checks.some((request) => request.result !== undefined));
+      ...masks.map((mask) => tx.objectStore('masks').getKey(mask.metadata.maskId)),
+      ...history.jobs.map((row) => tx.objectStore('jobs').getKey(row.jobId)),
+      ...history.attempts.flatMap((row) => [tx.objectStore('attempts').getKey(row.attemptId), tx.objectStore('userSettings').getKey(importAttemptKey(row.attemptId))]),
+      ...history.assets.flatMap((row) => [tx.objectStore('generatedAssets').getKey(row.assetId), tx.objectStore('userSettings').getKey(importReviewKey(row.assetId))]),
+      ...history.reviews.map((row) => tx.objectStore('qaReports').getKey(row.qaId)),
+      ...history.heads.map((row) => tx.objectStore('userSettings').getKey(row.key))];
+    const references = importForeignReferences(tx, product, history);
+    const attempts = tx.objectStore('attempts').getAll(), reviews = tx.objectStore('qaReports').getAll();
+    tx.oncomplete = () => resolve(checks.some((request) => request.result !== undefined) || references.some((request) => request.result > 0) ||
+      importCrossReferenceConflict(product, masks, history, attempts.result, reviews.result));
     tx.onabort = () => reject(transactionError(tx));
   });
 }
 
-export async function restoreProduct(product: Product, sources: BackupSource[], masks: BackupMask[] = []): Promise<void> {
-  checkedProduct(product);
-  validateBackupReferences(product);
+export async function restoreProduct(product: Product, sources: BackupSource[], masks: BackupMask[] = [], history: BackupHistory = emptyBackupHistory(), signal?: AbortSignal): Promise<void> {
+  // Freeze the caller's mutable metadata before any asynchronous verification.
+  product = structuredClone(product);
+  sources = structuredClone(sources);
+  masks = structuredClone(masks);
+  history = structuredClone(history);
+  if (signal?.aborted) throw new DOMException('Import was cancelled.', 'AbortError');
+  validateBackupProduct(product);
   if (sources.length !== product.sourceAssets.length) throw new Error('The backup has missing or extra sources.');
   const ids = new Set(sources.map((source) => source.metadata.assetId));
   if (ids.size !== sources.length) throw new Error('The backup contains duplicate source IDs.');
   for (const metadata of product.sourceAssets) {
     const source = sources.find((item) => item.metadata.assetId === metadata.assetId);
-    if (!source) throw new Error('The backup is missing an original source.');
+    if (!source || JSON.stringify(source.metadata) !== JSON.stringify(metadata)) throw new Error('The backup is missing an original source or its metadata differs.');
     await verifyStoredSource(product.productId, metadata, { ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
   }
   const verifiedMasks = await validateBackupMasks(product, masks, sources);
+  await validateBackupHistory(product, sources, verifiedMasks, history);
+  if (signal?.aborted) throw new DOMException('Import was cancelled.', 'AbortError');
   const db = await openDatabase();
+  if (signal?.aborted) throw new DOMException('Import was cancelled.', 'AbortError');
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(['products', 'sourceAssets', 'masks'], 'readwrite');
+    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets', 'qaReports', 'userSettings'], 'readwrite');
+    const cancel = () => { try { tx.abort(); } catch { /* Already committed or aborted. */ } };
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) { cancel(); }
+    let failure: Error | undefined;
+    const references = importForeignReferences(tx, product, history);
+    const existingAttempts = tx.objectStore('attempts').getAll(), existingReviews = tx.objectStore('qaReports').getAll();
+    existingReviews.onsuccess = () => {
+      if (references.some((request) => request.result > 0) ||
+          importCrossReferenceConflict(product, verifiedMasks, history, existingAttempts.result, existingReviews.result)) {
+        failure = new Error('Existing records reference this backup. Nothing was imported.');
+        tx.abort();
+      }
+    };
+    try {
     tx.objectStore('products').add(product);
-    for (const source of sources) {
-      tx.objectStore('sourceAssets').add({ ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
-    }
+    for (const source of sources) tx.objectStore('sourceAssets').add({ ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
     for (const mask of verifiedMasks) tx.objectStore('masks').add({ ...mask.metadata, blob: mask.blob });
-    tx.oncomplete = () => resolve();
-    tx.onabort = () => reject(tx.error?.name === 'ConstraintError'
-      ? new Error('This product, SKU, source ID or mask ID already exists. Nothing was imported.')
-      : transactionError(tx));
+    for (const job of history.jobs) tx.objectStore('jobs').add(job);
+    for (const attempt of history.attempts) {
+      tx.objectStore('attempts').add(attempt);
+      const unresolved = attempt.status === 'PREPARED' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED' ||
+        attempt.cleanupPending === true || attempt.acknowledgedAt !== undefined ||
+        attempt.failure?.category === 'rate_limited' || attempt.failure?.category === 'provider_limit' ||
+        attempt.failure?.retryAfterSeconds !== undefined;
+      tx.objectStore('userSettings').add({ key: importAttemptKey(attempt.attemptId), snapshot: JSON.stringify(attempt), reviewed: !unresolved });
+    }
+    for (const asset of history.assets) {
+      tx.objectStore('generatedAssets').add(asset);
+      if ('kind' in asset) {
+        const revision = history.reviews.filter((row): row is VisualReviewRecord => row.assetId === asset.assetId && row.kind === 'visual-review').length;
+        tx.objectStore('userSettings').add({ key: importReviewKey(asset.assetId), revision });
+      }
+    }
+    for (const row of history.reviews) tx.objectStore('qaReports').add(row);
+    for (const head of history.heads) tx.objectStore('userSettings').add(head);
+    } catch (error) {
+      failure = error instanceof Error ? error : new Error('Could not import backup.');
+      try { tx.abort(); } catch { /* Already aborted. */ }
+    }
+    tx.oncomplete = () => { signal?.removeEventListener('abort', cancel); resolve(); };
+    tx.onabort = () => {
+      signal?.removeEventListener('abort', cancel);
+      reject(signal?.aborted ? new DOMException('Import was cancelled.', 'AbortError') : tx.error?.name === 'ConstraintError'
+        ? new Error('A product, SKU, record ID or history key already exists. Nothing was imported.')
+        : failure ?? transactionError(tx));
+    };
   });
 }
 
@@ -699,6 +773,10 @@ function validateAttemptContext(attempt: StudioAttempt, product: Product, requir
   const source = product.sourceAssets.find((item) => item.assetId === attempt.sourceAssetId);
   if (!source || !attempt.styleId || attempt.presetVersion !== STUDIO_PRESET_VERSION ||
       attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION || !attempt.sceneContext ||
+      typeof attempt.sceneContext !== 'object' || !exactKeys(attempt.sceneContext, ['productName', 'category', 'confirmedFacts', 'sourceView']) ||
+      typeof attempt.sceneContext.productName !== 'string' || typeof attempt.sceneContext.category !== 'string' ||
+      !Array.isArray(attempt.sceneContext.confirmedFacts) || attempt.sceneContext.confirmedFacts.some((fact) => typeof fact !== 'string') ||
+      !['TOP', 'OTHER', 'UNKNOWN'].includes(attempt.sceneContext.sourceView) ||
       !Array.isArray(attempt.selectedFactIds) || new Set(attempt.selectedFactIds).size !== attempt.selectedFactIds.length ||
       attempt.selectedFactIds.some((id) => typeof id !== 'string' || !uuidPattern.test(id)) ||
       (requireCurrent && JSON.stringify(attempt.sceneContext) !== JSON.stringify(studioSceneContext(product, source, attempt.selectedFactIds))) ||
@@ -766,6 +844,42 @@ export async function globalStudioReviewFingerprint(): Promise<string> {
     tx.onabort = () => reject(transactionError(tx));
   });
 }
+type ImportedAttemptMarker = { key: string; snapshot: string; reviewed: boolean };
+
+function importedAttemptMarker(settings: unknown[], attempt: StudioAttempt): ImportedAttemptMarker | undefined {
+  const marker = settings.find((row) => row && typeof row === 'object' && (row as { key?: unknown }).key === importAttemptKey(attempt.attemptId)) as ImportedAttemptMarker | undefined;
+  if (marker && (!exactKeys(marker, ['key', 'snapshot', 'reviewed']) || marker.snapshot !== JSON.stringify(attempt) || typeof marker.reviewed !== 'boolean')) {
+    throw new Error('Imported attempt history changed; local billing review cannot be trusted.');
+  }
+  return marker;
+}
+
+// The caller must first obtain explicit human confirmation of external billing and rate-limit review.
+// This records no provider outcome and never contacts the gateway.
+export async function resolveImportedUncertainty(attemptId: string): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['attempts', 'userSettings'], 'readwrite');
+    const attempt = tx.objectStore('attempts').get(attemptId);
+    const marker = tx.objectStore('userSettings').get(importAttemptKey(attemptId));
+    let failure: Error | undefined;
+    marker.onsuccess = () => {
+      try {
+        if (!attempt.result) throw new Error('The imported attempt is missing.');
+        const checked = importedAttemptMarker([marker.result], attempt.result as StudioAttempt);
+        if (!checked) throw new Error('This attempt is not imported uncertainty.');
+        if (!checked.reviewed) tx.objectStore('userSettings').put({ ...checked, reviewed: true });
+      } catch (error) { failure = error instanceof Error ? error : new Error('Could not review imported uncertainty.'); tx.abort(); }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(failure ?? transactionError(tx));
+  });
+}
+
+function blocksWithImportedReview(attempt: StudioAttempt, settings: unknown[]): boolean {
+  const marker = importedAttemptMarker(settings, attempt);
+  return marker ? !marker.reviewed : studioAttemptBlocks(attempt);
+}
 
 export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt: string, recordedOutcome: StudioRecordedOutcome): Promise<void> {
   if (!validStudioAcknowledgement(acknowledgedAt, recordedOutcome)) throw new Error('Invalid acknowledgement receipt.');
@@ -782,13 +896,16 @@ export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt
       return [row.attemptId, { prompt: row.prompt, hash: await sha256(new TextEncoder().encode(row.prompt)) }] as const;
     })));
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(['attempts', 'jobs'], 'readwrite');
+    const tx = db.transaction(['attempts', 'jobs', 'userSettings'], 'readwrite');
+    const marker = tx.objectStore('userSettings').get(importAttemptKey(attemptId));
+    const settings = tx.objectStore('userSettings').getAll();
     const attempts = tx.objectStore('attempts');
     const request = attempts.get(attemptId);
     const initial = attempts.getAll();
     let failure: Error | undefined;
     request.onsuccess = () => {
       const attempt = request.result as StudioAttempt | undefined;
+      if (marker.result !== undefined) { failure = new Error('Imported attempts cannot acknowledge a gateway journal. Review imported uncertainty locally.'); tx.abort(); return; }
       const terminal = attempt?.status === 'DEFINITIVE_SUCCESS' || attempt?.status === 'DEFINITIVE_FAILURE';
       if (!attempt || (attempt.status !== 'UNKNOWN' && attempt.status !== 'SUBMITTED' && !(terminal && attempt.cleanupPending === true))) {
         failure = new Error('Only a saved UNKNOWN, SUBMITTED or cleanup-pending terminal attempt can be reviewed.'); tx.abort(); return;
@@ -817,24 +934,29 @@ export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt
           attempts.put(reviewed);
           const all = attempts.getAll();
           all.onsuccess = () => {
-            for (const pending of all.result as StudioAttempt[]) {
-              if (pending.attemptId === attempt.attemptId || pending.status !== 'PREPARED') continue;
-              const pendingJobRequest = tx.objectStore('jobs').get(pending.jobId);
-              pendingJobRequest.onsuccess = () => {
-                try {
-                  const pendingJob = pendingJobRequest.result as StudioJob | undefined;
-                  const pendingEntry = pendingJob?.attempts.find((item) => item.attemptId === pending.attemptId);
-                  if (!pendingJob || !pendingEntry) throw new Error('A prepared job does not match its attempt.');
-                  const savedPrompt = promptHashes.get(pending.attemptId);
-                  if (!savedPrompt || savedPrompt.prompt !== pending.prompt) throw new Error('A prepared attempt changed during review.');
-                  verifyStudioLineage(pendingJob, all.result as StudioAttempt[], savedPrompt.hash);
-                  const invalidated: StudioAttempt = { ...pending, status: 'DEFINITIVE_FAILURE' };
-                  tx.objectStore('jobs').put(replaceStudioJobEntry(pendingJob, invalidated, pendingEntry.submittedAt, new Date().toISOString()));
-                  attempts.put(invalidated);
-                } catch (error) {
-                  failure = error instanceof Error ? error : new Error('Could not invalidate a prepared attempt.'); tx.abort();
-                }
-              };
+            try {
+              for (const pending of all.result as StudioAttempt[]) {
+                if (pending.attemptId === attempt.attemptId || pending.status !== 'PREPARED') continue;
+                if (importedAttemptMarker(settings.result, pending)) continue;
+                const pendingJobRequest = tx.objectStore('jobs').get(pending.jobId);
+                pendingJobRequest.onsuccess = () => {
+                  try {
+                    const pendingJob = pendingJobRequest.result as StudioJob | undefined;
+                    const pendingEntry = pendingJob?.attempts.find((item) => item.attemptId === pending.attemptId);
+                    if (!pendingJob || !pendingEntry) throw new Error('A prepared job does not match its attempt.');
+                    const savedPrompt = promptHashes.get(pending.attemptId);
+                    if (!savedPrompt || savedPrompt.prompt !== pending.prompt) throw new Error('A prepared attempt changed during review.');
+                    verifyStudioLineage(pendingJob, all.result as StudioAttempt[], savedPrompt.hash);
+                    const invalidated: StudioAttempt = { ...pending, status: 'DEFINITIVE_FAILURE' };
+                    tx.objectStore('jobs').put(replaceStudioJobEntry(pendingJob, invalidated, pendingEntry.submittedAt, new Date().toISOString()));
+                    attempts.put(invalidated);
+                  } catch (error) {
+                    failure = error instanceof Error ? error : new Error('Could not invalidate a prepared attempt.'); tx.abort();
+                  }
+                };
+              }
+            } catch (error) {
+              failure = error instanceof Error ? error : new Error('Could not verify imported attempt markers.'); tx.abort();
             }
           };
         } catch (error) {
@@ -848,14 +970,14 @@ export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt
 }
 export type StudioAsset = { assetId: string; attemptId: string; productId: string; blob: Blob; sha256: string };
 
-function isStudioScene(value: unknown): value is StudioAsset {
+function isStudioScene(value: unknown): value is StudioAsset & { kind?: never } {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
   const keys = ['assetId', 'attemptId', 'productId', 'blob', 'sha256'];
   return Object.keys(row).length === keys.length && keys.every((key) => Object.hasOwn(row, key));
 }
 
-type StudioJob = {
+export type StudioJob = {
   schemaVersion: '1.0.0'; jobId: string; productId: string; styleId: StudioStyleId; presetVersion?: string;
   lockMode: 'STRICT'; operation: 'generate_scene'; sourceHashes: string[];
   promptVersion: string; promptSha256: string; model: string; quality: string; size: string;
@@ -970,7 +1092,7 @@ function verifyStudioLineage(job: StudioJob, records: StudioAttempt[], promptHas
 
 // Persisted wait guidance applies to every local submission, including a new job
 // or another product. Verify both sides before trusting any stored delay.
-function enforceLocalRetryDelays(jobs: StudioJob[], attempts: StudioAttempt[]): void {
+function enforceLocalRetryDelays(jobs: StudioJob[], attempts: StudioAttempt[], settings: unknown[]): void {
   const affected = new Set<string>();
   for (const attempt of attempts) {
     const failure = attempt.failure;
@@ -990,6 +1112,12 @@ function enforceLocalRetryDelays(jobs: StudioJob[], attempts: StudioAttempt[]): 
     const job = jobs.find((row) => row.jobId === jobId);
     if (!job) throw new Error('The saved rate-limit job is missing. Generation is disabled.');
     verifyStudioLineage(job, attempts, job.promptSha256);
+    const lineage = attempts.filter((row) => row.jobId === jobId);
+    const imported = lineage.map((row) => importedAttemptMarker(settings, row));
+    if (imported.some(Boolean)) {
+      if (imported.some((marker) => !marker || !marker.reviewed)) throw new Error('Review imported billing and rate-limit uncertainty before generating.');
+      continue;
+    }
     for (const entry of job.attempts) enforceRetryDelay(entry);
   }
 }
@@ -1100,13 +1228,14 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
   const job = checkedStudioJob(studioJob(attempt, promptHash, null, null));
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(['products', 'masks', 'sourceAssets', 'jobs', 'attempts'], 'readwrite');
+    const tx = db.transaction(['products', 'masks', 'sourceAssets', 'jobs', 'attempts', 'userSettings'], 'readwrite');
     const product = tx.objectStore('products').get(attempt.productId);
     const mask = tx.objectStore('masks').get(attempt.maskId);
     const source = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
     const versions = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
     const existingJob = tx.objectStore('jobs').get(attempt.jobId);
     const allJobs = tx.objectStore('jobs').getAll();
+    const settings = tx.objectStore('userSettings').getAll();
     const attempts = tx.objectStore('attempts').getAll();
     let failure: Error | undefined;
     attempts.onsuccess = () => {
@@ -1116,11 +1245,14 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
         const s = source.result as Record<string, unknown> | undefined;
         if (attempt.productSnapshotFingerprint !== undefined && productSnapshot(p) !== productSnapshot(snapshot)) throw new Error('The product changed since consent.');
         validateAttemptContext(attempt, p);
-        enforceLocalRetryDelays(allJobs.result as StudioJob[], attempts.result as StudioAttempt[]);
-        if ((attempts.result as StudioAttempt[]).some((entry) => studioAttemptBlocks(entry) ||
-            (entry.productId === attempt.productId && entry.status === 'PREPARED' &&
+        enforceLocalRetryDelays(allJobs.result as StudioJob[], attempts.result as StudioAttempt[], settings.result);
+        if ((attempts.result as StudioAttempt[]).some((entry) => blocksWithImportedReview(entry, settings.result) ||
+            (!importedAttemptMarker(settings.result, entry) && entry.productId === attempt.productId && entry.status === 'PREPARED' &&
               (attempt.retryOf !== undefined || entry.retryOf !== undefined)))) {
           throw new Error('Another local attempt is in progress or UNKNOWN. Review its history before generating.');
+        }
+        if (attempt.retryOf && (attempts.result as StudioAttempt[]).some((entry) => entry.attemptId === attempt.retryOf && importedAttemptMarker(settings.result, entry))) {
+          throw new Error('Imported uncertainty cannot be retried as the same job; start a new job after local review.');
         }
         if (studioReviewFingerprint(attempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
           throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
@@ -1170,7 +1302,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
   }
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(['products', 'masks', 'sourceAssets', 'jobs', 'attempts', 'generatedAssets'], 'readwrite');
+    const tx = db.transaction(['products', 'masks', 'sourceAssets', 'jobs', 'attempts', 'generatedAssets', 'userSettings'], 'readwrite');
     const previousRequest = tx.objectStore('attempts').get(attempt.attemptId);
     const jobRequest = tx.objectStore('jobs').get(attempt.jobId);
     const productRequest = tx.objectStore('products').get(attempt.productId);
@@ -1178,6 +1310,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
     const sourceRequest = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
     const versionsRequest = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
     const allJobs = tx.objectStore('jobs').getAll();
+    const settings = tx.objectStore('userSettings').getAll();
     const allAttempts = tx.objectStore('attempts').getAll();
     let failure: Error | undefined;
     allAttempts.onsuccess = () => {
@@ -1185,12 +1318,13 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
         const previous = previousRequest.result as StudioAttempt | undefined;
         const job = jobRequest.result as StudioJob | undefined;
         if (!previous || !job || !validateGenerationJob(job)) throw new Error('The saved attempt or job is missing or invalid.');
+        if (importedAttemptMarker(settings.result, previous)) throw new Error('Imported uncertain attempts cannot be changed or submitted.');
         const immutable: Array<keyof StudioAttempt> = ['attemptId', 'retryOf', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion', 'styleId', 'presetVersion', 'productSnapshotFingerprint', 'topViewConfirmed'];
         if (immutable.some((key) => previous[key] !== attempt[key]) || JSON.stringify(previous.sceneContext) !== JSON.stringify(attempt.sceneContext) || JSON.stringify(previous.selectedFactIds) !== JSON.stringify(attempt.selectedFactIds)) throw new Error('Attempt identity or input changed.');
         const allowed = previous.status === 'PREPARED' ? ['SUBMITTED', 'DEFINITIVE_FAILURE'] : previous.status === 'SUBMITTED' ? ['DEFINITIVE_FAILURE', 'DEFINITIVE_SUCCESS', 'UNKNOWN'] : [];
         if (attempt.status === 'SUBMITTED' && (allAttempts.result as StudioAttempt[]).some((entry) =>
-          entry.attemptId !== attempt.attemptId && (studioAttemptBlocks(entry) ||
-            (entry.productId === attempt.productId && entry.status === 'PREPARED' &&
+          entry.attemptId !== attempt.attemptId && (blocksWithImportedReview(entry, settings.result) ||
+            (!importedAttemptMarker(settings.result, entry) && entry.productId === attempt.productId && entry.status === 'PREPARED' &&
               (entry.retryOf !== undefined || attempt.retryOf !== undefined))))) {
           throw new Error('Another local attempt is in progress or UNKNOWN. Review its history before generating.');
         }
@@ -1208,7 +1342,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
           throw new Error('The session estimate changed after consent. Review the updated total before sending.');
         }
         if (attempt.status === 'SUBMITTED') {
-          enforceLocalRetryDelays(allJobs.result as StudioJob[], allAttempts.result as StudioAttempt[]);
+          enforceLocalRetryDelays(allJobs.result as StudioJob[], allAttempts.result as StudioAttempt[], settings.result);
           const product = checkedProduct(productRequest.result);
           const mask = maskRequest.result as Record<string, unknown> | undefined;
           const source = sourceRequest.result as Record<string, unknown> | undefined;
@@ -1249,18 +1383,25 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
   });
 }
 
-export async function listStudioAttempts(productId: string): Promise<Array<{ attempt: StudioAttempt; asset: StudioAsset | null }>> {
+export async function listStudioAttempts(productId: string): Promise<Array<{ attempt: StudioAttempt; asset: StudioAsset | null; importedUnresolved: boolean; importedUntrusted: boolean }>> {
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(['jobs', 'attempts', 'generatedAssets'], 'readonly');
+    const tx = db.transaction(['jobs', 'attempts', 'generatedAssets', 'userSettings'], 'readonly');
     const jobs = tx.objectStore('jobs').index('productId').getAll(productId);
     const attempts = tx.objectStore('attempts').getAll();
     const assets = tx.objectStore('generatedAssets').index('productId').getAll(productId);
+    const settings = tx.objectStore('userSettings').getAll();
     tx.oncomplete = () => {
-      const ids = new Set((jobs.result as Array<{ jobId: string }>).map((job) => job.jobId));
-      resolve((attempts.result as StudioAttempt[]).filter((attempt) => ids.has(attempt.jobId))
-        .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
-        .map((attempt) => ({ attempt, asset: (assets.result as unknown[]).find((asset): asset is StudioAsset => isStudioScene(asset) && asset.attemptId === attempt.attemptId) ?? null })));
+      try {
+        const ids = new Set((jobs.result as Array<{ jobId: string }>).map((job) => job.jobId));
+        resolve((attempts.result as StudioAttempt[]).filter((attempt) => ids.has(attempt.jobId))
+          .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+          .map((attempt) => {
+            const marker = importedAttemptMarker(settings.result, attempt);
+            return { attempt, asset: (assets.result as unknown[]).find((asset): asset is StudioAsset => isStudioScene(asset) && asset.attemptId === attempt.attemptId) ?? null,
+              importedUnresolved: Boolean(marker && !marker.reviewed), importedUntrusted: Boolean(marker) };
+          }));
+      } catch (error) { reject(error); }
     };
     tx.onabort = () => reject(transactionError(tx));
   });
@@ -1364,9 +1505,9 @@ export type VisualDecisionRecord = VisualProvenance & {
   kind: 'visual-decision'; qaId: string; assetId: string; productId: string; attemptId: string;
   reportId: string; decision: 'APPROVED' | 'REJECTED'; createdAt: string; current: boolean;
 };
-type StoredVisualDecision = Omit<VisualDecisionRecord, 'current'>;
+export type StoredVisualDecision = Omit<VisualDecisionRecord, 'current'>;
 type CheckedVisualHistory = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[] };
-type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string; recipeSha256?: string; adSha256?: string };
+type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string; importedReviewRequired: boolean; recipeSha256?: string; adSha256?: string };
 type VisualOperation =
   | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string; expectedRecipeSha256?: string; expectedAdSha256?: string; styleChecks?: StyleReviewChecks }
   | { kind: 'decision'; assetId: string; reportId: string; decision: 'APPROVED' | 'REJECTED' }
@@ -1378,6 +1519,13 @@ function sameProvenance(a: VisualProvenance, b: VisualProvenance): boolean {
 }
 function exactKeys(value: object, keys: string[]): boolean {
   return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+function checkedImportReviewBarrier(value: unknown, assetId: string, reviewCount: number): number | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || !exactKeys(value, ['key', 'revision']) || !('key' in value) || !('revision' in value) ||
+      value.key !== importReviewKey(assetId) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) ||
+      value.revision < 0 || value.revision > reviewCount) throw new Error('The imported review barrier is invalid.');
+  return value.revision;
 }
 function validVisualBase(row: VisualProvenance & { qaId: string; assetId: string; productId: string; attemptId: string; createdAt: string },
   productId: string, attemptId: string, assetId: string): boolean {
@@ -1448,6 +1596,114 @@ function checkedVisualHistory(rows: unknown[], productId: string, attemptId: str
     current: decision.reportId === latest?.qaId && sameProvenance(decision, current) })) };
 }
 
+export async function validateBackupHistory(product: Product, sources: BackupSource[], masks: BackupMask[], history: BackupHistory): Promise<void> {
+  if (!history || typeof history !== 'object' || !exactKeys(history, ['jobs', 'attempts', 'assets', 'reviews', 'heads']) ||
+      ![history.jobs, history.attempts, history.assets, history.reviews, history.heads].every(Array.isArray)) throw new Error('Backup history is malformed.');
+  validateBackupProduct(product);
+  if (!Array.isArray(sources) || sources.length !== product.sourceAssets.length ||
+      new Set(sources.map((row) => row.metadata.assetId)).size !== sources.length) throw new Error('Backup sources are incomplete or duplicated.');
+  for (const metadata of product.sourceAssets) {
+    const source = sources.find((row) => row.metadata.assetId === metadata.assetId);
+    if (!source || JSON.stringify(source.metadata) !== JSON.stringify(metadata)) throw new Error('Backup source metadata does not match.');
+    await verifyStoredSource(product.productId, metadata, { ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
+  }
+  await validateBackupMasks(product, masks, sources);
+  const unique = (values: string[]) => values.every((id) => typeof id === 'string' && uuidPattern.test(id)) && new Set(values).size === values.length;
+  if (!unique(history.jobs.map((row) => row?.jobId)) || !unique(history.attempts.map((row) => row?.attemptId)) ||
+      !unique(history.assets.map((row) => row?.assetId)) || !unique(history.reviews.map((row) => row?.qaId))) throw new Error('Backup history has duplicate or invalid IDs.');
+  const jobs = new Map(history.jobs.map((row) => [row.jobId, row]));
+  const attempts = new Map(history.attempts.map((row) => [row.attemptId, row]));
+  const assets = new Map(history.assets.map((row) => [row.assetId, row]));
+  for (const attempt of history.attempts) {
+    if (!attempt || attempt.productId !== product.productId || !jobs.has(attempt.jobId) ||
+        typeof attempt.prompt !== 'string' || !['PREPARED', 'SUBMITTED', 'UNKNOWN', 'DEFINITIVE_SUCCESS', 'DEFINITIVE_FAILURE'].includes(attempt.status)) throw new Error('A backup attempt has invalid ownership or state.');
+    if (typeof attempt.submittedAt !== 'string' || !Number.isFinite(Date.parse(attempt.submittedAt)) ||
+        (attempt.softLimitOverride !== undefined && attempt.softLimitOverride !== true) ||
+        (attempt.maxEstimatedUSD !== undefined && (typeof attempt.maxEstimatedUSD !== 'string' || !/^\d{1,9}\.\d{1,6}$/.test(attempt.maxEstimatedUSD))) ||
+        (attempt.status !== 'DEFINITIVE_SUCCESS' && (attempt.usage !== null || attempt.observedUSD !== null || attempt.pricingSnapshot !== undefined))) {
+      throw new Error('An attempt contains invalid accounting or result metadata.');
+    }
+    checkedExportAttempt(attempt);
+    validateAttemptContext(attempt, product, false);
+    validateStudioFailure(attempt);
+    const source = product.sourceAssets.find((row) => row.assetId === attempt.sourceAssetId);
+    const mask = masks.find((row) => row.metadata.maskId === attempt.maskId);
+    if (!source || source.sha256 !== attempt.sourceSha256 || !mask || mask.metadata.sourceAssetId !== source.assetId ||
+        mask.metadata.sourceSha256 !== source.sha256 || mask.metadata.sha256 !== attempt.maskSha256) throw new Error('An attempt references missing or mismatched inputs.');
+    if ((attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined) && !validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome)) throw new Error('An attempt acknowledgement is invalid.');
+    if (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true) throw new Error('Invalid attempt cleanup state.');
+    if (attempt.recoveryLockVersion !== undefined && attempt.recoveryLockVersion !== 1) throw new Error('Invalid recovery state.');
+  }
+  studioSessionTotal(history.attempts, '');
+  for (const job of history.jobs) {
+    if (!job || job.productId !== product.productId) throw new Error('A backup job belongs to another project.');
+    const first = history.attempts.find((row) => row.jobId === job.jobId);
+    if (!first) throw new Error('A backup job has no attempts.');
+    verifyStudioLineage(job, history.attempts, await sha256(new TextEncoder().encode(first.prompt)));
+  }
+  for (const asset of history.assets) {
+    const attempt = attempts.get(asset.attemptId);
+    if (!attempt || attempt.status !== 'DEFINITIVE_SUCCESS' || asset.productId !== product.productId ||
+        typeof asset.sha256 !== 'string' || !hashPattern.test(asset.sha256)) throw new Error('An output has invalid attempt ownership or hash.');
+    await verifyStrictPng(asset.blob, asset.sha256);
+    if (isStudioScene(asset)) continue;
+    const composite = asset as StrictComposite;
+    const keys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt',
+      ...(composite.recipe ? ['recipe', 'recipeSha256', ...(composite.ad ? ['ad', 'adSha256'] : []), ...(composite.copyLayer ? ['copyLayer'] : [])] : [])];
+    const scene = assets.get(composite.sceneAssetId);
+    const source = sources.find((row) => row.metadata.assetId === attempt.sourceAssetId);
+    const mask = masks.find((row) => row.metadata.maskId === attempt.maskId);
+    if (!exactKeys(composite, keys) || composite.kind !== 'strict-composite' || !source || !mask || !scene || !isStudioScene(scene) ||
+        scene.attemptId !== attempt.attemptId || composite.sceneSha256 !== scene.sha256 ||
+        composite.sourceAssetId !== attempt.sourceAssetId || composite.sourceSha256 !== attempt.sourceSha256 ||
+        composite.maskId !== attempt.maskId || composite.maskSha256 !== attempt.maskSha256 ||
+        typeof composite.createdAt !== 'string' || !Number.isFinite(Date.parse(composite.createdAt)) ||
+        (attempt.styleId === undefined) !== (composite.recipe === undefined)) throw new Error('A composite has invalid lineage.');
+    if (composite.recipe && (composite.recipe.styleId !== attempt.styleId || composite.recipe.sourceView !== attempt.sceneContext?.sourceView ||
+        composite.recipe.topViewConfirmed !== attempt.topViewConfirmed ||
+        composite.recipeSha256 !== await sha256(new TextEncoder().encode(JSON.stringify(composite.recipe))))) throw new Error('A composite recipe is invalid.');
+    verifyStrictMapping(composite.mapping, source.metadata.width, source.metadata.height, composite.recipe);
+    await verifyCopyLayer(composite.recipe, composite.copyLayer);
+    if (composite.ad) {
+      if (typeof composite.adSha256 !== 'string' || !hashPattern.test(composite.adSha256)) throw new Error('A composite advertisement hash is missing.');
+      await verifyStrictPng(composite.ad, composite.adSha256);
+    }
+    const rendered = await renderStrictComposite({ source: source.blob, mask: mask.blob, scene: scene.blob,
+      sourceWidth: source.metadata.width, sourceHeight: source.metadata.height, signal: new AbortController().signal, recipe: composite.recipe, copyLayer: composite.copyLayer });
+    if (Boolean(rendered.ad) !== Boolean(composite.ad)) throw new Error('A composite advertisement is missing.');
+    if (rendered.ad && composite.ad) await compareCompositePixels(rendered.ad, composite.ad, new AbortController().signal);
+    await compareCompositePixels(rendered.blob, composite.blob, new AbortController().signal);
+  }
+  for (const attempt of history.attempts) {
+    const scenes = history.assets.filter((row) => row.attemptId === attempt.attemptId && isStudioScene(row));
+    if (scenes.length !== (attempt.status === 'DEFINITIVE_SUCCESS' ? 1 : 0)) throw new Error('A successful attempt must have exactly one original scene.');
+  }
+  const headKeys = new Set<string>();
+  for (const head of history.heads) {
+    if (!head || !exactKeys(head, ['key', 'entries']) || typeof head.key !== 'string' || headKeys.has(head.key) || !Array.isArray(head.entries)) throw new Error('A review history head is invalid.');
+    headKeys.add(head.key);
+    const assetId = head.key.slice('visual-review-head:'.length);
+    const asset = assets.get(assetId);
+    if (head.key !== `visual-review-head:${assetId}` || !asset || isStudioScene(asset)) throw new Error('A review history head has invalid ownership.');
+  }
+  for (const row of history.reviews) {
+    const asset = assets.get(row.assetId);
+    if (!asset || isStudioScene(asset) || row.productId !== product.productId || row.attemptId !== asset.attemptId) throw new Error('A review has invalid ownership.');
+  }
+  for (const asset of history.assets) {
+    if (isStudioScene(asset)) continue;
+    const composite = asset as StrictComposite;
+    const rows = history.reviews.filter((row) => row.assetId === asset.assetId);
+    const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: composite.sourceSha256, maskId: composite.maskId,
+      maskSha256: composite.maskSha256, sceneAssetId: composite.sceneAssetId, sceneSha256: composite.sceneSha256,
+      productSha256: rows[0]?.productSha256 ?? '0'.repeat(64), ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
+    checkedVisualHistory(rows, product.productId, composite.attemptId, composite.assetId, provenance, composite.recipe?.styleId);
+    const entries = (await Promise.all(rows.map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
+    const head = history.heads.find((item) => item.key === `visual-review-head:${asset.assetId}`);
+    if (head ? JSON.stringify(head.entries) !== JSON.stringify(entries) : entries.length !== 0) throw new Error('A review history head is missing or inconsistent.');
+  }
+}
+
 // The readwrite transaction holds all input stores locked until both verification
 // and the append complete. The keep-alive request permits asynchronous Blob
 // hashing and image decoding without letting IndexedDB close the transaction.
@@ -1471,6 +1727,7 @@ async function strictCompositeTransaction(
     const reviewsRequest = visual ? tx.objectStore('qaReports').index('assetId').getAll(visual.assetId) : undefined;
     const headKey = visual ? `visual-review-head:${visual.assetId}` : '';
     const headRequest = visual ? tx.objectStore('userSettings').get(headKey) : undefined;
+    const barrierRequest = visual ? tx.objectStore('userSettings').get(importReviewKey(visual.assetId)) : undefined;
     let failure: Error | undefined, result: StrictCompositeInputs | StrictComposite | VisualReviewRecord | VisualDecisionRecord | VisualHistory;
     let appendReview: VisualReviewRecord | StoredVisualDecision | undefined;
     let nextHead: { key: string; entries: string[] } | undefined;
@@ -1641,7 +1898,15 @@ async function strictCompositeTransaction(
                     !Array.isArray(head.entries) || JSON.stringify(head.entries) !== JSON.stringify(entries)) {
                   throw new Error('Visual review history is incomplete or has an invalid history head.');
                 }
+                const barrier = checkedImportReviewBarrier(barrierRequest!.result, visual.assetId, history.reviews.length);
+                if (barrier !== undefined) {
+                  for (const decision of history.decisions) {
+                    const review = history.reviews.find((row) => row.qaId === decision.reportId);
+                    if (!review || review.revision <= barrier) decision.current = false;
+                  }
+                }
                 if (visual.kind === 'list') result = { ...history, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256,
+                  importedReviewRequired: barrier !== undefined && history.reviews.length <= barrier,
                   ...(provenance.recipeSha256 ? { recipeSha256: provenance.recipeSha256 } : {}), ...(provenance.adSha256 ? { adSha256: provenance.adSha256 } : {}) };
                 else if (visual.kind === 'review') {
                   if (typeof visual.expectedProductSha256 !== 'string' || !hashPattern.test(visual.expectedProductSha256) ||
@@ -1673,6 +1938,7 @@ async function strictCompositeTransaction(
                   if (!latest || latest.qaId !== visual.reportId || !sameProvenance(latest, provenance)) {
                     throw new Error('The review is no longer current. Review the current inputs again.');
                   }
+                  if (barrier !== undefined && latest.revision <= barrier) throw new Error('Imported reviews are untrusted. Create a fresh local review before making a decision.');
                   if (history.decisions.some((decision) => decision.reportId === latest.qaId)) throw new Error('This review already has a decision.');
                   if (visual.decision !== 'APPROVED' && visual.decision !== 'REJECTED') throw new Error('The visual decision is invalid.');
                   if (visual.decision === 'APPROVED' && (latest.report.status !== 'PASS_CANDIDATE' ||
@@ -1967,6 +2233,13 @@ async function approvedExportTransaction(productId: string, selections: Approved
     const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets', 'qaReports', 'userSettings'], 'readonly');
     const products = tx.objectStore('products'), assets = tx.objectStore('generatedAssets');
     let active = true, ready = false, failure: Error | undefined, result: ApprovedExportEntry[] = [];
+    const pendingReads: Array<() => void> = [];
+    const readLocked = <T,>(makeRequest: () => IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
+      pendingReads.push(() => {
+        try { exportRequest(makeRequest()).then(resolve, reject); }
+        catch (error) { reject(error); }
+      });
+    });
     const abort = () => {
       failure = new DOMException('Export was cancelled.', 'AbortError'); active = false;
       try { tx.abort(); } catch { /* Already completed. */ }
@@ -1989,6 +2262,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
           try { tx.abort(); } catch { /* Already aborted. */ }
         }
       } else {
+        for (const read of pendingReads.splice(0)) read();
         const request = products.get(productId);
         request.onsuccess = keepAlive;
       }
@@ -1996,7 +2270,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
     keepAlive();
     void (async () => {
       try {
-        const product = checkedProduct(await exportRequest(products.get(productId)));
+        const product = checkedProduct(await readLocked(() => products.get(productId)));
         validateBackupReferences(product);
         if (product.productId !== productId || !product.rightsAcknowledged || product.brandLock.mode !== 'STRICT') {
           throw new Error('The project is not eligible for approved export.');
@@ -2006,7 +2280,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
         for (const selection of selected) {
           checkCompositeCancellation(cancellation);
           if (selection.productSha256 !== legacyProductSha256 && selection.productSha256 !== versionedProductSha256) throw new Error('The selected approval is stale.');
-          const attempt = await exportRequest(tx.objectStore('attempts').get(selection.attemptId)) as StudioAttempt | undefined;
+          const attempt = await readLocked(() => tx.objectStore('attempts').get(selection.attemptId)) as StudioAttempt | undefined;
           if (!attempt || attempt.attemptId !== selection.attemptId || attempt.productId !== productId ||
               attempt.status !== 'DEFINITIVE_SUCCESS' ||
               ![attempt.jobId, attempt.sourceAssetId, attempt.maskId].every((id) => typeof id === 'string' && uuidPattern.test(id)) ||
@@ -2021,16 +2295,17 @@ async function approvedExportTransaction(productId: string, selections: Approved
           if (attempt.styleId === undefined && product.brandLock.maskAssetId !== attempt.maskId) throw new Error('The active mask changed.');
           if (!source || source.sha256 !== attempt.sourceSha256) throw new Error('The attempt source changed.');
           ownedSource(product, source);
-          const [sourceRow, maskRow, versions, job, lineage, rows, composite, reviews, head] = await Promise.all([
-            exportRequest(tx.objectStore('sourceAssets').get(attempt.sourceAssetId)),
-            exportRequest(tx.objectStore('masks').get(attempt.maskId)),
-            exportRequest(tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId)),
-            exportRequest(tx.objectStore('jobs').get(attempt.jobId)) as Promise<StudioJob | undefined>,
-            exportRequest(tx.objectStore('attempts').index('jobId').getAll(attempt.jobId)) as Promise<StudioAttempt[]>,
-            exportRequest(assets.index('attemptId').getAll(attempt.attemptId)) as Promise<unknown[]>,
-            exportRequest(assets.get(selection.assetId)) as Promise<StrictComposite | undefined>,
-            exportRequest(tx.objectStore('qaReports').index('assetId').getAll(selection.assetId)) as Promise<unknown[]>,
-            exportRequest(tx.objectStore('userSettings').get(`visual-review-head:${selection.assetId}`)),
+          const [sourceRow, maskRow, versions, job, lineage, rows, composite, reviews, head, importedBarrier] = await Promise.all([
+            readLocked(() => tx.objectStore('sourceAssets').get(attempt.sourceAssetId)),
+            readLocked(() => tx.objectStore('masks').get(attempt.maskId)),
+            readLocked(() => tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId)),
+            readLocked(() => tx.objectStore('jobs').get(attempt.jobId)) as Promise<StudioJob | undefined>,
+            readLocked(() => tx.objectStore('attempts').index('jobId').getAll(attempt.jobId)) as Promise<StudioAttempt[]>,
+            readLocked(() => assets.index('attemptId').getAll(attempt.attemptId)) as Promise<unknown[]>,
+            readLocked(() => assets.get(selection.assetId)) as Promise<StrictComposite | undefined>,
+            readLocked(() => tx.objectStore('qaReports').index('assetId').getAll(selection.assetId)) as Promise<unknown[]>,
+            readLocked(() => tx.objectStore('userSettings').get(`visual-review-head:${selection.assetId}`)),
+            readLocked(() => tx.objectStore('userSettings').get(importReviewKey(selection.assetId))),
           ]);
           if (!job || job.productId !== productId || job.jobId !== attempt.jobId) {
             throw new Error('The successful job does not match its attempt.');
@@ -2097,6 +2372,8 @@ async function approvedExportTransaction(productId: string, selections: Approved
               storedHead.key !== headKey || !Array.isArray(storedHead.entries) ||
               JSON.stringify(storedHead.entries) !== JSON.stringify(entries)) throw new Error('The visual review history head is invalid.');
           const review = history.reviews[history.reviews.length - 1];
+          const barrier = checkedImportReviewBarrier(importedBarrier, selection.assetId, history.reviews.length);
+          if (barrier !== undefined && (!review || review.revision <= barrier)) throw new Error('Imported approvals are untrusted. Create a fresh local review and decision.');
           const decision = history.decisions.find((item) => item.qaId === selection.decisionId);
           if (!review || review.qaId !== selection.reviewId || !sameProvenance(review, provenance) ||
               review.report.status !== 'PASS_CANDIDATE' || review.report.hardVetoFindings.length !== 0 ||
@@ -2148,7 +2425,7 @@ export async function listApprovedExportCandidates(productId: string, signal?: A
   const db = await openDatabase();
   checkCompositeCancellation(cancellation);
   const snapshot = await new Promise<{ candidates: ApprovedExportSelection[]; product: unknown }>((resolve, reject) => {
-    const tx = db.transaction(['products', 'generatedAssets', 'qaReports'], 'readonly');
+    const tx = db.transaction(['products', 'generatedAssets', 'qaReports', 'userSettings'], 'readonly');
     const productRequest = tx.objectStore('products').get(productId);
     const request = tx.objectStore('generatedAssets').index('productId').getAll(productId);
     const found: ApprovedExportSelection[] = [];
@@ -2158,6 +2435,7 @@ export async function listApprovedExportCandidates(productId: string, signal?: A
     request.onsuccess = () => {
       for (const value of request.result as StrictComposite[]) {
         if (!value || value.kind !== 'strict-composite' || typeof value.assetId !== 'string') continue;
+        const barrier = tx.objectStore('userSettings').get(importReviewKey(value.assetId));
         const reviews = tx.objectStore('qaReports').index('assetId').getAll(value.assetId);
         reviews.onsuccess = () => {
           const rows = reviews.result as Array<VisualReviewRecord | StoredVisualDecision>;
@@ -2165,8 +2443,11 @@ export async function listApprovedExportCandidates(productId: string, signal?: A
             .sort((a, b) => b.revision - a.revision)[0];
           const decision = rows.find((row): row is StoredVisualDecision =>
             row?.kind === 'visual-decision' && row.reportId === latest?.qaId && row.decision === 'APPROVED');
-          if (latest && decision) found.push({ attemptId: value.attemptId, assetId: value.assetId,
-            productSha256: latest.productSha256, assetSha256: latest.assetSha256, reviewId: latest.qaId, decisionId: decision.qaId });
+          try {
+            const revision = checkedImportReviewBarrier(barrier.result, value.assetId, rows.filter((row) => row?.kind === 'visual-review').length);
+            if (latest && decision && (revision === undefined || latest.revision > revision)) found.push({ attemptId: value.attemptId, assetId: value.assetId,
+              productSha256: latest.productSha256, assetSha256: latest.assetSha256, reviewId: latest.qaId, decisionId: decision.qaId });
+          } catch { tx.abort(); }
         };
       }
     };

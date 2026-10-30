@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
-  version: 4.1.0
+  version: 4.2.0
   description: >-
-    Draft contract revision 4.1.0 extends local job retry provenance; image request fields remain unchanged from 4.0.0.
+    Draft 4.2.0 adds a full-project archive format; gateway image request fields remain unchanged from 4.0.0.
     The local-only gateway retains /api/v2 as the server-key route namespace;
     no deployed compatibility endpoint or production deployment is claimed.
     A default-disabled local seven-style scene subset has only synthetic-provider evidence.

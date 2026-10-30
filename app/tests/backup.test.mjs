@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash, randomUUID } from 'node:crypto';
+import 'fake-indexeddb/auto';
 import { build } from 'vite';
-import { BlobWriter, TextReader, Uint8ArrayReader, ZipWriter, configure } from '@zip.js/zip.js/lib/zip-core-native.js';
+import { BlobReader, BlobWriter, TextReader, Uint8ArrayReader, ZipReader, ZipWriter, configure } from '@zip.js/zip.js/lib/zip-core-native.js';
 
 // Bundle the actual browser module with the same generated schema validators as the app.
 const result = await build({
@@ -11,7 +13,7 @@ const result = await build({
 });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { inspectBackup } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { createBackup, inspectBackup } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 configure({ useWebWorkers: false });
 
 async function archive(entries) {
@@ -79,3 +81,96 @@ test('rejects unsupported schema versions and modified project metadata', async 
   await assert.rejects(inspect(await archive([['project.json', project], ['export-manifest.json', JSON.stringify(manifest)]])), /metadata hash does not match/i);
 });
 
+
+const productsBuild = await build({
+  configFile: 'vite.config.ts', logLevel: 'silent',
+  build: { write: false, minify: false, lib: { entry: 'src/products.ts', formats: ['es'], fileName: 'products' } },
+});
+const productsOutput = Array.isArray(productsBuild) ? productsBuild[0] : productsBuild;
+const productsCode = productsOutput.output.find((entry) => entry.type === 'chunk').code;
+const { createProduct } = await import(`data:text/javascript;base64,${Buffer.from(productsCode).toString('base64')}`);
+
+async function emptyBackup() {
+  const product = await createProduct({ sku: randomUUID(), name: 'Synthetic', category: 'Test', rightsAcknowledged: true });
+  return new File([await createBackup(product.productId, new AbortController().signal, () => {})], 'backup.zip');
+}
+async function unpack(file) {
+  const reader = new ZipReader(new BlobReader(file), { useWebWorkers: false });
+  try {
+    const result = new Map();
+    for (const entry of await reader.getEntries()) result.set(entry.filename, new Uint8Array(await (await entry.getData(new BlobWriter())).arrayBuffer()));
+    return result;
+  } finally { await reader.close(); }
+}
+const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const asEntries = (map) => [...map].map(([path, bytes]) => [path, bytes]);
+
+test('exports versioned unapproved backups and previews empty history', async () => {
+  const file = await emptyBackup();
+  const entries = await unpack(file);
+  const metadata = JSON.parse(new TextDecoder().decode(entries.get('export-manifest.json')));
+  assert.equal(metadata.schemaVersion, '2.0.0');
+  assert.equal(metadata.approvedOnly, false);
+  assert.ok(metadata.files.every((item) => item.approved === false));
+  const preview = await inspect(file);
+  assert.deepEqual(preview.history, { jobs: [], attempts: [], assets: [], reviews: [], heads: [] });
+  assert.equal(preview.conflict, true);
+});
+
+test('continues to import version 1 with an empty history', async () => {
+  const entries = await unpack(await emptyBackup());
+  const metadata = JSON.parse(new TextDecoder().decode(entries.get('export-manifest.json')));
+  metadata.schemaVersion = '1.0.0'; metadata.approvedOnly = true;
+  entries.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(metadata)));
+  assert.deepEqual((await inspect(await archive(asEntries(entries)))).history, { jobs: [], attempts: [], assets: [], reviews: [], heads: [] });
+});
+
+test('rejects undeclared history, missing history, and wrong v2 approval flag', async () => {
+  const entries = await unpack(await emptyBackup());
+  const metadata = JSON.parse(new TextDecoder().decode(entries.get('export-manifest.json')));
+  const path = `history/jobs/${randomUUID()}.json`;
+  entries.set(path, new TextEncoder().encode('{}'));
+  await assert.rejects(inspect(await archive(asEntries(entries))), /manifest and archive/i);
+  entries.delete(path);
+  metadata.files.push({ path, sha256: hash(Buffer.from('{}')), bytes: 2, mimeType: 'application/json', role: 'receipt', approved: false });
+  entries.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(metadata)));
+  await assert.rejects(inspect(await archive(asEntries(entries))), /manifest and archive/i);
+  metadata.files.pop(); metadata.approvedOnly = true;
+  entries.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(metadata)));
+  await assert.rejects(inspect(await archive(asEntries(entries))), /safely restore|manifest/i);
+});
+
+test('rejects unsafe history names and executable entries', async () => {
+  for (const path of ['history/jobs/../../project.json', `history/assets/${randomUUID()}.exe`, 'history/jobs/------------------------------------.json']) {
+    await assert.rejects(inspect(await archive([[path, '{}']])), /unsafe|unsupported/i);
+  }
+  await assert.rejects(inspect(await archive([['project.json', '{}', { unixMode: 0o100755 }]])), /executable/i);
+});
+
+test('rejects altered history bytes and secrets even when the manifest is rehashed', async () => {
+  const entries = await unpack(await emptyBackup());
+  const metadata = JSON.parse(new TextDecoder().decode(entries.get('export-manifest.json')));
+  const id = randomUUID(), path = `history/jobs/${id}.json`;
+  let bytes = new TextEncoder().encode(JSON.stringify({ jobId: id, note: 'synthetic' }));
+  const info = { path, sha256: hash(bytes), bytes: bytes.length, mimeType: 'application/json', role: 'receipt', approved: false };
+  metadata.files.push(info);
+  entries.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(metadata)));
+  entries.set(path, new TextEncoder().encode(JSON.stringify({ jobId: id, note: 'tampered!' })));
+  await assert.rejects(inspect(await archive(asEntries(entries))), /hash|manifest/i);
+  bytes = new TextEncoder().encode(JSON.stringify({ jobId: id, note: `sk-${'A'.repeat(40)}` }));
+  info.sha256 = hash(bytes); info.bytes = bytes.length;
+  entries.set(path, bytes);
+  entries.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(metadata)));
+  await assert.rejects(inspect(await archive(asEntries(entries))), /credential/i);
+});
+
+test('rejects a manifest declaring more than 2000 files', async () => {
+  const entries = await unpack(await emptyBackup());
+  const metadata = JSON.parse(new TextDecoder().decode(entries.get('export-manifest.json')));
+  for (let i = 0; i < 2000; i++) metadata.files.push({
+    path: `history/jobs/${randomUUID()}.json`, sha256: '0'.repeat(64), bytes: 2,
+    mimeType: 'application/json', role: 'receipt', approved: false,
+  });
+  entries.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(metadata)));
+  await assert.rejects(inspect(await archive(asEntries(entries))), /manifest/i);
+});

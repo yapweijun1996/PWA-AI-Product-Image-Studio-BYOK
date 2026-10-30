@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, STUDIO_MAX_PNG_BYTES, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD, type StudioStyleId, type StudioSceneContext } from '../studio-policy.mjs';
-import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, listStrictComposites, listStyleInputs, loadOriginalSource, productSnapshotFingerprint, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StrictComposite, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
+import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, listStrictComposites, listStyleInputs, loadOriginalSource, productSnapshotFingerprint, resolveImportedUncertainty, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StrictComposite, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
 import { inspectImageHeader } from './imageHeader';
 import { sha256 } from './prepareSource';
 import { useUnsavedChanges } from './useUnsavedChanges';
 import { StrictCompositePanel } from './StrictCompositePanel';
 import { LocalImage } from './LocalImage';
 
-type Entry = { attempt: StudioAttempt; asset: StudioAsset | null };
+type Entry = Awaited<ReturnType<typeof listStudioAttempts>>[number];
 type Gateway = { csrf: string; reviewRevision: number } | 'checking' | 'unavailable' | 'signed-out' | 'disconnected';
 type SourceOption = Awaited<ReturnType<typeof listStyleInputs>>[number];
 type PlannedStyle = { styleId: StudioStyleId; input: SourceOption; context: StudioSceneContext; prompt: string; estimate: string; prior: string; perAttemptOverride: boolean; sessionOverride: boolean };
@@ -229,7 +229,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useUnsavedChanges(busy || Object.values(styleConsent).some(Boolean) || Object.values(reviewConfirmed).some(Boolean));
-  const unresolved = entries?.some(({ attempt }) => studioAttemptBlocks(attempt)) ?? false;
+  const unresolved = entries?.some((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? false;
   const validMoney = (value: string) => !value || /^\d{1,9}\.\d{1,6}$/.test(value);
   let plans: PlannedStyle[] = [];
   let planError = '';
@@ -313,14 +313,15 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   }, [productVersion]);
 
   async function review(attempt: StudioAttempt) {
-    if (running.current || !studioAttemptBlocks(attempt) || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || !((attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') || ((attempt.status === 'DEFINITIVE_SUCCESS' || attempt.status === 'DEFINITIVE_FAILURE') && attempt.cleanupPending === true))) return;
+    if (running.current || entries?.find((entry) => entry.attempt.attemptId === attempt.attemptId)?.importedUntrusted || !studioAttemptBlocks(attempt) || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || !((attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') || ((attempt.status === 'DEFINITIVE_SUCCESS' || attempt.status === 'DEFINITIVE_FAILURE') && attempt.cleanupPending === true))) return;
     gatewayCheck.current++;
     running.current = true; onBusyChange(true); setBusy(true); setError(''); setNotice(''); clearQueueConsent(); setGateway('checking');
     try {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(attempt.attemptId)) throw new Error('This attempt has an invalid ID and cannot be reviewed.');
       await withStudioReviewLock(attempt, navigator.locks, async () => {
-        const current = (await listStudioAttempts(product.productId)).find((entry) => entry.attempt.attemptId === attempt.attemptId)?.attempt;
-        if (!current || current.status !== attempt.status || !studioAttemptBlocks(current) ||
+        const saved = (await listStudioAttempts(product.productId)).find((entry) => entry.attempt.attemptId === attempt.attemptId);
+        const current = saved?.attempt;
+        if (!current || saved?.importedUntrusted || current.status !== attempt.status || !studioAttemptBlocks(current) ||
             (current.status === 'SUBMITTED' && current.recoveryLockVersion !== 1)) {
           throw new Error('The attempt changed while review was pending. The current history has been refreshed.');
         }
@@ -344,6 +345,21 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     }
   }
 
+  async function reviewImported(attempt: StudioAttempt) {
+    const entry = entries?.find((item) => item.attempt.attemptId === attempt.attemptId);
+    if (running.current || !entry?.importedUnresolved || !reviewConfirmed[attempt.attemptId]) return;
+    running.current = true; onBusyChange(true); setBusy(true); setError(''); setNotice(''); clearQueueConsent();
+    try {
+      await resolveImportedUncertainty(attempt.attemptId);
+      await refreshEntries();
+      setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: false }));
+      setNotice('Local review recorded. The imported outcome remains unchanged; the gateway was not contacted. A new job still needs separate authorization and may be blocked by its gateway journal.');
+    } catch (reason) {
+      try { await refreshEntries(); } catch { setEntries(null); }
+      setError(reason instanceof Error ? reason.message : 'The imported uncertainty could not be reviewed.');
+    } finally { running.current = false; onBusyChange(false); setBusy(false); }
+  }
+
   async function prepareRetry(previous: StudioAttempt) {
     if (running.current || busy) return;
     running.current = true; setBusy(true); onBusyChange(true); setError(''); setNotice(''); clearQueueConsent(); setRetry(null);
@@ -351,8 +367,9 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       const [history, input, hash] = await Promise.all([
         listStudioAttempts(product.productId), studioInput(product.productId, previous.sourceAssetId), productSnapshotFingerprint(product),
       ]);
-      const current = history.find((entry) => entry.attempt.attemptId === previous.attemptId)?.attempt;
-      if (!current || !retryableStudioAttempt(current, history.map((entry) => entry.attempt)) ||
+      const saved = history.find((entry) => entry.attempt.attemptId === previous.attemptId);
+      const current = saved?.attempt;
+      if (!current || saved?.importedUntrusted || !retryableStudioAttempt(current, history.map((entry) => entry.attempt)) ||
           hash !== current.productSnapshotFingerprint || input.source.sha256 !== current.sourceSha256 ||
           input.maskId !== current.maskId || input.maskSha256 !== current.maskSha256 ||
           !current.styleId || !current.selectedFactIds ||
@@ -508,7 +525,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   }
 
   async function closePrepared(attempt: StudioAttempt) {
-    if (busy || attempt.status !== 'PREPARED' || !navigator.locks) return;
+    if (busy || entries?.find((entry) => entry.attempt.attemptId === attempt.attemptId)?.importedUntrusted || attempt.status !== 'PREPARED' || !navigator.locks) return;
     setBusy(true); setError(''); setNotice('');
     try {
       await withStudioAttemptLock(attempt.attemptId, navigator.locks, () => updateStudioAttempt({ ...attempt, status: 'DEFINITIVE_FAILURE', failure: { category: 'pre_send' } }));
@@ -527,7 +544,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   return <section className="product-section studio-panel" aria-labelledby="studio-heading">
     <span className="section-kicker">STRICT STYLE QUEUE</span><h2 id="studio-heading">Generate style scenes</h2>
     <p>Each selected style is an independent, potentially billable attempt. The original image and mask remain local; the product name, category and selected confirmed facts shown in each prompt are sent to the provider. Do not include secrets or information you do not want to share.</p>
-    <p><strong>Backup warning:</strong> Once an attempt is saved, the current backup cannot safely include this project's jobs or outputs and will refuse export. Back up the project before proceeding.</p>
+    <p><strong>Backup warning:</strong> Full backups include generated scenes, local review records, prompts, cost estimates and other project history. ZIP files are not encrypted; protect them as sensitive data.</p>
     <p>Planned calls: <strong>{selectedStyles.length}</strong>; estimated total: <strong>{planError || !sources || sessionTotal === null ? 'unavailable' : `$${plannedTotal} USD`}</strong>. One call per selected scene; no automatic retry. Estimate only, not a cap or invoice. Model {STUDIO_MODEL}, {STUDIO_QUALITY}, {STUDIO_SIZE}, PNG; pricing snapshot 2026-10-29. <a href="https://developers.openai.com/api/docs/guides/image-generation" target="_blank" rel="noreferrer">Pricing evidence</a>.</p>
     {gateway === 'checking' ? <p role="status">Checking local gateway…</p> : gateway === 'unavailable' ? <p role="status">Offline or local gateway unavailable. Generation is disabled.</p> : gateway === 'signed-out' ? <p>Sign in to the local app in provider settings first.</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>Local app and provider session active.</p>}
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
@@ -557,14 +574,18 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       {leftScene && rightScene && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>{[leftScene, rightScene].map(({ attempt, asset }) => <figure key={attempt.attemptId} style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved {STYLE_LABELS[attempt.styleId!]} scene · {attempt.attemptId}</figcaption><Scene asset={asset!} /></figure>)}</div>}
       {leftScene && rightScene && <CompositeComparison productId={product.productId} productVersion={productVersion} leftAttempt={leftScene.attempt.attemptId} rightAttempt={rightScene.attempt.attemptId} />}
     </section>
-    <h3>Local attempt history</h3>{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset }) => <li key={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attempt.status === 'SUBMITTED' ? 'UNKNOWN (interrupted or in progress)' : attempt.status === 'PREPARED' ? 'Prepared; no image send recorded' : attempt.status}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
+    <h3>Local attempt history</h3>{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset, importedUntrusted, importedUnresolved }) => <li key={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attempt.status === 'SUBMITTED' ? 'UNKNOWN (interrupted or in progress)' : attempt.status === 'PREPARED' ? importedUntrusted ? 'Imported prepared record; sending not verified' : 'Prepared; no image send recorded' : attempt.status}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
       {attempt.retryOf && <p>Retry of attempt {attempt.retryOf} · job {attempt.jobId}.</p>}
       {(attempt.status === 'DEFINITIVE_FAILURE' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') && <p>{failureText(attempt)}</p>}
       {(!attempt.styleId || !attempt.sceneContext || !attempt.selectedFactIds || !attempt.productSnapshotFingerprint || attempt.presetVersion !== STUDIO_PRESET_VERSION || attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION) && <p>This historical attempt cannot be retried with the current preset. Start a new job and give separate fresh consent instead; the original record remains unchanged.</p>}
-      {retryableStudioAttempt(attempt, entries.map((entry) => entry.attempt)) && <button className="secondary-button" type="button" disabled={busy || unresolved} onClick={() => void prepareRetry(attempt)}>Prepare retry for {attempt.styleId && STYLE_LABELS[attempt.styleId]} · {attempt.attemptId}</button>}
-      {attempt.status === 'PREPARED' && <button className="secondary-button" type="button" disabled={busy || !navigator.locks} onClick={() => void closePrepared(attempt)}>Close unsent prepared attempt</button>}
+      {!importedUntrusted && retryableStudioAttempt(attempt, entries.map((entry) => entry.attempt)) && <button className="secondary-button" type="button" disabled={busy || unresolved} onClick={() => void prepareRetry(attempt)}>Prepare retry for {attempt.styleId && STYLE_LABELS[attempt.styleId]} · {attempt.attemptId}</button>}
+      {!importedUntrusted && attempt.status === 'PREPARED' && <button className="secondary-button" type="button" disabled={busy || !navigator.locks} onClick={() => void closePrepared(attempt)}>Close unsent prepared attempt</button>}
       {attempt.usage !== null && <p>Provider-reported token usage: {Object.entries(attempt.usage).map(([key, value]) => `${key}: ${typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}`).join(' · ')}. Provider invoice remains authoritative.</p>}
-      {(attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED' || attempt.cleanupPending !== undefined) && (studioAttemptBlocks(attempt) ? <div>
+      {importedUntrusted ? (importedUnresolved ? <div>
+        <p>This imported record is untrusted and may represent an active or charged attempt. Review provider billing and rate limits externally. This local review does not contact the gateway, verify the outcome, or acknowledge its journal. The gateway may independently block new requests.</p>
+        <label className="checkbox-label"><input type="checkbox" checked={Boolean(reviewConfirmed[attempt.attemptId])} onChange={(event) => { const checked = event.target.checked; setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: checked })); }} disabled={busy} /><span>I have reviewed provider billing and rate limits externally and acknowledge this imported attempt may have incurred a charge.</span></label>
+        <button className="secondary-button" type="button" disabled={busy || !reviewConfirmed[attempt.attemptId]} onClick={() => void reviewImported(attempt)}>Record local review of imported uncertainty</button>
+      </div> : <p>This imported record remains untrusted. Any local uncertainty review did not contact the gateway or change the original outcome. Same-job retry is unavailable; a new job needs fresh authorization and may still be blocked by the gateway.</p>) : (attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED' || attempt.cleanupPending !== undefined) && (studioAttemptBlocks(attempt) ? <div>
         <p>{attempt.cleanupPending === true ? `The gateway could not clear its active marker after recording ${attempt.status}. The saved outcome is unchanged. Review provider billing and rate limits externally before acknowledging; this does not send an image request.` : attempt.cleanupPending !== undefined ? 'Invalid cleanup metadata. Generation remains blocked; preserve the saved records for owner review.' : 'A charge may have occurred. Review provider billing and rate limits externally before proceeding. An interrupted submission may still be active; the gateway will refuse review while active or without a reviewable result. This acknowledgement does not resolve the original outcome or send an image request.'}</p>
         <label className="checkbox-label"><input type="checkbox" checked={Boolean(reviewConfirmed[attempt.attemptId])} onChange={(event) => { const checked = event.target.checked; setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: checked })); }} disabled={busy} /><span>I have reviewed provider billing and rate limits externally and acknowledge the previous attempt may have incurred a charge.</span></label>
         <button className="secondary-button" type="button" disabled={busy || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true)} onClick={() => void review(attempt)}>Record review of this attempt</button>

@@ -4,15 +4,17 @@
 
 User can leave the app with their original photos, approved outputs, masks, verified facts, job/cost/QA lineage. A backup is not dependent on app operator cloud storage. A **portable project** can include rejected draft metadata but must visibly distinguish it from approved output.
 
-## Implemented subset
+## Full project backup
 
-The browser currently exports and imports one product, its facts, immutable original images and all of its stored mask versions. ZIPs contain `project.json`, `export-manifest.json`, `originals/<assetId>.<extension>` and paired `masks/<maskId>.json` / `masks/<maskId>.png` entries; hashes, alpha, dimensions and source references are verified before an add-only IndexedDB transaction. The import preview shows the exact uncompressed archive bytes and warns that actual browser storage use differs. Duplicate product, SKU, source or mask IDs are rejected, including races after preview. User-visible progress and cancellation are available before commit.
+Version `2.0.0` archives contain one product, immutable originals, all stored mask versions, jobs, attempts, generated scenes, STRICT composites, optional billboard ad/copy layers, visual QA events and their history heads. Every payload has a manifest hash. Export refuses invalid, oversized or inconsistent projects rather than silently omitting data. Restore validates the complete graph and uses a single add-only IndexedDB transaction; duplicate product, SKU or record IDs are rejected, including races after preview.
 
-Only product and export-manifest schema version `1.0.0` is supported; earlier supported archives without masks remain readable. No historical schema migration contract exists yet; unsupported versions, jobs, generated outputs, QA and receipts are rejected rather than silently omitted. This subset does not satisfy the complete portable-project target below. Integrate those record types and their tested migrations as their features are implemented.
+Earlier `1.0.0` product/original/mask archives remain importable. New archives are not readable by earlier clients. The preview reports counts and uncompressed archive bytes; actual browser storage use differs. Cancellation is available before commit.
 
-Backups are unencrypted and may contain sensitive project details, original images and EXIF metadata. Choose a trusted destination. The application rejects certain recognizable credential patterns in project metadata, but this heuristic cannot detect every secret and does not inspect image pixels or metadata for secrets. Never put credentials in product data or source images.
+An unsigned ZIP and its hashes do **not** authenticate its provenance or reviewer. Imported reviews and decisions remain historical records and cannot approve an output. Each imported output needs a fresh local review and a separate decision before becoming eligible for the approved-output bundle. All imported attempts remain untrusted: same-job retry and gateway acknowledgement by imported ID are unavailable. Imported uncertain, interrupted, prepared, previously acknowledged or rate-limited attempts block new generation until the user explicitly reviews billing and rate limits externally and records a local-only acknowledgement; the original attempt and outcome remain unchanged. Imported timestamps cannot impose a trusted delay after this review. A separate gateway journal can still block requests. A new job requires a new attempt ID and fresh consent.
 
-The current limits are 340 MiB compressed archive, 1,042 entries, 1 MiB per JSON file, 20 MiB per original or mask, 338 MiB total expanded bytes, 512 mask versions and a 200:1 expansion ratio. Export rejects projects exceeding these limits rather than omitting data. Import rejects encrypted, executable, linked, duplicate, unsupported or unsafe entries, verifies ZIP integrity and hashes, and checks image headers, dimensions and mask alpha against the oriented source. These controls do not replace independent security review or real-device storage testing.
+Backups are unencrypted and include prompts, estimates, product details, review notes, images and potentially EXIF metadata. Choose a trusted destination. The metadata scanner rejects certain recognizable credential patterns, but cannot detect every secret and does not inspect image pixels or EXIF for secrets. Never put credentials in project data or images; provider keys, gateway sessions and credentials are not part of the archive.
+
+Limits are 340 MiB compressed, 2,001 ZIP entries including the manifest, 1 MiB per JSON file, 20 MiB per image, 338 MiB total expanded, 512 mask versions and a 200:1 expansion ratio. Import rejects encrypted, executable, linked, duplicate, unsupported or unsafe entries and checks integrity, hashes and references. These controls do not replace independent security review or real-device storage testing.
 
 ### Approved output bundle (not a project backup)
 
@@ -20,28 +22,32 @@ The browser can create a separate local ZIP for selected current, human-approved
 
 Ratios are 1024×1024 (1:1), 1024×1280 (4:5), 900×1600 (9:16) and 1600×900 (16:9). The entire square composite is uniformly fitted without cropping; PNG/WebP margins are transparent and JPEG margins are white. Downscaling and lossy encoders can change labels or colors, so inspect the preview at native pixels. Encoder fallback to a different MIME type is rejected. These are generic sizes, not marketplace compliance claims.
 
-The output ZIP contains UUID-named outputs, per-output allowlisted provenance and a schema-validated `export-manifest.json` with file hashes. Versioned provenance includes the exact provider prompt, product name, category, selected confirmed facts, source/mask/scene/composite and product hashes, attempt/job/review/decision IDs and times, immediate `retryOf` predecessor when applicable, recipe, conversion metadata and available sanitized usage/cost snapshot. Billboard exports include the complete ad and, when copy is supplied, its frozen copy layer; the recipe contains the supplied copy. Reviewer notes, original images and EXIF are omitted. This unencrypted bundle may contain sensitive imagery and project data and is **not importable as a project backup**. Limits: 100 outputs, 20 MiB per image and 320 MiB expanded data. Unsupported provenance fails closed; full backup/import of jobs, outputs, QA and receipts remains pending.
+The output ZIP contains UUID-named outputs, per-output allowlisted provenance and a schema-validated `export-manifest.json` with file hashes. Versioned provenance includes the exact provider prompt, product name, category, selected confirmed facts, source/mask/scene/composite and product hashes, attempt/job/review/decision IDs and times, immediate `retryOf` predecessor when applicable, recipe, conversion metadata and available sanitized usage/cost snapshot. Billboard exports include the complete ad and, when copy is supplied, its frozen copy layer; the recipe contains the supplied copy. Reviewer notes, original images and EXIF are omitted. This unencrypted bundle may contain sensitive imagery and project data and is **not importable as a project backup**. Limits: 100 outputs, 20 MiB per image and 320 MiB expanded data. Unsupported provenance fails closed.
 
 
-## ZIP structure (target)
+## Full backup ZIP structure
 
 ```text
-sku-project-<short-id>.zip
-├── project.json                 # Product schema + original asset references
-├── export-manifest.json         # version, hashes, provenance and approval
-├── originals/<assetId>.png
-├── masks/<maskId>.png
-├── outputs/approved/<assetId>.png
-├── outputs/drafts/<assetId>.png # optional, labeled unapproved
-├── qa/<qaId>.json
-└── receipts/jobs.json           # attempt/cost records, no secrets
+project.json
+export-manifest.json
+originals/<assetId>.<png|jpg|webp>
+masks/<maskId>.json
+masks/<maskId>.png
+history/jobs/<jobId>.json
+history/attempts/<attemptId>.json
+history/assets/<assetId>.json
+history/assets/<assetId>.png
+history/ads/<assetId>.png          # optional billboard ad
+history/copy-layers/<assetId>.png  # optional frozen copy layer
+history/qa/<qaId>.json
+history/heads/<assetId>.json
 ```
 
 ## Export invariants
 
-- `approvedOnly=true` by default; drafts are optional and clearly named as non-approved; never imply a rejected asset is commercially approved.
+- A full backup uses `approvedOnly=false` and marks its files unapproved; historical approval records are not inherited as current approvals. The separate approved-output bundle contains only currently approved selections.
 - SHA-256 for each file payload; manifest declares schema version, createdAt, projectId, filename, MIME, bytes, source/attempt lineage and `approved` flag.
-- Export verifies no credential-related fields appear. Sanitize names and paths; no absolute paths or untrusted `../`.
+- Metadata is schema-checked and scanned for recognizable credential patterns; this cannot prove absence of secrets. Paths use fixed UUID-based names, never user-supplied absolute paths or `../`.
 - Format conversion PNG/JPEG/WebP: record format, dimensions, resampling/quality flags; transparent assets exported as JPEG need explicit background fill, not black artifacts.
 - Output channel presets require actual current platform rule validation; defaults use generic sizes, not claims of official compliance.
 
@@ -49,9 +55,9 @@ sku-project-<short-id>.zip
 
 1. Validate ZIP central directory, fixed max entries, max compressed/uncompressed bytes and ratio, path traversal, link/symlink contents, MIME and image dimensions.
 2. Require supported manifest version, local cross-reference integrity, unique IDs and SHA-256 digest matches.
-3. Display conflict: merge as new project with remapped IDs or reject; never silently overwrite same SKU.
-4. Preview exact import count and storage impact. Commit in all-or-nothing logical transaction; show recovery if partial staged data must be cleaned.
-5. Revalidate QA claims; if source asset missing/corrupt, APPROVED must be downgraded to "needs verification" rather than inherited blindly.
+3. Reject conflicts; never overwrite an existing product, SKU or record. ID remapping and merging are not implemented.
+4. Preview counts and uncompressed archive bytes. Commit all records atomically or retain the previous database unchanged.
+5. Preserve imported QA as untrusted history and require a fresh local review and decision, even when hashes match.
 
 ## Compatibility
 

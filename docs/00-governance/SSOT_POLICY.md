@@ -44,7 +44,7 @@ For **actual implementation state**: (1) inspected live code/config and reposito
 
 ## Semantic version policy
 
-- The initial bundle was **SSOT 1.0.0 / DRAFT**; **SSOT 2.0.0 / DRAFT** reflected the server-configured key model. **SSOT 3.0.0 / DRAFT** added mandatory review-revision binding to image attempts. **SSOT 3.1.0 / DRAFT** added optional budget override and usage receipt fields. **SSOT 4.0.0 / DRAFT** required a preset version and scene context in image attempts. **SSOT 4.1.0 / DRAFT** adds compatible local retry provenance and bounded retry-delay metadata. The local server-key route namespace remains `/api/v2`; no deployed compatibility endpoint or release is claimed.
+- The initial bundle was **SSOT 1.0.0 / DRAFT**; **SSOT 2.0.0 / DRAFT** reflected the server-configured key model. **SSOT 3.0.0 / DRAFT** added mandatory review-revision binding to image attempts. **SSOT 3.1.0 / DRAFT** added optional budget override and usage receipt fields. **SSOT 4.0.0 / DRAFT** required a preset version and scene context in image attempts. **SSOT 4.1.0 / DRAFT** added local retry provenance and bounded retry-delay metadata. **SSOT 4.2.0 / DRAFT** adds a versioned full-project archive while retaining v1 import. The local server-key route namespace remains `/api/v2`; no deployed compatibility endpoint or release is claimed.
 - MAJOR: incompatible API/schema or product invariant change.
 - MINOR: compatible new features, approved architectural ADR, additional style or nonbreaking API fields.
 - PATCH: clarification, link, typo, metadata update without changing contract semantics.
