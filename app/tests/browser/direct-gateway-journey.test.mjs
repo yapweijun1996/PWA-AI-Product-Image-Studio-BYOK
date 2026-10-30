@@ -179,6 +179,14 @@ test('production gateway serves a synthetic creation-to-export journey without o
       await evaluate(client, `(() => {const group=[...document.querySelectorAll('.studio-panel fieldset')].find(f=>f.querySelector('legend')?.textContent==='Choose styles');const label=[...group.querySelectorAll('label')].find(l=>l.innerText.trim()===${JSON.stringify(style)});if(!label.querySelector('input').checked)label.querySelector('input').click()})()`);
     }
     await until(()=>evaluate(client,`document.querySelectorAll('.style-plan').length===7`),'seven independent style plans');
+    for (const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<600});
+      const layout=await evaluate(client, `(() => {const p=document.querySelector('.style-plan > p');const submit=document.querySelector('.studio-panel button[type="submit"]');const comparison=document.querySelector('.studio-scene-comparison');const labels=[...comparison.querySelectorAll(':scope > label')];const rect=e=>e.getBoundingClientRect();return {lineHeight:parseFloat(getComputedStyle(p).lineHeight),fontSize:parseFloat(getComputedStyle(p).fontSize),gap:rect(comparison).top-rect(submit).bottom,labelGap:rect(labels[1]).top-rect(labels[0]).bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      assert.ok(layout.lineHeight >= layout.fontSize*1.49, `Readable plan text at ${width}px`);
+      assert.ok(layout.gap >= 20 && layout.labelGap >= 10, `Separate comparison controls at ${width}px`);
+      assert.equal(layout.overflow,false, `No page overflow at ${width}px`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     for(const style of ['Studio','Hero','Lifestyle','Flat Lay','Macro','UGC']) {
       await evaluate(client, `[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes(${JSON.stringify('I authorize this single '+style+' attempt')})).querySelector('input').click()`);
     }

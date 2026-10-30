@@ -616,7 +616,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       <button className="primary-button" type="submit" disabled={busy || unresolved || (typeof gateway === 'object' && gateway.legacyWaits.length > 0) || !ready || Boolean(planError) || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || reviewFingerprint === null || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate selected scenes'}</button>
     </form>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-    <section aria-labelledby="studio-comparison-heading">
+    <section className="studio-scene-comparison" aria-labelledby="studio-comparison-heading">
       <h3 id="studio-comparison-heading">Compare generated scenes</h3>
       <p>Choose two attempts of the same style. These are unapproved empty backgrounds, not product photographs; inspect the original and the locally composed product separately.</p>
       <label>First attempt<select value={compareLeft} onChange={(event) => { setCompareLeft(event.target.value); setCompareRight(''); }}><option value="">Choose an attempt</option>{scenes.map(({ attempt }) => <option key={attempt.attemptId} value={attempt.attemptId}>{STYLE_LABELS[attempt.styleId!]} · {attempt.attemptId}</option>)}</select></label>
