@@ -106,7 +106,7 @@ export function ProviderSessionPanel() {
 
   function onToken(value: string) {
     if (rejectUntilBlur.current) return;
-    if (/^sk-/i.test(value)) { rejectUntilBlur.current = true; setAccessToken(''); setError('This is not a local app access token. Leave and return to this field before entering the correct token.'); return; }
+    if (/^\s*sk-/i.test(value)) { rejectUntilBlur.current = true; setAccessToken(''); setError('This is not a local app access token. Leave and return to this field before entering the correct token.'); return; }
     setAccessToken(value); setError('');
   }
   function onPaste(event: ClipboardEvent<HTMLInputElement>) {

@@ -104,6 +104,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client, `navigator.onLine`),'online state');
     await client.call('Page.navigate',{url:`${origin}/settings`});
     await until(()=>evaluate(client,`!!document.querySelector('#local-access-token')`),'local sign-in');
+    await evaluate(client,`(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'  sk-synthetic-not-a-key');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+    assert.equal(await evaluate(client,`document.querySelector('#local-access-token').value`),'','A provider-like value with leading whitespace is cleared.');
+    assert.match(await evaluate(client,`document.querySelector('.provider-session [role="alert"]').innerText`),/not a local app access token/i);
+    assert.equal(await evaluate(client,`document.querySelector('.provider-login button').disabled`),true,'The rejected value cannot be submitted.');
+    await evaluate(client,`(() => {const e=document.querySelector('#local-access-token');e.focus();e.blur()})()`);
     await evaluate(client,`(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(token)});e.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.provider-login button').click()})()`);
     await until(()=>evaluate(client,`[...document.querySelectorAll('.provider-session button')].some(b=>b.textContent==='Connect provider'&&!b.disabled)`),'provider connect');
     await evaluate(client,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Connect provider').click()`);

@@ -268,8 +268,9 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(() => evaluate(client, `document.querySelector('.visual-review')?.innerText.includes('decision APPROVED')`),'recorded decision');
     const uiDecision=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const h=await p.listVisualReviews(${JSON.stringify(productId)},${JSON.stringify(exportFixture.attemptId)},${JSON.stringify(newCompositeId)});const d=h.decisions.find(x=>x.current),r=h.reviews.find(x=>x.qaId===d.reportId);return {reviewId:r.qaId,decisionId:d.qaId,decision:d.decision};})()`);
     assert.equal(uiDecision.decision,'APPROVED');Object.assign(exportFixture,{assetId:newCompositeId,reviewId:uiDecision.reviewId,decisionId:uiDecision.decisionId});
+    await evaluate(client, `window.__beforeExportReload=true`);
     await client.call('Page.reload');
-    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`),'newly approved export candidate');
+    await until(() => evaluate(client, `window.__beforeExportReload!==true && document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`),'newly approved export candidate after reload');
 
 
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);

@@ -205,3 +205,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Notify the update UI when tracked draft ownership changes and clear its draft-blocked message only when no tracked owner remains. The user must still choose to reload and all existing unsaved-work guards remain in force.
 - **Evidence and limits:** In 390 px emulated Chromium, the old tab retained its draft during activation, saved the project, cleared the stale warning and explicitly reloaded into the new build with the saved product intact. The full browser suite and production build passed. This does not establish installed-device behavior, all simultaneous draft-owner races, screen-reader usability or the cause of the earlier cached-asset observation.
 - **Rollback:** Revert the draft-change notification and update UI listener with the regression assertions; preserve saved projects and the existing reload guards.
+
+## BUG-025 — Typed provider-like input with leading whitespace bypasses the local-token guard
+
+- **Status:** VERIFIED for the scoped synthetic Chromium input. **Priority:** P2. **Related tasks:** T-031 and T-081.
+- **Reproduction:** In the local app access-token field, a typed or input-event value beginning with whitespace followed by `sk-` remained in the field, although pasting the same prefix was rejected. A browser regression reproduced this with a non-secret synthetic string.
+- **Fix:** Apply the same leading-whitespace-aware prefix check to typed input, clearing the field and showing the existing warning; a subsequent valid local token still works after leaving and returning to the field.
+- **Evidence and limits:** At 320 px a synthetic provider-like value is cleared, the warning appears and sign-in is disabled; a separate synthetic local token signs in and connects. The browser suite and build pass. Prefix detection is a convenience guard, not a guarantee that all secrets are recognized or never enter browser memory; no actual credential or screen reader was used.
+- **Rollback:** Revert the input guard and regression together; preserve server-side authentication, session and provider-key isolation.
