@@ -237,3 +237,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Reset the editor's draft, review, region, pointer and status state for every source change, including the empty option. The existing confirmation still protects dirty work before changing sources.
 - **Evidence and limits:** A 320 px Chromium regression reproduced the stale guard before the fix. It now verifies that declining the confirmation keeps the editor open, confirming discard clears the guard, and reopening the original source allows the protected-area and export journey to complete. The browser suite and build pass. No physical device, screen reader, actual update during this exact interaction or real SKU was tested.
 - **Rollback:** Revert the source-reset change and regression together only with equivalent draft cleanup; preserve all saved originals and masks.
+
+## BUG-029 — Billboard display confirmation has a small mobile checkbox
+
+- **Status:** VERIFIED for the scoped synthetic Chromium flow. **Priority:** P2. **Related tasks:** T-051, T-070 and T-080.
+- **Finding:** At a 320 px viewport the front-facing display confirmation used a 13 × 13 px checkbox and an inline label, unlike the project's larger checkbox pattern. The confirmation is required before composing a billboard and should be easy to target.
+- **Fix:** Use the shared checkbox label pattern with a 20 × 20 px checkbox and a larger clickable label; the required confirmation and composition validation are unchanged.
+- **Evidence and limits:** A synthetic Chromium journey reproduces the 13 px control, then verifies the larger control and no horizontal overflow. It enters a display rectangle, confirms composition is rejected before the checkbox, then checks it and saves an unapproved local billboard composite without another provider call. The 320 px control screenshot was inspected; the browser suite and build pass. The fixture uses a solid-color synthetic scene rather than a real billboard; no physical touch, screen reader, human display inspection or real provider was tested.
+- **Rollback:** Revert the label pattern and regression only with an equivalent accessible target; retain the explicit confirmation gate and existing data.

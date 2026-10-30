@@ -216,6 +216,19 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(scenes.length,7);assert.equal(new Set(scenes.map(x=>x.asset)).size,7);assert.deepEqual(scenes.map(x=>x.attempt).sort(),[...queueIds].sort());
     assert.ok(scenes.every(x=>x.hash===createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex')),'Each attempt retains its own synthetic scene record.');
 
+    const billboardId=queue.find(x=>x.style==='billboard').id;
+    const billboardPanel=`[...document.querySelectorAll('.studio-history > li')].find(li=>li.innerText.includes(${JSON.stringify(billboardId)})).querySelector('.strict-composite')`;
+    await until(()=>evaluate(client,`${billboardPanel}?.innerText.includes('Inspect the scene and select')`),'billboard controls');
+    const billboardControl=await evaluate(client, `(() => {const p=${billboardPanel};const label=[...p.querySelectorAll('label')].find(x=>x.innerText.includes('front-facing and unobstructed'));const checkbox=label.querySelector('input');const a=label.getBoundingClientRect(),b=checkbox.getBoundingClientRect();return {labelHeight:a.height,inputWidth:b.width,inputHeight:b.height,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+    assert.ok(billboardControl.labelHeight>=44&&billboardControl.inputWidth>=20&&billboardControl.inputHeight>=20&&!billboardControl.overflow,`Billboard confirmation is usable at 320 px: ${JSON.stringify(billboardControl)}.`);
+    await evaluate(client, `(() => {const p=${billboardPanel};const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [input,value] of [...p.querySelectorAll('.strict-rect-fields input')].map((e,i)=>[e,['100','100','800','800'][i]])){set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}))}[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare local composite').click()})()`);
+    await until(()=>evaluate(client,`${billboardPanel}?.innerText.includes('Inspect and select a front-facing rectangular display')`),'missing billboard confirmation');
+    await evaluate(client, `(() => {const p=${billboardPanel};[...p.querySelectorAll('label')].find(x=>x.innerText.includes('front-facing and unobstructed')).querySelector('input').click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare local composite').click()})()`);
+    await until(()=>evaluate(client,`${billboardPanel}?.innerText.includes('Complete advertisement before uniform placement')`),'billboard preview');
+    await evaluate(client, `[...${billboardPanel}.querySelectorAll('button')].find(b=>b.textContent==='Save unapproved composite').click()`);
+    await until(()=>evaluate(client,`${billboardPanel}?.innerText.includes('Unapproved composite saved locally')`),'saved billboard composite');
+    assert.equal(providerCalls,10,'Local billboard composition makes no additional provider call.');
+
     await client.call('Page.reload');await until(()=>evaluate(client,`document.querySelectorAll('.studio-history li').length>=10`),'persisted seven-style history');
     assert.equal(providerCalls,10,'Reload does not resend the seven-style queue.');
 
