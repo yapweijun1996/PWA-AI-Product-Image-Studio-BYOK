@@ -344,6 +344,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-022 high-repetition source browser restore — 2026-10-30
+
+- **Evidence:** An isolated desktop Chromium context used the actual Vite development modules and browser PNG decoder to create a synthetic 1×1 image with a 1 MiB repetitive text chunk. It saved the source, exported and inspected a 1,050,480-byte backup, and confirmed the original project conflicts with its own import. After deleting only that synthetic product and source from the isolated test database, inspection reported no conflict; the actual restore operation recreated the project. Original, preview and restored bytes all had SHA-256 `1d79dc0a60ec03499ee171347e62578dc1cccf902775750ed12be15d7dc338ce`; after page reload, the restored source retained the same hash. No console warning or error was observed.
+- **Limits:** This is a programmatic module journey in one desktop Chromium context, not an interactive UI, production-build, cross-device, large-project or independent-security acceptance. The isolated deletion was test setup, not a recommended recovery procedure. T-022 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence record and documentation hashes; preserve user originals and backups.
+
 ## T-022 highly compressible original regression — 2026-10-30
 
 - **Evidence:** A synthetic 1×1 PNG with a 1 MiB repetitive text chunk would exceed the importer's 200:1 compression-ratio threshold if deflated. A test saves it as an original, creates the actual project backup, confirms the original is stored without ZIP compression, previews the archive and verifies the original byte hash. The backup and history-storage subset passed 20 tests.
