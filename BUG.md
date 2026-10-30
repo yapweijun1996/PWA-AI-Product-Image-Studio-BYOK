@@ -164,3 +164,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Track the ID that started the brush and accept its move, up and cancellation only; prevent a second pointer from taking ownership while that gesture remains active. Region drags retain their own pointer ID. The prior primary-only guard is superseded by ownership checks.
 - **Evidence and limits:** A 320 px browser regression drives touch and mouse through Chromium's input protocol, checks that the mouse up and subsequent touch move were both primary events, sends an additional synthetic mouse cancellation and verifies the touch stroke's destination pixel. The original implementation failed and the corrected implementation passed. Physical mixed-input devices, real pen hardware and assistive-technology acceptance remain open.
 - **Rollback:** Preserve saved masks and revert the ownership checks only with an equivalent pointer identity mechanism.
+
+## BUG-020 — Converted-output previews are too narrow on mobile
+
+- **Status:** VERIFIED for the scoped emulated Chromium layout. **Priority:** P2. **Related tasks:** T-061 and T-080.
+- **Finding:** At a 320 px viewport, the export panel placed the approved and converted native-size previews in two 105 px columns. The small windows made label and margin inspection difficult before the required download confirmation.
+- **Fix:** Stack the export panel's comparison panes at 540 px and below; keep the existing side-by-side layout above that breakpoint. Native-pixel scrolling and the confirmation gate remain unchanged.
+- **Evidence and limits:** At 320 px the measured pane width increased to 226 px; at 390 px the panes also stack, while at 1280 px they remain side by side. Synthetic Chromium checks cover page overflow, keyboard horizontal scrolling, closing/reopening previews by changing format, and the confirmed ZIP download. Mobile top, middle and bottom and desktop preview screenshots were inspected. Real devices, screen readers, broader layout states and real SKU readability remain open; no user study is implied.
+- **Rollback:** Revert the export-specific responsive rule and regression checks together; preserve approval and export data.

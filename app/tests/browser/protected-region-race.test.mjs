@@ -63,6 +63,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.ok(target?.webSocketDebuggerUrl, 'No isolated Chromium page was available.');
     client = await connect(target.webSocketDebuggerUrl);
     await client.call('Page.enable');
+    await client.call('Page.bringToFront');
     await client.call('Emulation.setDeviceMetricsOverride', { width: 320, height: 800, deviceScaleFactor: 1, mobile: true });
     await client.call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
     await client.call('Page.navigate', { url: origin });
@@ -179,6 +180,27 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'converted preview');
+    await evaluate(client, `document.querySelector('.approved-export .strict-comparison').scrollIntoView({block:'start'})`);
+    const layout = await evaluate(client, `Array.from(document.querySelectorAll('.approved-export .strict-zoom')).map(el=>{const r=el.getBoundingClientRect();return {width:r.width,x:r.x,y:r.y,height:r.height}})`);
+    assert.ok(layout.every(r=>r.width>=220),'Mobile previews have enough width for inspection.');
+    assert.ok(layout[1].y > layout[0].y + layout[0].height,'Mobile previews stack vertically.');
+    await evaluate(client, `document.querySelector('.approved-export .strict-zoom').focus()`);
+    await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+    await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+    await until(() => evaluate(client, `document.querySelector('.approved-export .strict-zoom').scrollLeft > 0`),'keyboard scrolling');
+    for (const width of [390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const state=await evaluate(client, `(() => {const panes=[...document.querySelectorAll('.approved-export .strict-zoom')].map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}});return {panes,overflow:document.documentElement.scrollWidth>innerWidth};})()`);
+      assert.equal(state.overflow,false);
+      if(width===390) assert.ok(state.panes[1].y>state.panes[0].y+state.panes[0].height && state.panes.every(p=>p.width>=290));
+      else assert.ok(Math.abs(state.panes[0].y-state.panes[1].y)<1 && state.panes[0].width>=250);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client, `(() => {const select=document.querySelector('.approved-export-options select');select.value='jpeg';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await until(() => evaluate(client, `!document.querySelector('.approved-export .strict-comparison')`),'preview dismissal on format change');
+    await evaluate(client, `(() => {const select=document.querySelector('.approved-export-options select');select.value='png';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()`);
+    await until(() => evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),'reopened preview');
     assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Download approved output bundle').disabled`), true);
     await client.call('Page.setDownloadBehavior', {behavior:'allow', downloadPath:userDir});
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const box=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes('I inspected every converted output'));box.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Download approved output bundle').click()})()`);
