@@ -123,6 +123,17 @@ async function styledFixture(style = 'studio') {
   return entry;
 }
 
+test('output provenance preserves a valid protected evidence digest', async () => {
+  for (const makeEntry of [fixture, styledFixture]) {
+    const entry = await makeEntry();
+    entry.provenance.protectedEvidenceSha256 = 'a'.repeat(64);
+    const contents = await unpack(await packageApprovedOutputs(randomUUID(), [entry], signal()));
+    assert.equal(contents[`provenance/${entry.selection.assetId}.json`].protectedEvidenceSha256, 'a'.repeat(64));
+    entry.provenance.protectedEvidenceSha256 = 'not-a-hash';
+    await assert.rejects(packageApprovedOutputs(randomUUID(), [entry], signal()), /provenance/i);
+  }
+});
+
 test('exports only a valid immediate retry parent and accepts historical provenance without it', async () => {
   for (const makeEntry of [fixture, styledFixture]) {
     const entry = await makeEntry(), product = randomUUID(), path = `provenance/${entry.selection.assetId}.json`;

@@ -1596,7 +1596,7 @@ function verifyStrictMapping(mapping: StrictMapping, sourceWidth: number, source
 type VisualProvenance = {
   assetSha256: string; sourceSha256: string; maskId: string; maskSha256: string;
   sceneAssetId: string; sceneSha256: string; productSha256: string;
-  recipeSha256?: string; adSha256?: string;
+  recipeSha256?: string; adSha256?: string; protectedEvidenceSha256?: string;
 };
 type VisualReport = {
   qaId: string; assetId: string; sourceSha256: string; lockMode: 'STRICT';
@@ -1617,15 +1617,15 @@ export type VisualDecisionRecord = VisualProvenance & {
 };
 export type StoredVisualDecision = Omit<VisualDecisionRecord, 'current'>;
 type CheckedVisualHistory = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[] };
-type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string; importedReviewRequired: boolean; recipeSha256?: string; adSha256?: string };
+type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string; importedReviewRequired: boolean; recipeSha256?: string; adSha256?: string; protectedEvidenceSha256?: string };
 type VisualOperation =
-  | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string; expectedRecipeSha256?: string; expectedAdSha256?: string; styleChecks?: StyleReviewChecks; findings: ReviewFinding[] }
+  | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string; expectedRecipeSha256?: string; expectedAdSha256?: string; expectedProtectedEvidenceSha256?: string; styleChecks?: StyleReviewChecks; findings: ReviewFinding[] }
   | { kind: 'decision'; assetId: string; reportId: string; decision: 'APPROVED' | 'REJECTED' }
   | { kind: 'list'; assetId: string };
 
 const provenanceKeys = ['assetSha256', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'productSha256'] as const;
 function sameProvenance(a: VisualProvenance, b: VisualProvenance): boolean {
-  return provenanceKeys.every((key) => a[key] === b[key]) && a.recipeSha256 === b.recipeSha256 && a.adSha256 === b.adSha256;
+  return provenanceKeys.every((key) => a[key] === b[key]) && a.recipeSha256 === b.recipeSha256 && a.adSha256 === b.adSha256 && a.protectedEvidenceSha256 === b.protectedEvidenceSha256;
 }
 function exactKeys(value: object, keys: string[]): boolean {
   return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
@@ -1644,6 +1644,7 @@ function validVisualBase(row: VisualProvenance & { qaId: string; assetId: string
     [row.assetSha256, row.sourceSha256, row.maskSha256, row.sceneSha256, row.productSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash)) &&
     (row.recipeSha256 === undefined || (typeof row.recipeSha256 === 'string' && hashPattern.test(row.recipeSha256))) &&
     (row.adSha256 === undefined || (row.recipeSha256 !== undefined && typeof row.adSha256 === 'string' && hashPattern.test(row.adSha256))) &&
+    (row.protectedEvidenceSha256 === undefined || (typeof row.protectedEvidenceSha256 === 'string' && hashPattern.test(row.protectedEvidenceSha256))) &&
     typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt));
 }
 
@@ -1661,7 +1662,7 @@ function checkedVisualHistory(rows: unknown[], productId: string, attemptId: str
     if (!value || typeof value !== 'object') throw new Error('A visual review record is corrupt.');
     const row = value as VisualReviewRecord | StoredVisualDecision;
     if (!validVisualBase(row, productId, attemptId, assetId)) throw new Error('A visual review record has invalid identity or provenance.');
-    const common = [...base, ...(row.recipeSha256 === undefined ? [] : ['recipeSha256']), ...(row.adSha256 === undefined ? [] : ['adSha256'])];
+    const common = [...base, ...(row.recipeSha256 === undefined ? [] : ['recipeSha256']), ...(row.adSha256 === undefined ? [] : ['adSha256']), ...(row.protectedEvidenceSha256 === undefined ? [] : ['protectedEvidenceSha256'])];
     if (row.kind === 'visual-review') {
       if (!exactKeys(row, [...common, 'revision', 'report', 'scoresText', 'checks', 'variant', ...(row.recipeSha256 ? ['styleId', 'styleChecks'] : [])]) ||
           !Number.isSafeInteger(row.revision) || row.revision < 1 || !validateQaReport(row.report) ||
@@ -1816,7 +1817,7 @@ export async function validateBackupHistory(product: Product, sources: BackupSou
     const rows = history.reviews.filter((row) => row.assetId === asset.assetId);
     const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: composite.sourceSha256, maskId: composite.maskId,
       maskSha256: composite.maskSha256, sceneAssetId: composite.sceneAssetId, sceneSha256: composite.sceneSha256,
-      productSha256: rows[0]?.productSha256 ?? '0'.repeat(64), ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
+      productSha256: rows[0]?.productSha256 ?? '0'.repeat(64), ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}), ...(composite.protectedEvidenceSha256 ? { protectedEvidenceSha256: composite.protectedEvidenceSha256 } : {}) };
     const source = sources.find((item) => item.metadata.assetId === composite.sourceAssetId);
     if (!source) throw new Error('The review source is missing.');
     checkedVisualHistory(rows, product.productId, composite.attemptId, composite.assetId, provenance, source.metadata, composite.recipe?.styleId);
@@ -2014,7 +2015,7 @@ async function strictCompositeTransaction(
                 const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: inputs.sourceSha256,
                   maskId: inputs.maskId, maskSha256: inputs.maskSha256, sceneAssetId: inputs.sceneAssetId,
                   sceneSha256: inputs.sceneSha256, productSha256: attempt.styleId ? await productSnapshotFingerprint(product) : await sha256(new TextEncoder().encode(JSON.stringify(product))),
-                  ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
+                  ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}), ...(composite.protectedEvidenceSha256 ? { protectedEvidenceSha256: composite.protectedEvidenceSha256 } : {}) };
                 if (!verifying) return;
                 const history = checkedVisualHistory(reviewsRequest!.result, productId, attemptId, visual.assetId, provenance, source, composite.recipe?.styleId);
                 const entries = (await Promise.all((reviewsRequest!.result as Array<VisualReviewRecord | StoredVisualDecision>)
@@ -2035,7 +2036,7 @@ async function strictCompositeTransaction(
                 }
                 if (visual.kind === 'list') result = { ...history, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256,
                   importedReviewRequired: barrier !== undefined && history.reviews.length <= barrier,
-                  ...(provenance.recipeSha256 ? { recipeSha256: provenance.recipeSha256 } : {}), ...(provenance.adSha256 ? { adSha256: provenance.adSha256 } : {}) };
+                  ...(provenance.recipeSha256 ? { recipeSha256: provenance.recipeSha256 } : {}), ...(provenance.adSha256 ? { adSha256: provenance.adSha256 } : {}), ...(provenance.protectedEvidenceSha256 ? { protectedEvidenceSha256: provenance.protectedEvidenceSha256 } : {}) };
                 else if (visual.kind === 'review') {
                   if (typeof visual.expectedProductSha256 !== 'string' || !hashPattern.test(visual.expectedProductSha256) ||
                       visual.expectedProductSha256 !== provenance.productSha256) {
@@ -2046,6 +2047,7 @@ async function strictCompositeTransaction(
                     throw new Error('The composite changed since you reviewed it. Reload and review the current image before saving.');
                   }
                   if (visual.expectedRecipeSha256 !== provenance.recipeSha256 || visual.expectedAdSha256 !== provenance.adSha256) throw new Error('The recipe or advertisement changed since it was reviewed.');
+                  if (visual.expectedProtectedEvidenceSha256 !== provenance.protectedEvidenceSha256) throw new Error('The protected evidence changed since it was reviewed.');
                   validateVisualNote(visual.note, visual.checks, visual.styleChecks);
                   validateReviewFindings(visual.findings, source);
                   const evaluated = composite.recipe
@@ -2248,10 +2250,10 @@ async function visualReviewOperation(productId: string, attemptId: string, opera
 
 export async function createVisualReview(productId: string, attemptId: string, assetId: string, scoresText: ReviewScores,
   checks: ReviewChecks, variant: ReviewVariant, note: string, expectedProductSha256: string,
-  expectedAssetSha256: string, signal?: AbortSignal, expectedRecipeSha256?: string, expectedAdSha256?: string, styleChecks?: StyleReviewChecks, findings: ReviewFinding[] = []): Promise<VisualReviewRecord> {
+  expectedAssetSha256: string, signal?: AbortSignal, expectedRecipeSha256?: string, expectedAdSha256?: string, styleChecks?: StyleReviewChecks, findings: ReviewFinding[] = [], expectedProtectedEvidenceSha256?: string): Promise<VisualReviewRecord> {
   validateReviewFindings(findings);
   const operation: VisualOperation = { kind: 'review', assetId, scoresText: structuredClone(scoresText),
-    checks: structuredClone(checks), variant, note, expectedProductSha256, expectedAssetSha256, expectedRecipeSha256, expectedAdSha256,
+    checks: structuredClone(checks), variant, note, expectedProductSha256, expectedAssetSha256, expectedRecipeSha256, expectedAdSha256, expectedProtectedEvidenceSha256,
     findings: structuredClone(findings), ...(styleChecks === undefined ? {} : { styleChecks: structuredClone(styleChecks) }) };
   return await visualReviewOperation(productId, attemptId, operation, signal) as VisualReviewRecord;
 }
@@ -2276,7 +2278,7 @@ export type ApprovedExportProvenance = {
   sourceAssetId: string; sourceSha256: string; maskId: string; maskSha256: string;
   sceneAssetId: string; sceneSha256: string; assetSha256: string; productSha256: string;
   presetVersion?: string; sceneContext?: StudioSceneContext; selectedFactIds?: string[]; productSnapshotFingerprint?: string; topViewConfirmed?: true;
-  recipe?: StrictRecipe; recipeSha256?: string; adSha256?: string; mapping?: StrictMapping;
+  recipe?: StrictRecipe; recipeSha256?: string; adSha256?: string; protectedEvidenceSha256?: string; mapping?: StrictMapping;
 };
 export type ApprovedExportEntry = { selection: ApprovedExportSelection; blob: Blob; ad?: Blob; copyLayer?: Blob; provenance: ApprovedExportProvenance };
 
@@ -2337,6 +2339,10 @@ function exportRequest<T>(request: IDBRequest<T>): Promise<T> {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('Could not read export data.'));
   });
+}
+
+class StaleProtectedReviewError extends Error {
+  constructor() { super('The protected evidence changed since approval. Record a new review and decision.'); }
 }
 
 // All reads and asynchronous image verification remain inside one locked snapshot.
@@ -2495,7 +2501,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
           const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: source.sha256,
             maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId,
             sceneSha256: scene.sha256, productSha256,
-            ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
+            ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}), ...(composite.protectedEvidenceSha256 ? { protectedEvidenceSha256: composite.protectedEvidenceSha256 } : {}) };
           const history = checkedVisualHistory(reviews, productId, attempt.attemptId, selection.assetId, provenance, source, composite.recipe?.styleId);
           const entries = (await Promise.all((reviews as Array<VisualReviewRecord | StoredVisualDecision>)
             .map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
@@ -2508,6 +2514,8 @@ async function approvedExportTransaction(productId: string, selections: Approved
           const barrier = checkedImportReviewBarrier(importedBarrier, selection.assetId, history.reviews.length);
           if (barrier !== undefined && (!review || review.revision <= barrier)) throw new Error('Imported approvals are untrusted. Create a fresh local review and decision.');
           const decision = history.decisions.find((item) => item.qaId === selection.decisionId);
+          if (review && decision && review.qaId === selection.reviewId && decision.reportId === review.qaId &&
+              review.protectedEvidenceSha256 !== provenance.protectedEvidenceSha256) throw new StaleProtectedReviewError();
           if (!review || review.qaId !== selection.reviewId || !sameProvenance(review, provenance) ||
               review.report.status !== 'PASS_CANDIDATE' || review.report.hardVetoFindings.length !== 0 ||
               Object.values(review.checks).some((check) => check !== 'MATCH') ||
@@ -2597,7 +2605,8 @@ export async function listApprovedExportCandidates(productId: string, signal?: A
     checkCompositeCancellation(cancellation);
     if (typeof selection.productSha256 === 'string' && hashPattern.test(selection.productSha256) &&
         selection.productSha256 !== productSha256 && selection.productSha256 !== versionedProductSha256) continue;
-    await loadApprovedExportBatch(productId, [selection], cancellation);
+    try { await loadApprovedExportBatch(productId, [selection], cancellation); }
+    catch (error) { if (error instanceof StaleProtectedReviewError) continue; throw error; }
     approved.push(selection);
   }
   return approved;

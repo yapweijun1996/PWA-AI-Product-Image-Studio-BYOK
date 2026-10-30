@@ -3,6 +3,8 @@ import test from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { deflateSync, inflateSync } from 'node:zlib';
 import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
+import { BlobReader, BlobWriter, Uint8ArrayReader, ZipReader, ZipWriter } from '@zip.js/zip.js/lib/zip-core-native.js';
 import { build } from 'vite';
 import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, studioEstimateUSD } from '../studio-policy.mjs';
 
@@ -164,7 +166,7 @@ async function ready() {
 }
 const review = async (f, checks = matches, variant = 'default', values = scores) =>
   createVisualReview(f.productId, f.attemptId, f.composite.assetId, values, checks, variant, 'Upper label text is blurred.',
-    (await history(f)).productSha256, f.composite.sha256);
+    (await history(f)).productSha256, f.composite.sha256, undefined, undefined, undefined, undefined, [], f.composite.protectedEvidenceSha256);
 const decision = (f, report, choice = 'APPROVED', signal) =>
   recordVisualDecision(f.productId, f.attemptId, f.composite.assetId, report.qaId, choice, signal);
 const history = (f) => listVisualReviews(f.productId, f.attemptId, f.composite.assetId);
@@ -201,13 +203,88 @@ test('export rejects a changed protected-evidence digest after approval', async 
   const f = await fixture(sourceBytes, true);
   f.composite = await save(f, await load(f));
   assert.ok(f.composite.protectedEvidenceSha256);
+  await assert.rejects(createVisualReview(f.productId, f.attemptId, f.composite.assetId, scores, matches, 'default', 'Checked',
+    (await history(f)).productSha256, f.composite.sha256), /protected evidence changed/i);
   const { selection } = await approved(f);
-  assert.equal((await loadApprovedExportBatch(f.productId, [selection])).length, 1);
+  const historyBefore = await history(f);
+  assert.equal(historyBefore.reviews[0].protectedEvidenceSha256, f.composite.protectedEvidenceSha256);
+  assert.equal(historyBefore.decisions[0].protectedEvidenceSha256, f.composite.protectedEvidenceSha256);
+  const [exported] = await loadApprovedExportBatch(f.productId, [selection]);
+  assert.equal(exported.provenance.protectedEvidenceSha256, f.composite.protectedEvidenceSha256);
+  const builtBackup = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
+    build: { write: false, minify: false, lib: { entry: 'src/backup.ts', formats: ['es'], fileName: 'backup' } } });
+  const out = Array.isArray(builtBackup) ? builtBackup[0] : builtBackup;
+  const backupCode = out.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
+  const { createBackup, inspectBackup } = await import(`data:text/javascript;base64,${Buffer.from(backupCode).toString('base64')}`);
+  const signal = new AbortController().signal, archive = await createBackup(f.productId, signal, () => {});
+  const reader = new ZipReader(new BlobReader(archive), { useWebWorkers: false }), files = new Map();
+  for (const entry of await reader.getEntries()) files.set(entry.filename, new Uint8Array(await (await entry.getData(new BlobWriter())).arrayBuffer()));
+  await reader.close();
+  const manifest = JSON.parse(new TextDecoder().decode(files.get('export-manifest.json')));
+  assert.equal(manifest.schemaVersion, '5.0.0');
+  manifest.schemaVersion = '4.0.0'; files.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(manifest)));
+  const writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false, level: 0 });
+  for (const [path, bytes] of files) await writer.add(path, new Uint8ArrayReader(bytes));
+  await assert.rejects(inspectBackup(new File([await writer.close()], 'downgraded.zip'), signal, () => {}), /version.*protected review/i);
+  const backup = await inspectBackup(new File([archive], 'backup.zip'), signal, () => {});
+  const originalIndexedDB = globalThis.indexedDB;
+  try {
+    globalThis.indexedDB = new IDBFactory();
+    const isolated = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}#protected-review-restore`);
+    await isolated.restoreProduct(backup.product, backup.sources, backup.masks, backup.history);
+    const restored = await isolated.listVisualReviews(f.productId, f.attemptId, f.composite.assetId);
+    assert.equal(restored.reviews[0].protectedEvidenceSha256, f.composite.protectedEvidenceSha256);
+    assert.equal(restored.decisions[0].protectedEvidenceSha256, f.composite.protectedEvidenceSha256);
+    assert.equal(restored.decisions[0].current, false);
+  } finally { globalThis.indexedDB = originalIndexedDB; }
   const changed = { version: 1, sourceSha256: f.source.sha256, maskSha256: hash(sourceBytes), width: 2, height: 1,
     regions: [{ x: 1, y: 0, width: 1, height: 1 }] };
   await mutate(f.db, 'masks', f.maskId, (row) => ({ ...row, protectedEvidence: changed, protectedEvidenceSha256: hash(Buffer.from(JSON.stringify(changed))) }));
   await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /protected evidence.*changed/i);
   await assert.rejects(listApprovedExportCandidates(f.productId), /protected evidence.*changed/i);
+  await mutate(f.db, 'generatedAssets', f.composite.assetId, (row) => ({ ...row, protectedEvidenceSha256: hash(Buffer.from(JSON.stringify(changed))) }));
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /protected evidence changed/i);
+  assert.deepEqual(await listApprovedExportCandidates(f.productId), []);
+});
+
+test('legacy unbound approval is preserved but omitted from export candidates', async () => {
+  const f = await fixture(sourceBytes, true);
+  f.composite = await save(f, await load(f));
+  const { selection } = await approved(f);
+  for (const id of [selection.reviewId, selection.decisionId]) {
+    await mutate(f.db, 'qaReports', id, (row) => { const { protectedEvidenceSha256, ...legacy } = row; return legacy; });
+  }
+  const rows = await new Promise((resolve, reject) => {
+    const tx = f.db.transaction('qaReports', 'readonly'), request = tx.objectStore('qaReports').index('assetId').getAll(f.composite.assetId);
+    tx.oncomplete = () => resolve(request.result); tx.onabort = () => reject(tx.error);
+  });
+  const entries = rows.map((row) => `${row.qaId}:${hash(Buffer.from(JSON.stringify(row)))}`).sort();
+  await mutate(f.db, 'userSettings', `visual-review-head:${f.composite.assetId}`, (head) => ({ ...head, entries }));
+  const old = await history(f);
+  assert.equal(old.reviews.length, 1);
+  assert.equal(old.decisions[0].current, false);
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /protected evidence changed/i);
+  assert.deepEqual(await listApprovedExportCandidates(f.productId), []);
+  const fresh = await review(f), receipt = await decision(f, fresh);
+  assert.equal(receipt.protectedEvidenceSha256, f.composite.protectedEvidenceSha256);
+  assert.equal((await listApprovedExportCandidates(f.productId)).length, 1);
+});
+
+test('a changed evidence binding invalidates an undecided review', async () => {
+  const f = await fixture(sourceBytes, true);
+  f.composite = await save(f, await load(f));
+  const report = await review(f);
+  const changed = { version: 1, sourceSha256: f.source.sha256, maskSha256: hash(sourceBytes), width: 2, height: 1,
+    regions: [{ x: 1, y: 0, width: 1, height: 1 }] };
+  const digest = hash(Buffer.from(JSON.stringify(changed)));
+  await mutate(f.db, 'masks', f.maskId, (row) => ({ ...row, protectedEvidence: changed, protectedEvidenceSha256: digest }));
+  await mutate(f.db, 'generatedAssets', f.composite.assetId, (row) => ({ ...row, protectedEvidenceSha256: digest }));
+  await assert.rejects(decision(f, report), /no longer current/i);
+  await assert.rejects(review(f), /protected evidence changed/i);
+  f.composite.protectedEvidenceSha256 = digest;
+  const fresh = await review(f);
+  const receipt = await decision(f, fresh);
+  assert.equal(receipt.protectedEvidenceSha256, digest);
 });
 
 test('only the latest explicit matching approval is discoverable and exported with allowlisted provenance', async () => {
