@@ -344,6 +344,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-050 / T-084 mask keyboard and zoom observation — 2026-10-30
+
+- **Evidence:** In an isolated desktop Chromium context with a synthetic 64×64 source and actual Vite development UI, a 320×740 emulated touch viewport displayed a 224 px mask canvas at 100% zoom. Keyboard Home/End on the zoom slider changed the value to 50%/300%; at 300% the canvas measured 672 px within a 224 px horizontally scrollable region, while the document remained 320 px wide. Selecting erase and activating the non-drag brush changed the center overlay pixel from opaque to transparent; selecting draw, focusing the same button and pressing Space restored it to opaque. The focused button had a solid outline. Review and Save mask were activated, and the editor reopened after a viewport-triggered reload.
+- **Desktop sample:** At 1280×800, the 100% canvas measured 872 px; keyboard End enlarged it to 2616 px within an 872 px scroll region, with no document-width overflow. Chromium reported a canvas readback performance warning during instrumentation; no error was reported. No real product, credential or provider request was used.
+- **Limits:** This is emulation and selected controls, not physical touch, a complete keyboard/screen-reader/contrast audit, pixel-level saved-mask verification or owner approval of visual anchors. Programmatic focus was used for the Space check; full Tab order was not tested here. T-050 remains IMPLEMENTED_UNVERIFIED and T-084 remains PENDING.
+- **Rollback:** Revert this observation and documentation hashes; preserve user data and masks.
+
 ## T-083 proposed seller session script — 2026-10-30
 
 **Preparation only:** T-084 owner review and consenting participant sessions are still pending. This script is not evidence of seller research, deployment approval or permission to contact anyone. Use a disposable isolated build and synthetic product/image data; generation outcomes, costs and billing states must be visibly labelled as simulated. Never ask for a real API key, seller credential, private product file or paid call. Prepare separately for the supported device and record build, browser, viewport and input method.
