@@ -214,8 +214,19 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').click()})()`);
     await until(()=>evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));return li.innerText.includes('Reviewed at')&&[...li.querySelectorAll('button')].some(b=>b.textContent.startsWith('Prepare retry for Studio')&&!b.disabled)})()`),'unknown reviewed');
     assert.equal(providerCalls,2,'Reviewing an unknown attempt does not send a request.');
-    await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prepare retry for Studio')).click()})()`);
+    await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));const button=[...li.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prepare retry for Studio'));button.scrollIntoView({block:'center'});button.focus()})()`);
+    await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:' ',code:'Space',windowsVirtualKeyCode:32});
+    await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:' ',code:'Space',windowsVirtualKeyCode:32});
     await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Retry of attempt ${unknownId}')`),'prepared retry');
+    const retryVisibility=await evaluate(client,`(() => {const target=document.querySelector('#retry-review-heading') || [...document.querySelectorAll('.studio-panel form strong')].find(e=>e.textContent.startsWith('Retry of attempt'));const r=target?.getBoundingClientRect();return {top:r?.top,viewport:innerHeight,focused:document.activeElement===target}})()`);
+    assert.ok(retryVisibility.top>=0 && retryVisibility.top<retryVisibility.viewport && retryVisibility.focused,`The prepared retry is visible and focused: ${JSON.stringify(retryVisibility)}`);
+    for (const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      await evaluate(client,`document.querySelector('#retry-review-heading').scrollIntoView({block:'start'})`);
+      const layout=await evaluate(client,`(() => {const r=document.querySelector('#retry-review-heading').getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,overflow:document.documentElement.scrollWidth>innerWidth,focused:document.activeElement?.id}})()`);
+      assert.ok(layout.left>=0 && layout.right<=width && layout.top>=8 && layout.top<800 && !layout.overflow && layout.focused==='retry-review-heading',`Retry heading fits and keeps focus at ${width}px.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     assert.equal(providerCalls,2,'Preparing a retry does not send a request.');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Retry needs fresh consent.');
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);

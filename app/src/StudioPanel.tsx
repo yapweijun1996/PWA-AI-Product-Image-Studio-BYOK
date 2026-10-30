@@ -275,7 +275,17 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const running = useRef(false);
   const gatewayCheck = useRef(0);
   const mounted = useRef(false);
+  const retryHeading = useRef<HTMLHeadingElement>(null);
+  const retryFocusOrigin = useRef<Element | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    const origin = retryFocusOrigin.current;
+    retryFocusOrigin.current = null;
+    if (retry && origin && (document.activeElement === origin || document.activeElement === document.body)) {
+      retryHeading.current?.scrollIntoView({ block: 'start' });
+      retryHeading.current?.focus({ preventScroll: true });
+    }
+  }, [retry]);
   useUnsavedChanges(busy || topConfirmed || Object.values(styleConsent).some(Boolean) || Object.values(attemptOverrides).some(Boolean) || Object.values(sessionOverrides).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
   const localBlockers = entries?.filter((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? [];
   const unresolved = otherBlockers === null || otherBlockers.length > 0 || localBlockers.length > 0;
@@ -459,6 +469,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
 
   async function prepareRetry(previous: StudioAttempt) {
     if (running.current || busy) return;
+    const focusOrigin = document.activeElement;
     running.current = true; setBusy(true); onBusyChange(true); setError(''); setNotice(''); clearQueueConsent(); setRetry(null);
     try {
       const [history, input, hash] = await Promise.all([
@@ -475,7 +486,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
         throw new Error('This retry is no longer eligible or its original inputs have changed. Start a new job instead.');
       }
       setEntries(history); setSelectedStyles([current.styleId]); setSourceByStyle({ [current.styleId]: current.sourceAssetId });
-      setSelectedFacts([...current.selectedFactIds]); setRetry(current);
+      setSelectedFacts([...current.selectedFactIds]); retryFocusOrigin.current = focusOrigin; setRetry(current);
       setNotice('Retry loaded for review only. No request has been sent; fresh consent and gateway approval are required.');
     } catch {
       setError('This retry is no longer eligible or its original inputs are unavailable or changed. Start a new job instead.');
@@ -663,7 +674,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       </li>)}</ul>{gateway.hasMoreLegacyWaits && <p>More earlier waits remain; review this page and check the gateway again.</p>}
     </section>}
     <form onSubmit={generate}>
-      {retry && <div><p><strong>Retry of attempt {retry.attemptId}</strong> · job {retry.jobId}. Previous outcome: {retry.status}; a previous charge may have occurred, including for a reviewed UNKNOWN. The current estimate is {planError || !plans.length ? 'unavailable' : `$${plans[0].estimate} USD`}; this is a separate potentially billable call. No automatic retry occurs.</p><p>Original source, mask, facts, style and prompt are locked. To change inputs or preset, start a new job.</p><button type="button" className="secondary-button" disabled={busy} onClick={() => { setRetry(null); clearQueueConsent(); }}>Start a new job instead</button></div>}
+      {retry && <div><h3 id="retry-review-heading" tabIndex={-1} ref={retryHeading}>Retry of attempt {retry.attemptId}</h3><p>Job {retry.jobId}. Previous outcome: {retry.status}; a previous charge may have occurred, including for a reviewed UNKNOWN. The current estimate is {planError || !plans.length ? 'unavailable' : `$${plans[0].estimate} USD`}; this is a separate potentially billable call. No automatic retry occurs.</p><p>Original source, mask, facts, style and prompt are locked. To change inputs or preset, start a new job.</p><button type="button" className="secondary-button" disabled={busy} onClick={() => { setRetry(null); clearQueueConsent(); }}>Start a new job instead</button></div>}
       <p>Session estimate so far: {sessionTotal === null ? 'unavailable' : `$${sessionTotal} USD`}. Includes prepared and failed attempts in this browser-tab session; it is not provider spend or a hard cap.</p>
       <label htmlFor="studio-session-limit">Optional session estimated USD soft limit</label><input id="studio-session-limit" value={sessionLimit} onChange={(event) => { const value = event.target.value; setSessionLimit(value); clearQueueConsent(); try { sessionStorage.setItem('studio-session-limit', value); } catch { setBudgetSessionId(null); setError('Session settings are unavailable. Generation is disabled.'); } }} placeholder="e.g. 0.050000" disabled={busy} inputMode="decimal" />
       <label htmlFor="studio-limit">Optional per-attempt estimated USD soft limit</label><input id="studio-limit" value={max} onChange={(event) => { const value = event.target.value; setMax(value); clearQueueConsent(); try { sessionStorage.setItem('studio-attempt-limit', value); } catch { setBudgetSessionId(null); setError('Session settings are unavailable. Generation is disabled.'); } }} placeholder="e.g. 0.010000" disabled={busy} inputMode="decimal" />
