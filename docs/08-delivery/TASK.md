@@ -731,6 +731,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
 - **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
 
+## T-052 interim fidelity notice — 2026-10-30
+
+- **Change:** Review and approved-export panels now explain that mask coverage is not automatically verified, that MATCH or human approval can miss altered or hidden labels, and that required details must be compared with the original. This disclosure does not enforce coverage or resolve [BUG-007](../../BUG.md).
+- **Checks and limits:** The production build and TypeScript check passed with the existing large-chunk warning. On a synthetic product created via a development module, Chromium showed the export notice at 320, 390 and 1280 CSS px with no document-level horizontal overflow; the 320 px export panel was visually inspected. The review notice was checked in source but not exercised in a saved-composite browser journey. No physical device, screen reader, approval/export E2E or provider was tested.
+- **Rollback:** Revert both notices and this record; preserve all images and review history. Remove or revise the notices only when their claims no longer describe the actual behavior.
+
 ## T-052 pending approval/export regression — 2026-10-30
 
 - **Change:** Added a TODO acceptance test in `app/tests/approved-export-storage.test.mjs` using the synthetic two-pixel source, partially transparent mask, all-MATCH maximum-score review and approved export. The expected behavior is a protected-region-related rejection before export; the present implementation instead reaches export. The test reports `Missing expected rejection` and must not be counted as passing because Node does not fail the suite for TODO tests.
