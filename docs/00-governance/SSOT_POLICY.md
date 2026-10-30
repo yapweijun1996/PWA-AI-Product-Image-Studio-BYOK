@@ -44,7 +44,7 @@ For **actual implementation state**: (1) inspected live code/config and reposito
 
 ## Semantic version policy
 
-- The initial bundle was **SSOT 1.0.0 / DRAFT**. The current documentation baseline is **SSOT 2.0.0 / DRAFT**, reflecting the incompatible proposed API change to the owner-selected server-configured key model; it is not software v2.
+- The initial bundle was **SSOT 1.0.0 / DRAFT**; **SSOT 2.0.0 / DRAFT** reflected the server-configured key model. The current **SSOT 3.0.0 / DRAFT** adds mandatory review-revision binding to image attempts. This is a breaking draft contract change, not a deployed software release; the local server-key route namespace remains `/api/v2`, with no compatibility shim.
 - MAJOR: incompatible API/schema or product invariant change.
 - MINOR: compatible new features, approved architectural ADR, additional style or nonbreaking API fields.
 - PATCH: clarification, link, typo, metadata update without changing contract semantics.

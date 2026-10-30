@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
-  version: 2.0.0
+  version: 3.0.0
   description: >-
-    Target self-hosted same-origin API contract. A local-only development
-    authentication and provider-session subset is implemented; image operations
-    and production deployment are not. The owner configures the OpenAI key on
-    their server; the browser never submits it.
+    Draft contract revision 3.0.0 requires reviewRevision for image attempts.
+    The local-only gateway retains /api/v2 as the server-key route namespace;
+    no deployed compatibility endpoint or production deployment is claimed.
+    A default-disabled Studio scene subset has only synthetic-provider evidence.
+    The owner configures the OpenAI key on their server; the browser never submits it.
     Source photo/brand QA remains local and requires human approval.
 servers:
   - url: /api/v2
@@ -202,6 +203,45 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /images/revision:
+    get:
+      tags: [Images]
+      operationId: getImageReviewRevision
+      summary: Read the durable global review revision before consent
+      description: >-
+        Fetch before enabling confirmation and capture the returned revision at the
+        consent click. Each first durable acknowledgement increments this revision
+        once globally; replay of an existing acknowledgement does not increment it.
+        This read does not authorize or submit a provider request.
+      security:
+        - AppSession: []
+          ProviderSession: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: Current revision; response is no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [reviewRevision]
+                properties:
+                  reviewRevision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Feature disabled or journal unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /images/approvals:
     post:
       tags: [Images]
@@ -219,6 +259,9 @@ paths:
         Keep the approval secret out of agent context, logs and persistent browser
         storage. Return no-store. The server must not rely on client estimates as
         authoritative pricing or on the approval alone as authentication.
+        The submitted reviewRevision must equal the current global revision;
+        a mismatch returns APPROVAL_STALE as a definitive pre-send failure and
+        requires fresh consent, not an automatic retry.
       security:
         - AppSession: []
           ProviderSession: []
@@ -254,6 +297,86 @@ paths:
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
           $ref: '#/components/responses/RateLimited'
+  /images/attempts/{clientAttemptId}/acknowledgement:
+    post:
+      tags: [Images]
+      operationId: acknowledgeImageAttempt
+      summary: Record explicit review of a previously ambiguous attempt
+      description: >-
+        Records a durable, idempotent acknowledgement without making or authorizing
+        a provider request. UNKNOWN requires its matching owned in-flight marker and
+        durable result; a missing, legacy or mismatched marker is not recoverable.
+        A durable definitive result may be acknowledged even if its marker is
+        missing; cleanup removes only its matching marker. A new-format definitive
+        result without a durable cleanup record or acknowledgement blocks new
+        attempts globally, including after restart. Replay returns the original
+        receipt and never clears another attempt's marker.
+        The reservation and recorded outcome remain immutable; a new request needs
+        a new UUID and a separate explicit authorization. The local UNKNOWN outcome
+        remains UNKNOWN. A journal failure leaves the client blocked; replay is safe.
+      security:
+        - AppSession: []
+          ProviderSession: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: clientAttemptId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [acknowledgePossibleCharge]
+              properties:
+                acknowledgePossibleCharge:
+                  type: boolean
+                  const: true
+      responses:
+        '200':
+          description: Durable original acknowledgement receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [clientAttemptId, recordedOutcome, acknowledgedAt]
+                properties:
+                  clientAttemptId:
+                    type: string
+                    format: uuid
+                  recordedOutcome:
+                    type: string
+                    enum: [UNKNOWN, DEFINITIVE_SUCCESS, DEFINITIVE_FAILURE]
+                  acknowledgedAt:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Attempt missing, unreviewable, or ownership cannot be proven
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '503':
+          description: Feature disabled or journal unavailable; acknowledgement may be replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /images/generate:
     post:
       tags: [Images]
@@ -267,9 +390,17 @@ paths:
         The server checks the one-use approval against the current app/provider
         sessions and canonical request digest. X-Client-Request-Id MUST equal
         clientAttemptId. Before sending, the gateway atomically consumes the approval
-        and durably reserves the attempt per authenticated principal; a duplicate
-        must not submit again, even after restart. Changed inputs, expired or replayed
-        approvals are rejected; ambiguous outcomes remain UNKNOWN.
+        and durably reserves the attempt per authenticated principal; a duplicate,
+        including an already active attempt before reservation publication, returns
+        409 CONFLICT with outcome UNKNOWN, not a claim about the original result.
+        An invalid, expired, mismatched or consumed approval also returns CONFLICT
+        with UNKNOWN; this does not assert that the identified attempt was not sent.
+        An unrelated blocked attempt returns ATTEMPT_BUSY with outcome
+        DEFINITIVE_FAILURE. Ambiguous outcomes remain UNKNOWN and must not be
+        automatically resubmitted, even after restart.
+        The submitted consent revision is checked again under the journal lock
+        immediately before the provider request starts, serialized with reviews.
+        A mismatch returns APPROVAL_STALE without a provider call.
         All authorization and input limits are enforced server-side.
       security:
         - AppSession: []
@@ -292,6 +423,8 @@ paths:
               schema:
                 type: string
               example: no-store
+            X-Studio-Cleanup-Pending:
+              $ref: '#/components/headers/StudioCleanupPending'
           content:
             application/json:
               schema:
@@ -303,16 +436,53 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: Duplicate attempt or invalid, expired, mismatched or consumed approval returns CONFLICT with UNKNOWN; an unrelated blocked attempt returns ATTEMPT_BUSY with DEFINITIVE_FAILURE, or consent may be stale
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
         '429':
-          $ref: '#/components/responses/RateLimited'
+          description: Rate limit reached; a definitive provider limit may require cleanup review
+          headers:
+            Retry-After:
+              schema:
+                type: string
+              description: Minimum delay in seconds when the provider supplies a valid bounded value.
+            X-Studio-Cleanup-Pending:
+              $ref: '#/components/headers/StudioCleanupPending'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '502':
-          $ref: '#/components/responses/UpstreamError'
+          description: Definitive provider rejection
+          headers:
+            X-Studio-Cleanup-Pending:
+              $ref: '#/components/headers/StudioCleanupPending'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '504':
           $ref: '#/components/responses/UnknownTimeout'
+        '503':
+          description: Journal unavailable or pre-send marker may require manual recovery (RECOVERY_REQUIRED); no provider request was sent
+          headers:
+            X-Studio-Cleanup-Pending:
+              $ref: '#/components/headers/StudioCleanupPending'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
 components:
+  headers:
+    StudioCleanupPending:
+      description: Present as 1 only when a definitive outcome was durably recorded but durable cleanup could not be established. Preserve the outcome and image; block further generation globally and require explicit acknowledgement before continuing.
+      schema:
+        type: string
+        enum: ['1']
   securitySchemes:
     AppSession:
       type: apiKey
@@ -408,7 +578,14 @@ components:
         - promptVersion
         - sourceAssetHashes
         - estimatedUSD
+        - reviewRevision
+        - outputFormat
       properties:
+        reviewRevision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Global revision captured when the user confirmed this exact attempt
         clientAttemptId:
           type: string
           format: uuid
@@ -520,7 +697,7 @@ components:
           properties:
             code:
               type: string
-              enum: [INVALID_INPUT, UNAUTHENTICATED, FORBIDDEN, RATE_LIMITED, CONFLICT, ATTEMPT_BUSY, PAYLOAD_TOO_LARGE, PROVIDER_ERROR, UPSTREAM_UNKNOWN, UNAVAILABLE, NOT_FOUND, INTERNAL_ERROR]
+              enum: [INVALID_INPUT, UNAUTHENTICATED, FORBIDDEN, RATE_LIMITED, PROVIDER_LIMIT, CONFLICT, ATTEMPT_BUSY, APPROVAL_STALE, PAYLOAD_TOO_LARGE, PROVIDER_ERROR, UPSTREAM_UNKNOWN, UNAVAILABLE, RECOVERY_REQUIRED, NOT_FOUND, INTERNAL_ERROR]
             message:
               type: string
               maxLength: 500
@@ -532,6 +709,7 @@ components:
             outcome:
               type: string
               enum: [DEFINITIVE_FAILURE, UNKNOWN]
+              description: UNKNOWN means this response cannot establish the identified attempt's original outcome; DEFINITIVE_FAILURE indicates a definite failure, not a claim about a different or previously submitted attempt.
             retryAfterSeconds:
               type: [integer, 'null']
               minimum: 0

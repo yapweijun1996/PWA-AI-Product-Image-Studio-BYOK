@@ -61,6 +61,18 @@ async function limitedText(response) {
     return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
   } finally { reader.releaseLock(); }
 }
+function retryAfterSeconds(response) {
+  const value = response.headers.get('retry-after');
+  if (!value) return null;
+  let seconds;
+  if (/^\d{1,5}$/.test(value)) seconds = Number(value);
+  else if (/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)) {
+    const at = Date.parse(value);
+    if (!Number.isFinite(at)) return null;
+    seconds = Math.max(0, Math.ceil((at - Date.now()) / 1000));
+  } else return null;
+  return seconds <= 86400 ? seconds : null;
+}
 export async function generateStudioScene({ apiKey, transport, timeoutMs }) {
   const controller = new AbortController();
   let timer;
@@ -72,6 +84,7 @@ export async function generateStudioScene({ apiKey, transport, timeoutMs }) {
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: STUDIO_MODEL, prompt: STUDIO_PROMPT, quality: STUDIO_QUALITY, size: STUDIO_SIZE, output_format: 'png', n: 1 })
       });
+      if (response.status === 429) return { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: retryAfterSeconds(response) };
       if (!response.ok) return { outcome: response.status >= 400 && response.status < 500 && response.status !== 408 ? 'DEFINITIVE_FAILURE' : 'UNKNOWN' };
       if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) throw new Error('Invalid provider response');
       const payload = JSON.parse(await limitedText(response));

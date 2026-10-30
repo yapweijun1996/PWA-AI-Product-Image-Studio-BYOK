@@ -127,7 +127,7 @@ def yaml_contract():
         return
     spec=yaml.safe_load((ROOT/'contracts/openapi.yaml').read_text('utf-8'))
     require(spec['openapi'].startswith('3.1.'),'must be OpenAPI 3.1')
-    paths=spec['paths']; expected=['/auth/login','/auth/session','/auth/logout','/session/connect','/session/status','/session','/images/approvals','/images/generate','/health']
+    paths=spec['paths']; expected=['/auth/login','/auth/session','/auth/logout','/session/connect','/session/status','/session','/images/revision','/images/approvals','/images/generate','/images/attempts/{clientAttemptId}/acknowledgement','/health']
     require(set(paths)==set(expected),'gateway endpoint list differs from reference design')
     require(spec['x-release-status']=='PARTIAL_LOCAL_NOT_DEPLOYED','contract incorrectly claims deployment or full implementation')
     # Verify all local $ref component pointers resolve; external refs are not used by this contract.
@@ -155,6 +155,16 @@ def yaml_contract():
     approval=paths['/images/approvals']['post']
     require({'AppSession','ProviderSession'}==set(approval['security'][0]),'approval requires both authorization sessions')
     require(any(p.get('$ref')=='#/components/parameters/AttemptApprovalId' for p in image['parameters']),'generation requires an attempt approval')
+    revision=paths['/images/revision']['get']
+    acknowledgement=paths['/images/attempts/{clientAttemptId}/acknowledgement']['post']
+    for action in (revision, acknowledgement):
+        require({'AppSession','ProviderSession'}==set(action['security'][0]),'image review requires both authorization sessions')
+        require(any(p.get('$ref')=='#/components/parameters/CsrfToken' for p in action['parameters']),'image review requires CSRF protection')
+    acknowledgement_body=acknowledgement['requestBody']['content']['application/json']['schema']
+    require(acknowledgement_body.get('additionalProperties') is False and 'acknowledgePossibleCharge' in acknowledgement_body.get('required',[]) and acknowledgement_body['properties']['acknowledgePossibleCharge'].get('const') is True,'review must require explicit acknowledgement')
+    attempt=spec['components']['schemas']['ImageAttemptRequest']
+    require('reviewRevision' in attempt['required'] and attempt['properties']['reviewRevision'].get('type')=='integer','attempt requires review revision')
+    require('Retry-After' in image['responses']['429'].get('headers',{}),'image rate-limit response must document Retry-After')
 
 def cost_math():
     cost=json.loads((ROOT/'fixtures/cost-scenario.json').read_text('utf-8'))

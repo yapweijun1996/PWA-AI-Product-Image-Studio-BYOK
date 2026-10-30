@@ -84,6 +84,32 @@ class ValidatorInventoryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, output)
         self.assertEqual(json.loads(report.read_text(encoding='utf-8')), output)
 
+    def test_image_review_contract_requires_csrf_and_revision(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest('PyYAML is required for contract validation')
+        contract = self.package / 'contracts/openapi.yaml'
+        original = yaml.safe_load(contract.read_text(encoding='utf-8'))
+        for change, expected in (
+            ('csrf', 'image review requires CSRF protection'),
+            ('revision', 'attempt requires review revision'),
+            ('retry', 'image rate-limit response must document Retry-After'),
+        ):
+            with self.subTest(change=change):
+                spec = yaml.safe_load(yaml.safe_dump(original))
+                if change == 'csrf':
+                    operation = spec['paths']['/images/attempts/{clientAttemptId}/acknowledgement']['post']
+                    operation['parameters'] = [p for p in operation['parameters'] if p.get('$ref') != '#/components/parameters/CsrfToken']
+                elif change == 'revision':
+                    spec['components']['schemas']['ImageAttemptRequest']['required'].remove('reviewRevision')
+                else:
+                    del spec['paths']['/images/generate']['post']['responses']['429']['headers']['Retry-After']
+                contract.write_text(yaml.safe_dump(spec), encoding='utf-8')
+                result, output = self.validate()
+                self.assertEqual(result.returncode, 1)
+                self.assertTrue(any(expected in error for error in output['errors']), output)
+
 
 if __name__ == '__main__':
     unittest.main()

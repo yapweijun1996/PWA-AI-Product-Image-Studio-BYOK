@@ -666,7 +666,116 @@ export type StudioAttempt = {
   estimatedUSD: string; maxEstimatedUSD?: string; submittedAt: string;
   status: 'PREPARED' | 'SUBMITTED' | 'DEFINITIVE_FAILURE' | 'UNKNOWN' | 'DEFINITIVE_SUCCESS';
   usage: Record<string, unknown> | null; observedUSD: string | null;
+  acknowledgedAt?: string; recordedOutcome?: StudioRecordedOutcome;
+  cleanupPending?: true;
+  recoveryLockVersion?: 1;
 };
+export type StudioRecordedOutcome = 'UNKNOWN' | 'DEFINITIVE_SUCCESS' | 'DEFINITIVE_FAILURE';
+
+export function validStudioAcknowledgement(acknowledgedAt: unknown, recordedOutcome: unknown): acknowledgedAt is string {
+  if (typeof acknowledgedAt !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(acknowledgedAt)) return false;
+  const time = Date.parse(acknowledgedAt);
+  const canonical = acknowledgedAt.replace(/(?:\.(\d{1,3}))?Z$/, (_, fraction: string | undefined) => `.${(fraction ?? '').padEnd(3, '0')}Z`);
+  return Number.isFinite(time) && new Date(time).toISOString() === canonical &&
+    (recordedOutcome === 'UNKNOWN' || recordedOutcome === 'DEFINITIVE_SUCCESS' || recordedOutcome === 'DEFINITIVE_FAILURE');
+}
+
+export function studioAttemptBlocks(attempt: StudioAttempt): boolean {
+  if (attempt.cleanupPending !== undefined) {
+    return attempt.cleanupPending !== true ||
+      !validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome) ||
+      attempt.recordedOutcome !== attempt.status;
+  }
+  if (attempt.status !== 'UNKNOWN' && attempt.status !== 'SUBMITTED' &&
+      (attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined)) return true;
+  return attempt.status === 'SUBMITTED' || (attempt.status === 'UNKNOWN' &&
+    !validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome));
+}
+
+export function studioReviewFingerprint(attempts: StudioAttempt[]): string {
+  return JSON.stringify(attempts.filter((attempt) => validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome))
+    .map((attempt) => [attempt.attemptId, attempt.acknowledgedAt, attempt.recordedOutcome])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+}
+
+export async function globalStudioReviewFingerprint(): Promise<string> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('attempts', 'readonly');
+    const request = tx.objectStore('attempts').getAll();
+    tx.oncomplete = () => resolve(studioReviewFingerprint(request.result as StudioAttempt[]));
+    tx.onabort = () => reject(transactionError(tx));
+  });
+}
+
+export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt: string, recordedOutcome: StudioRecordedOutcome): Promise<void> {
+  if (!validStudioAcknowledgement(acknowledgedAt, recordedOutcome)) throw new Error('Invalid acknowledgement receipt.');
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(['attempts', 'jobs'], 'readwrite');
+    const attempts = tx.objectStore('attempts');
+    const request = attempts.get(attemptId);
+    let failure: Error | undefined;
+    request.onsuccess = () => {
+      const attempt = request.result as StudioAttempt | undefined;
+      const terminal = attempt?.status === 'DEFINITIVE_SUCCESS' || attempt?.status === 'DEFINITIVE_FAILURE';
+      if (!attempt || (attempt.status !== 'UNKNOWN' && attempt.status !== 'SUBMITTED' && !(terminal && attempt.cleanupPending === true))) {
+        failure = new Error('Only a saved UNKNOWN, SUBMITTED or cleanup-pending terminal attempt can be reviewed.'); tx.abort(); return;
+      }
+      const jobRequest = tx.objectStore('jobs').get(attempt.jobId);
+      jobRequest.onsuccess = () => {
+        try {
+          if (terminal && recordedOutcome !== attempt.status) throw new Error('The acknowledgement outcome conflicts with the saved terminal outcome.');
+          if (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true) throw new Error('Invalid cleanup metadata.');
+          const job = jobRequest.result as StudioJob | undefined;
+          const entry = job?.attempts?.[0];
+          if (!job || !entry || !validateGenerationJob(job) ||
+              JSON.stringify(job) !== JSON.stringify(studioJob(attempt, job.promptSha256, entry.submittedAt, entry.completedAt))) {
+            throw new Error('The saved job does not match its attempt.');
+          }
+          if (validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome)) {
+            if ((attempt.status !== 'UNKNOWN' && !terminal) || attempt.acknowledgedAt !== acknowledgedAt || attempt.recordedOutcome !== recordedOutcome) {
+              throw new Error('The saved acknowledgement conflicts with this receipt.');
+            }
+            return;
+          }
+          const reviewed: StudioAttempt = { ...attempt, status: terminal ? attempt.status : 'UNKNOWN', acknowledgedAt, recordedOutcome };
+          if (attempt.status === 'SUBMITTED') {
+            tx.objectStore('jobs').put(checkedStudioJob(studioJob(reviewed, job.promptSha256, entry.submittedAt, acknowledgedAt)));
+          }
+          attempts.put(reviewed);
+          const all = attempts.getAll();
+          all.onsuccess = () => {
+            for (const pending of all.result as StudioAttempt[]) {
+              if (pending.attemptId === attempt.attemptId || pending.status !== 'PREPARED') continue;
+              const pendingJobRequest = tx.objectStore('jobs').get(pending.jobId);
+              pendingJobRequest.onsuccess = () => {
+                try {
+                  const pendingJob = pendingJobRequest.result as StudioJob | undefined;
+                  const pendingEntry = pendingJob?.attempts?.[0];
+                  if (!pendingJob || !pendingEntry || !validateGenerationJob(pendingJob) ||
+                      JSON.stringify(pendingJob) !== JSON.stringify(studioJob(pending, pendingJob.promptSha256, pendingEntry.submittedAt, pendingEntry.completedAt))) {
+                    throw new Error('A prepared job does not match its attempt.');
+                  }
+                  const invalidated: StudioAttempt = { ...pending, status: 'DEFINITIVE_FAILURE' };
+                  tx.objectStore('jobs').put(checkedStudioJob(studioJob(invalidated, pendingJob.promptSha256, pendingEntry.submittedAt, new Date().toISOString())));
+                  attempts.put(invalidated);
+                } catch (error) {
+                  failure = error instanceof Error ? error : new Error('Could not invalidate a prepared attempt.'); tx.abort();
+                }
+              };
+            }
+          };
+        } catch (error) {
+          failure = error instanceof Error ? error : new Error('Could not save the acknowledgement.'); tx.abort();
+        }
+      };
+    };
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(failure ?? transactionError(tx));
+  });
+}
 export type StudioAsset = { assetId: string; attemptId: string; productId: string; blob: Blob; sha256: string };
 
 type StudioJob = {
@@ -728,8 +837,8 @@ export async function studioInput(productId: string): Promise<{ source: SourceMe
   return { source, maskId: active.metadata.maskId, maskSha256: active.metadata.sha256 };
 }
 
-export async function createStudioAttempt(attempt: StudioAttempt): Promise<void> {
-  if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null) throw new Error('A new attempt must be prepared without a result.');
+export async function createStudioAttempt(attempt: StudioAttempt, consentReviewFingerprint: string): Promise<void> {
+  if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null || attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined || attempt.cleanupPending !== undefined || (attempt.recoveryLockVersion !== undefined && attempt.recoveryLockVersion !== 1)) throw new Error('A new attempt must be prepared without a result and with a valid recovery lock version.');
   const promptHash = await sha256(new TextEncoder().encode(attempt.prompt));
   const job = checkedStudioJob(studioJob(attempt, promptHash, null, null));
   const db = await openDatabase();
@@ -745,9 +854,11 @@ export async function createStudioAttempt(attempt: StudioAttempt): Promise<void>
         const p = checkedProduct(product.result);
         const m = mask.result as Record<string, unknown> | undefined;
         const s = source.result as Record<string, unknown> | undefined;
-        if ((attempts.result as StudioAttempt[]).some((entry) => entry.productId === attempt.productId &&
-            (entry.status === 'SUBMITTED' || entry.status === 'UNKNOWN'))) {
+        if ((attempts.result as StudioAttempt[]).some((entry) => entry.productId === attempt.productId && studioAttemptBlocks(entry))) {
           throw new Error('Another attempt for this product is in progress or UNKNOWN. Review its history before generating.');
+        }
+        if (studioReviewFingerprint(attempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
+          throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
         }
         if (!p.rightsAcknowledged || p.brandLock.maskAssetId !== attempt.maskId ||
             !p.sourceAssets.some((item) => item.assetId === attempt.sourceAssetId && item.sha256 === attempt.sourceSha256) ||
@@ -762,7 +873,7 @@ export async function createStudioAttempt(attempt: StudioAttempt): Promise<void>
   });
 }
 
-export async function updateStudioAttempt(attempt: StudioAttempt, asset?: StudioAsset): Promise<void> {
+export async function updateStudioAttempt(attempt: StudioAttempt, asset?: StudioAsset, consentReviewFingerprint?: string): Promise<void> {
   const promptHash = await sha256(new TextEncoder().encode(attempt.prompt));
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
@@ -779,15 +890,21 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
         const previous = previousRequest.result as StudioAttempt | undefined;
         const job = jobRequest.result as StudioJob | undefined;
         if (!previous || !job || !validateGenerationJob(job)) throw new Error('The saved attempt or job is missing or invalid.');
-        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'submittedAt'];
+        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion'];
         if (immutable.some((key) => previous[key] !== attempt[key])) throw new Error('Attempt identity or input changed.');
         const allowed = previous.status === 'PREPARED' ? ['SUBMITTED', 'DEFINITIVE_FAILURE'] : previous.status === 'SUBMITTED' ? ['DEFINITIVE_FAILURE', 'DEFINITIVE_SUCCESS', 'UNKNOWN'] : [];
         if (attempt.status === 'SUBMITTED' && (allAttempts.result as StudioAttempt[]).some((entry) =>
-          entry.productId === attempt.productId && entry.attemptId !== attempt.attemptId &&
-          (entry.status === 'SUBMITTED' || entry.status === 'UNKNOWN'))) {
+          entry.productId === attempt.productId && entry.attemptId !== attempt.attemptId && studioAttemptBlocks(entry))) {
           throw new Error('Another attempt for this product is in progress or UNKNOWN. Review its history before generating.');
         }
         if (!allowed.includes(attempt.status)) throw new Error('Invalid or repeated attempt transition.');
+        if (previous.cleanupPending !== undefined || (attempt.cleanupPending !== undefined &&
+            (attempt.cleanupPending !== true || previous.status !== 'SUBMITTED' ||
+             (attempt.status !== 'DEFINITIVE_SUCCESS' && attempt.status !== 'DEFINITIVE_FAILURE')))) throw new Error('Invalid cleanup metadata.');
+        if (attempt.status === 'SUBMITTED' &&
+            studioReviewFingerprint(allAttempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
+          throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
+        }
         if (attempt.status === 'SUBMITTED') {
           const product = checkedProduct(productRequest.result);
           const mask = maskRequest.result as Record<string, unknown> | undefined;

@@ -9,8 +9,17 @@ const built = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
   build: { write: false, minify: false, lib: { entry: 'src/products.ts', formats: ['es'], fileName: 'products' } } });
 const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { createProduct, saveSource, createStudioAttempt, updateStudioAttempt, listStudioAttempts } =
+const { createProduct, saveSource, createStudioAttempt: createWithConsent, updateStudioAttempt: updateWithConsent, listStudioAttempts, acknowledgeStudioAttempt, globalStudioReviewFingerprint } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const consentByAttempt = new Map();
+async function createStudioAttempt(attempt, fingerprint) {
+  const consent = fingerprint ?? await globalStudioReviewFingerprint();
+  consentByAttempt.set(attempt.attemptId, consent);
+  return createWithConsent(attempt, consent);
+}
+async function updateStudioAttempt(attempt, asset) {
+  return updateWithConsent(attempt, asset, consentByAttempt.get(attempt.attemptId));
+}
 
 async function fixture() {
   const product = await createProduct({ sku: randomUUID(), name: 'Synthetic product', category: 'Test', rightsAcknowledged: true });
@@ -67,4 +76,235 @@ test('a changed active mask prevents an approved attempt from reaching submissio
   await assert.rejects(updateStudioAttempt({ ...attempt, status: 'SUBMITTED' }), /active mask changed/);
   const history = await listStudioAttempts(productId);
   assert.equal(history[0].attempt.status, 'PREPARED');
+});
+for (const status of ['DEFINITIVE_SUCCESS', 'DEFINITIVE_FAILURE']) {
+  test(`cleanup-pending ${status} requires matching review and preserves the terminal job and image`, async () => {
+    const { productId, makeAttempt, db } = await fixture();
+    const a = makeAttempt(), pending = makeAttempt();
+    await createStudioAttempt(a);
+    await createStudioAttempt(pending);
+    const staleFingerprint = await globalStudioReviewFingerprint();
+    await updateStudioAttempt({ ...a, status: 'SUBMITTED' });
+    const asset = status === 'DEFINITIVE_SUCCESS'
+      ? { assetId: randomUUID(), attemptId: a.attemptId, productId, blob: new Blob(['paid image'], { type: 'image/png' }), sha256: 'c'.repeat(64) }
+      : undefined;
+    await updateStudioAttempt({ ...a, status, cleanupPending: true }, asset);
+    const readJob = () => new Promise((resolve, reject) => {
+      const request = db.transaction('jobs').objectStore('jobs').get(a.jobId);
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    const job = await readJob();
+    await assert.rejects(createStudioAttempt(makeAttempt()), /in progress or UNKNOWN/);
+    const timestamp = '2026-10-30T12:00:00.000Z';
+    await assert.rejects(acknowledgeStudioAttempt(a.attemptId, timestamp, 'UNKNOWN'), /conflicts/);
+    await assert.rejects(createStudioAttempt(makeAttempt()), /in progress or UNKNOWN/);
+    await acknowledgeStudioAttempt(a.attemptId, timestamp, status);
+    await acknowledgeStudioAttempt(a.attemptId, timestamp, status);
+    await assert.rejects(acknowledgeStudioAttempt(a.attemptId, '2026-10-30T12:00:01.000Z', status), /conflicts/);
+    const history = await listStudioAttempts(productId);
+    const entry = history.find(({ attempt }) => attempt.attemptId === a.attemptId);
+    assert.equal(entry.attempt.status, status);
+    assert.equal(entry.attempt.recordedOutcome, status);
+    assert.equal(entry.attempt.acknowledgedAt, timestamp);
+    assert.deepEqual(await readJob(), job);
+    if (asset) assert.equal(await entry.asset.blob.text(), 'paid image');
+    else assert.equal(entry.asset, null);
+    assert.equal(history.find(({ attempt }) => attempt.attemptId === pending.attemptId).attempt.status, 'DEFINITIVE_FAILURE');
+    await assert.rejects(createStudioAttempt(makeAttempt(), staleFingerprint), /review changed/);
+    await createStudioAttempt(makeAttempt());
+  });
+}
+
+
+test('review is transactional, idempotent and preserves UNKNOWN job and attempt', async () => {
+  const { productId, makeAttempt, db } = await fixture();
+  const a = makeAttempt(), pending = makeAttempt();
+  await Promise.all([createStudioAttempt(a), createStudioAttempt(pending)]);
+  await updateStudioAttempt({ ...a, status: 'SUBMITTED' });
+  const timestamp = '2026-10-30T12:00:00.000Z';
+  await updateStudioAttempt({ ...a, status: 'UNKNOWN' });
+  await assert.rejects(updateStudioAttempt({ ...pending, status: 'SUBMITTED' }), /UNKNOWN/);
+  await assert.rejects(acknowledgeStudioAttempt(a.attemptId, 'not a date', 'UNKNOWN'), /Invalid/);
+  await assert.rejects(acknowledgeStudioAttempt(a.attemptId, timestamp, 'OTHER'), /Invalid/);
+  await assert.rejects(createStudioAttempt(makeAttempt()), /UNKNOWN/);
+  await Promise.all([acknowledgeStudioAttempt(a.attemptId, timestamp, 'DEFINITIVE_SUCCESS'), acknowledgeStudioAttempt(a.attemptId, timestamp, 'DEFINITIVE_SUCCESS')]);
+  await assert.rejects(acknowledgeStudioAttempt(a.attemptId, timestamp, 'UNKNOWN'), /conflicts/);
+  const history = await listStudioAttempts(productId);
+  const reviewed = history.find(({ attempt }) => attempt.attemptId === a.attemptId).attempt;
+  assert.equal(reviewed.status, 'UNKNOWN');
+  assert.equal(reviewed.acknowledgedAt, timestamp);
+  assert.equal(reviewed.recordedOutcome, 'DEFINITIVE_SUCCESS');
+  const job = await new Promise((resolve, reject) => {
+    const request = db.transaction('jobs').objectStore('jobs').get(a.jobId);
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  assert.equal(job.status, 'UNKNOWN');
+  assert.equal(job.attempts[0].outcome, 'UNKNOWN');
+  assert.equal(history.find(({ attempt }) => attempt.attemptId === pending.attemptId).attempt.status, 'DEFINITIVE_FAILURE');
+  const pendingJob = await new Promise((resolve, reject) => {
+    const request = db.transaction('jobs').objectStore('jobs').get(pending.jobId);
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  assert.equal(pendingJob.status, 'FAILED');
+  assert.equal(pendingJob.attempts[0].submittedAt, null);
+  assert.equal(pendingJob.attempts[0].outcome, 'DEFINITIVE_FAILURE');
+  await assert.rejects(updateStudioAttempt({ ...pending, status: 'SUBMITTED' }), /Invalid or repeated/);
+  const fresh = makeAttempt();
+  await createStudioAttempt(fresh);
+  await updateStudioAttempt({ ...fresh, status: 'SUBMITTED' });
+  await assert.rejects(createStudioAttempt(makeAttempt()), /in progress/);
+});
+
+test('malformed persisted review cannot bypass creation or submission', async () => {
+  const { makeAttempt, db } = await fixture();
+  const a = makeAttempt(), pending = makeAttempt();
+  await Promise.all([createStudioAttempt(a), createStudioAttempt(pending)]);
+  await updateStudioAttempt({ ...a, status: 'SUBMITTED' });
+  await updateStudioAttempt({ ...a, status: 'UNKNOWN' });
+  for (const fields of [
+    { acknowledgedAt: '2026-10-30T12:00:00.000Z' },
+    { acknowledgedAt: '2026-02-30T12:00:00.000Z', recordedOutcome: 'UNKNOWN' },
+    { acknowledgedAt: '2026-10-30T12:00:00.000Z', recordedOutcome: 'OTHER' },
+  ]) {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('attempts', 'readwrite'), store = tx.objectStore('attempts');
+      const request = store.get(a.attemptId);
+      request.onsuccess = () => { const value = request.result; delete value.acknowledgedAt; delete value.recordedOutcome; store.put({ ...value, ...fields }); };
+      tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+    });
+    await assert.rejects(createStudioAttempt(makeAttempt()), /UNKNOWN/);
+    await assert.rejects(updateStudioAttempt({ ...pending, status: 'SUBMITTED' }), /UNKNOWN/);
+  }
+});
+
+test('caller cannot inject review into ordinary attempt transitions', async () => {
+  const { makeAttempt } = await fixture();
+  const attempt = makeAttempt(), receipt = { acknowledgedAt: '2026-10-30T12:00:00.000Z', recordedOutcome: 'UNKNOWN' };
+  await assert.rejects(createStudioAttempt({ ...attempt, ...receipt }), /prepared/);
+  await createStudioAttempt(attempt);
+  await assert.rejects(updateStudioAttempt({ ...attempt, status: 'SUBMITTED', ...receipt }), /changed/);
+  await updateStudioAttempt({ ...attempt, status: 'SUBMITTED' });
+  await assert.rejects(updateStudioAttempt({ ...attempt, status: 'UNKNOWN', ...receipt }), /changed/);
+});
+
+test('interrupted submission stays blocked until a receipt is saved and then replays safely', async () => {
+  const { productId, makeAttempt, db } = await fixture();
+  const attempt = makeAttempt(), pending = makeAttempt();
+  await Promise.all([createStudioAttempt(attempt), createStudioAttempt(pending)]);
+  await updateStudioAttempt({ ...attempt, status: 'SUBMITTED' });
+  await assert.rejects(createStudioAttempt(makeAttempt()), /in progress/);
+  await assert.rejects(updateStudioAttempt({ ...pending, status: 'SUBMITTED' }), /in progress/);
+  await assert.rejects(acknowledgeStudioAttempt(attempt.attemptId, 'invalid', 'UNKNOWN'), /Invalid/);
+  assert.equal((await listStudioAttempts(productId)).find(({ attempt: item }) => item.attemptId === attempt.attemptId).attempt.status, 'SUBMITTED');
+  const timestamp = '2026-10-30T12:00:00.000Z';
+  await acknowledgeStudioAttempt(attempt.attemptId, timestamp, 'DEFINITIVE_FAILURE');
+  await acknowledgeStudioAttempt(attempt.attemptId, timestamp, 'DEFINITIVE_FAILURE');
+  const saved = (await listStudioAttempts(productId)).find(({ attempt: item }) => item.attemptId === attempt.attemptId).attempt;
+  assert.equal(saved.status, 'UNKNOWN');
+  assert.equal(saved.acknowledgedAt, timestamp);
+  assert.equal(saved.recordedOutcome, 'DEFINITIVE_FAILURE');
+  const job = await new Promise((resolve, reject) => {
+    const request = db.transaction('jobs').objectStore('jobs').get(attempt.jobId);
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  assert.equal(job.status, 'UNKNOWN');
+  assert.equal(job.attempts[0].outcome, 'UNKNOWN');
+  await assert.rejects(updateStudioAttempt({ ...pending, status: 'SUBMITTED' }), /Invalid or repeated/);
+});
+
+test('consent taken before review cannot create a later attempt', async () => {
+  const { productId, makeAttempt } = await fixture();
+  const first = makeAttempt();
+  await createStudioAttempt(first);
+  await updateStudioAttempt({ ...first, status: 'SUBMITTED' });
+  await updateStudioAttempt({ ...first, status: 'UNKNOWN' });
+  const oldConsent = await globalStudioReviewFingerprint();
+  await acknowledgeStudioAttempt(first.attemptId, '2026-10-30T12:00:00.000Z', 'UNKNOWN');
+  await assert.rejects(createStudioAttempt(makeAttempt(), oldConsent), /review changed/);
+  await createStudioAttempt(makeAttempt());
+});
+
+test('recovery lock version is validated and immutable', async () => {
+  const { makeAttempt } = await fixture();
+  for (const recoveryLockVersion of [0, 2, '1', null]) {
+    await assert.rejects(createStudioAttempt({ ...makeAttempt(), recoveryLockVersion }), /valid recovery lock version/);
+  }
+  const attempt = { ...makeAttempt(), recoveryLockVersion: 1 };
+  await createStudioAttempt(attempt);
+  await assert.rejects(updateStudioAttempt({ ...attempt, status: 'SUBMITTED', recoveryLockVersion: undefined }), /changed/);
+});
+
+test('submission checks the consent fingerprint atomically', async () => {
+  const { makeAttempt } = await fixture();
+  const attempt = makeAttempt();
+  await createStudioAttempt(attempt);
+  await assert.rejects(updateWithConsent({ ...attempt, status: 'SUBMITTED' }, undefined, 'stale'), /review changed/);
+  await updateStudioAttempt({ ...attempt, status: 'SUBMITTED' });
+});
+
+test('review in another product invalidates pending jobs and stale consent globally', async () => {
+  const firstProduct = await fixture(), secondProduct = await fixture();
+  const reviewed = firstProduct.makeAttempt(), pending = secondProduct.makeAttempt();
+  await createStudioAttempt(reviewed);
+  await updateStudioAttempt({ ...reviewed, status: 'SUBMITTED' });
+  await updateStudioAttempt({ ...reviewed, status: 'UNKNOWN' });
+  const oldConsent = await globalStudioReviewFingerprint();
+  await createStudioAttempt(pending, oldConsent);
+  await acknowledgeStudioAttempt(reviewed.attemptId, '2026-10-30T12:00:00.000Z', 'UNKNOWN');
+  await assert.rejects(createStudioAttempt(secondProduct.makeAttempt(), oldConsent), /review changed/);
+  const history = await listStudioAttempts(secondProduct.productId);
+  assert.equal(history.find(({ attempt }) => attempt.attemptId === pending.attemptId).attempt.status, 'DEFINITIVE_FAILURE');
+  const job = await new Promise((resolve, reject) => {
+    const request = secondProduct.db.transaction('jobs').objectStore('jobs').get(pending.jobId);
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  assert.equal(job.status, 'FAILED');
+  assert.equal(job.attempts[0].submittedAt, null);
+  await assert.rejects(updateStudioAttempt({ ...pending, status: 'SUBMITTED' }), /Invalid or repeated/);
+  const fresh = secondProduct.makeAttempt();
+  await createStudioAttempt(fresh);
+  await assert.rejects(updateWithConsent({ ...fresh, status: 'SUBMITTED' }, undefined, oldConsent), /review changed/);
+  await updateStudioAttempt({ ...fresh, status: 'SUBMITTED' });
+});
+
+test('valid durable receipt repairs malformed or incomplete local acknowledgement but not a valid conflict', async () => {
+  for (const fields of [
+    { acknowledgedAt: '2026-10-30T12:00:00.000Z' },
+    { recordedOutcome: 'UNKNOWN' },
+    { acknowledgedAt: 'bad', recordedOutcome: 'UNKNOWN' },
+    { acknowledgedAt: '2026-10-30T12:00:00.000Z', recordedOutcome: 'OTHER' },
+  ]) {
+    const { productId, makeAttempt, db } = await fixture();
+    const attempt = makeAttempt();
+    await createStudioAttempt(attempt);
+    await updateStudioAttempt({ ...attempt, status: 'SUBMITTED' });
+    await updateStudioAttempt({ ...attempt, status: 'UNKNOWN' });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('attempts', 'readwrite'), store = tx.objectStore('attempts');
+      const request = store.get(attempt.attemptId);
+      request.onsuccess = () => store.put({ ...request.result, ...fields });
+      tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+    });
+    const timestamp = '2026-10-30T12:00:00.000Z';
+    await acknowledgeStudioAttempt(attempt.attemptId, timestamp, 'DEFINITIVE_SUCCESS');
+    const saved = (await listStudioAttempts(productId)).find(({ attempt: item }) => item.attemptId === attempt.attemptId).attempt;
+    assert.equal(saved.status, 'UNKNOWN');
+    assert.equal(saved.acknowledgedAt, timestamp);
+    assert.equal(saved.recordedOutcome, 'DEFINITIVE_SUCCESS');
+    await assert.rejects(acknowledgeStudioAttempt(attempt.attemptId, timestamp, 'UNKNOWN'), /conflicts/);
+  }
+});
+
+test('a completed scene cannot be overwritten by a racing review', async () => {
+  const { productId, makeAttempt } = await fixture();
+  const attempt = { ...makeAttempt(), recoveryLockVersion: 1 };
+  await createStudioAttempt(attempt);
+  await updateStudioAttempt({ ...attempt, status: 'SUBMITTED' });
+  const asset = { assetId: randomUUID(), attemptId: attempt.attemptId, productId, blob: new Blob(['scene'], { type: 'image/png' }), sha256: 'c'.repeat(64) };
+  await updateStudioAttempt({ ...attempt, status: 'DEFINITIVE_SUCCESS' }, asset);
+  await assert.rejects(acknowledgeStudioAttempt(attempt.attemptId, '2026-10-30T12:00:00.000Z', 'UNKNOWN'), /Only a saved/);
+  const saved = (await listStudioAttempts(productId)).find((entry) => entry.attempt.attemptId === attempt.attemptId);
+  assert.equal(saved.attempt.status, 'DEFINITIVE_SUCCESS');
+  assert.equal(saved.asset.assetId, asset.assetId);
+  assert.equal(await saved.asset.blob.text(), 'scene');
 });

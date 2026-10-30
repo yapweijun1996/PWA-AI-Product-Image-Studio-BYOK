@@ -23,7 +23,7 @@ Current implementation creates these stores in IndexedDB version 1. `products.sk
 ## Transaction semantics
 
 - Upload: validate size/type/dimensions first; write original and product metadata in one logical operation; if Blob can't be committed, do not claim saved. If transaction cannot safely contain entire image pipeline, model staged assets as TEMP then atomically publish only after hash check.
-- Generation: persist the attempt before the network call; provider success becomes GENERATED only after its Blob write succeeds. If persistence fails after a possible remote result, retain UNKNOWN and do not automatically resend. A recovery window and asset download are not yet implemented.
+- Generation: persist the attempt before the network call; provider success becomes GENERATED only after its Blob write succeeds. If persistence fails after a possible remote result, retain UNKNOWN and do not automatically resend. Eligible terminal attempts can be explicitly reviewed without changing the original outcome; a new call needs fresh consent and UUID. A recovery window and lost-asset download are not yet implemented.
 - Approval: single transactional update from QA candidate + human decision to approved/export-eligible. Re-approval requires new event, not in-place overwrites.
 - Deletion: cascade only associated local records after explicit user confirmation; preserve unrelated shared assets by reference count.
 

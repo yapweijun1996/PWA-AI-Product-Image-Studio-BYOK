@@ -39,10 +39,10 @@ For the initial self-hosted path, only the trusted gateway reads the owner-confi
 ## Error taxonomy
 
 - `401/403` provider auth or project access, redact, show reconnect/permissions action.
-- `429` provider rate; parse `Retry-After`, do not launch seven simultaneous attempts by default.
+- `429` may indicate a temporary rate limit, quota or billing limit; show a valid `Retry-After` as a minimum delay and do not automatically retry.
 - `400` invalid prompt/model/size / content rejection; correct input, not blindly retry.
 - `5xx` or connection timeout before definitive response: UNKNOWN if request may have reached provider; user-controlled retry only.
-- Invalid returned bytes/usage: FAILED or QA block, never mark approved.
+- Invalid returned bytes or failed local save: preserve local UNKNOWN if the remote request may have succeeded; never mark approved.
 
 ## Live contract probe checklist
 

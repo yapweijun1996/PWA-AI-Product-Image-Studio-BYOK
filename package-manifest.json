@@ -1,6 +1,6 @@
 {
   "name": "PWA-AI-Product-Image-Studio-BYOK-SSOT",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "date": "2026-10-30",
   "status": "DOCUMENTATION_ONLY_NOT_IMPLEMENTED",
   "source": "user-confirmed repo name + KB-MCP skills + official reference documentation",
@@ -42,8 +42,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 6306,
-      "sha256": "d393561d41c50dfd3304f6d6a44fca09e6cb4cbfbedd944206260b5dcb267472"
+      "bytes": 6511,
+      "sha256": "0b9aa4828ab2eb559543882dd9a3574fbf451f99aa04192436e17c529820cec6"
     },
     {
       "path": "ROADMAP.md",
@@ -67,8 +67,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 20733,
-      "sha256": "b1547a0c8506eb25de6e838da4f981687b46b5feba5dac9d828be817b2828be9"
+      "bytes": 28803,
+      "sha256": "9170ea2a9021abcf58e47894d647c2d23adcc88ecb5f8cd57756ecc9bbc43bcd"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -117,8 +117,8 @@
     },
     {
       "path": "docs/00-governance/SSOT_POLICY.md",
-      "bytes": 4094,
-      "sha256": "3b4b43ed4fbe6ee680a9b4ea92c1ae04bb39c46b5a4de71500831752a4a36b29"
+      "bytes": 4228,
+      "sha256": "9962be17b1200117abbbbf26b69629bf95d4c7749edf0d7fd047e16a6326ce2f"
     },
     {
       "path": "docs/01-product/FEATURE_PRIORITY.md",
@@ -152,8 +152,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 12497,
-      "sha256": "5a8b65ed0d11e27a62c89f97f410e6e76848f26f9f79e3090b146a332d61126b"
+      "bytes": 14302,
+      "sha256": "67c13fbd988324a9f5ce61a373695256990f6ba94232ef7d4d68f2d7f9ec64fe"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -167,8 +167,8 @@
     },
     {
       "path": "docs/02-architecture/JOB_ORCHESTRATION.md",
-      "bytes": 3787,
-      "sha256": "6546a51826ece62ea61a26fd9f9aa49cfab87edf4beaed6cbac417bd9dd981dd"
+      "bytes": 4127,
+      "sha256": "2abb7c939e7c8579c6c0e3dbdbcafa8ab48f75ea6af8f376a800459802a49d32"
     },
     {
       "path": "docs/02-architecture/PWA_OFFLINE.md",
@@ -207,23 +207,23 @@
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
-      "bytes": 4281,
-      "sha256": "7aee29e9479c1c091ad402e7ee28d28fd37c8163b52e56ddb76d8dd1a7b5c1ab"
+      "bytes": 4420,
+      "sha256": "ef84140dbb2723b80e9d403ffc1b7025d57105c7ccbd3f8e2ae1807de8a72756"
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
-      "bytes": 7155,
-      "sha256": "c13846e69ccd12b2c7206f37c5479a670b2292cde892495ad557fdfec7c63b48"
+      "bytes": 8030,
+      "sha256": "0f8d8ef6b19e74c6af12c1ef5744629b60a4339198695cf7371323f6b140f20a"
     },
     {
       "path": "docs/05-api/ERROR_RETRY_COST.md",
-      "bytes": 2812,
-      "sha256": "1c1df6bd35f564fb99c98b627e3f56757efdd22e89c21881039babb12d0979b2"
+      "bytes": 3462,
+      "sha256": "fcf52e7ca21e42eb0bd5259ea035eb3987583ce385802f45161815a7049b91ce"
     },
     {
       "path": "docs/05-api/OPENAI_ADAPTER.md",
-      "bytes": 4255,
-      "sha256": "2bedeef11aec000638424befaa729630283ed62a0b67727a34b87255edb33181"
+      "bytes": 4364,
+      "sha256": "f8f8269865623c5fd6c3ba71c6bd37a54c58eb7747ad25025817f41d08b7121d"
     },
     {
       "path": "docs/06-ai/BRAND_LOCK_ENGINE.md",
@@ -287,13 +287,13 @@
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 3501,
-      "sha256": "4ad79e0b7bbacbac358864f0b70206399b50b11ecf2745d4aa2ca4096d1c0fa0"
+      "bytes": 3671,
+      "sha256": "a899261a9cb8b54c9e38b39dca15b64519a416f7885b96afee2a25706dff8395"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 46673,
-      "sha256": "6d46548777cc75fd0df63dd3267d067147ecfdf3b2d105a53d99cac7dea5901e"
+      "bytes": 50333,
+      "sha256": "6391606d9e2cb746856df41fd4e741c45338d78ecb0495d9396cfbb2613fa649"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -657,13 +657,13 @@
     },
     {
       "path": "scripts/test_validate_ssot.py",
-      "bytes": 4211,
-      "sha256": "f57e15477a627c4b1f7a5f84eec38001c4367b9f1ea825a0197e316368d25507"
+      "bytes": 5752,
+      "sha256": "0717874e0d04e11c06173d78cdc78414176035bf0fd4ac718d2d7d3d2aa76ffb"
     },
     {
       "path": "scripts/validate_ssot.py",
-      "bytes": 12145,
-      "sha256": "b1a645e341db1b40100674928c2d4f52bf876531d520f0a6fbee9f9862ca2451"
+      "bytes": 13398,
+      "sha256": "3ee174ffdf8b8c7cbfda22f8c7b1593ad0c9a84aa0ce2a26283e78ea5ac4f711"
     }
   ]
 }

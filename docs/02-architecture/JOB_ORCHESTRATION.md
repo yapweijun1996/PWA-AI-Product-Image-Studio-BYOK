@@ -35,8 +35,8 @@ No automatic `UNKNOWN→SUBMITTING` transition. Retry from FAILED/REJECTED/UNKNO
 ## Idempotency boundaries
 
 - For `/images/generate`, the owner selected the same UUID for `X-Client-Request-Id` and `clientAttemptId`; other endpoint correlation IDs are unaffected. The header is also the pre-submit reservation identifier. See [ADR-008](ADR.md) and [OPEN-008](../00-governance/DECISION_REGISTER.md) for outstanding journal and security review.
-- Gateway durably reserves an attempt before provider submission, atomically scoped to its authenticated principal, and retains only non-secret identity, digest and status information. A duplicate never sends another provider request, including after restart; duplicate-status response, safe retention and recovery remain implementation gates.
-- This does **not** prove provider-level idempotency. If network response is lost after submission, gateway may have no charge/asset reconciliation; retain UNKNOWN until explicit recovery.
+- The loopback gateway durably reserves an attempt before provider submission, scoped to its single local owner, and retains only non-secret identity, digest and status information. A duplicate never sends another provider request, including after restart. This local guarantee is synthetic-tested, not a multi-user or production isolation claim.
+- Explicit user review may be recorded when a durable terminal result is available and the gateway can safely identify the affected in-flight marker. An ambiguous local outcome remains UNKNOWN; a definitive outcome and any saved scene remain intact. The old reservation is retained and a new call needs a new UUID and approval. An interrupted reservation without a result or a legacy unowned marker stays blocked. This does **not** reconcile the provider invoice or recover a lost image, nor prove provider-level idempotency.
 - Never assert OpenAI Images endpoint supports an idempotency key unless vendor docs explicitly confirm it for that operation.
 
 ## User cancellation

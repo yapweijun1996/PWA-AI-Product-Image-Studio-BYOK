@@ -38,8 +38,8 @@ function json(response, status, value, headers = {}) {
   response.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8', ...headers });
   response.end(JSON.stringify(value));
 }
-function error(response, status, code, message, outcome = 'DEFINITIVE_FAILURE') {
-  json(response, status, { error: { code, message, retryable: false, requestId: randomBytes(16).toString('hex'), outcome, retryAfterSeconds: null } });
+function error(response, status, code, message, outcome = 'DEFINITIVE_FAILURE', retryAfterSeconds = null) {
+  json(response, status, { error: { code, message, retryable: false, requestId: randomBytes(16).toString('hex'), outcome, retryAfterSeconds } }, retryAfterSeconds === null ? {} : { 'Retry-After': String(retryAfterSeconds) });
 }
 function empty(response, headers = {}) {
   response.writeHead(204, { 'Cache-Control': 'no-store', ...headers });
@@ -90,7 +90,7 @@ function money(value) {
   return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
 }
 function validAttempt(body) {
-  const required = ['clientAttemptId', 'productId', 'styleId', 'lockMode', 'operation', 'model', 'quality', 'size', 'prompt', 'promptVersion', 'sourceAssetHashes', 'estimatedUSD', 'outputFormat'];
+  const required = ['clientAttemptId', 'productId', 'styleId', 'lockMode', 'operation', 'model', 'quality', 'size', 'prompt', 'promptVersion', 'sourceAssetHashes', 'estimatedUSD', 'outputFormat', 'reviewRevision'];
   if (Object.keys(body).some((key) => !required.includes(key) && key !== 'maxEstimatedUSD') || required.some((key) => !Object.hasOwn(body, key))) return false;
   return typeof body.clientAttemptId === 'string' && UUID.test(body.clientAttemptId) && body.clientAttemptId === body.clientAttemptId.toLowerCase()
     && typeof body.productId === 'string' && UUID.test(body.productId) && body.productId === body.productId.toLowerCase()
@@ -98,11 +98,11 @@ function validAttempt(body) {
     && body.model === STUDIO_MODEL && body.quality === STUDIO_QUALITY && body.size === STUDIO_SIZE
     && body.prompt === STUDIO_PROMPT && body.promptVersion === STUDIO_PROMPT_VERSION && body.outputFormat === 'png'
     && Array.isArray(body.sourceAssetHashes) && body.sourceAssetHashes.length === 1 && typeof body.sourceAssetHashes[0] === 'string' && /^[a-f0-9]{64}$/.test(body.sourceAssetHashes[0])
-    && body.estimatedUSD === studioEstimateUSD()
+    && body.estimatedUSD === studioEstimateUSD() && Number.isSafeInteger(body.reviewRevision) && body.reviewRevision >= 0
     && (!Object.hasOwn(body, 'maxEstimatedUSD') || (money(body.maxEstimatedUSD) !== null && money(body.maxEstimatedUSD) >= money(studioEstimateUSD())));
 }
 function attemptDigest(body) {
-  return digest(JSON.stringify([body.clientAttemptId, body.productId, body.styleId, body.lockMode, body.operation, body.model, body.quality, body.size, body.prompt, body.promptVersion, body.sourceAssetHashes, body.estimatedUSD, Object.hasOwn(body, 'maxEstimatedUSD') ? body.maxEstimatedUSD : null, body.outputFormat]));
+  return digest(JSON.stringify([body.clientAttemptId, body.productId, body.styleId, body.lockMode, body.operation, body.model, body.quality, body.size, body.prompt, body.promptVersion, body.sourceAssetHashes, body.estimatedUSD, Object.hasOwn(body, 'maxEstimatedUSD') ? body.maxEstimatedUSD : null, body.outputFormat, body.reviewRevision]));
 }
 
 
@@ -166,7 +166,8 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
     const path = request.url;
     const length = request.headers['content-length'];
     if (length && (!/^\d+$/.test(length) || Number(length) > MAX_BODY)) return error(response, 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large.');
-    const expectsBody = request.method === 'POST' && (path === `${API}/auth/login` || path === `${API}/session/connect` || path === `${API}/images/approvals` || path === `${API}/images/generate`);
+    const acknowledgementPath = /^\/api\/v2\/images\/attempts\/([^/]*)\/acknowledgement$/.exec(path ?? '');
+    const expectsBody = request.method === 'POST' && (path === `${API}/auth/login` || path === `${API}/session/connect` || path === `${API}/images/approvals` || path === `${API}/images/generate` || acknowledgementPath);
     if (!expectsBody && ((length && Number(length) > 0) || request.headers['transfer-encoding'])) return error(response, 400, 'INVALID_INPUT', 'Request body is not allowed.');
     clean();
     try {
@@ -231,6 +232,40 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
           for (const [id, existing] of providers) if (existing.owner === session.id) providers.delete(id);
           return empty(response, { 'Set-Cookie': cookie('provider_session', '', true) });
         }
+        if (path === `${API}/images/revision` && request.method === 'GET') {
+          if (!journal || !imageConfig) return error(response, 503, 'UNAVAILABLE', 'Billable image generation is not enabled.');
+          if (!validCsrf(request, session)) return error(response, 403, 'FORBIDDEN', 'Request authorization failed.');
+          const current = sessions.get(session.id), provider = providerSession(request, session);
+          const providerValue = readCookie(request, 'provider_session'), providerId = providerValue && digest(providerValue);
+          if (!provider) return error(response, 401, 'UNAUTHENTICATED', 'Provider authorization required.');
+          let reviewRevision;
+          try { reviewRevision = await journal.revision(); }
+          catch { return error(response, 503, 'UNAVAILABLE', 'The attempt journal is unavailable.'); }
+          if (sessions.get(session.id) !== current || current.expires <= now() || providers.get(providerId) !== provider || provider.expires <= now()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
+          return json(response, 200, { reviewRevision });
+        }
+        if (acknowledgementPath && request.method === 'POST') {
+          if (!journal || !imageConfig) return error(response, 503, 'UNAVAILABLE', 'Billable image generation is not enabled.');
+          const current = sessions.get(session.id), provider = providerSession(request, session);
+          const providerValue = readCookie(request, 'provider_session'), providerId = providerValue && digest(providerValue);
+          if (!provider) return error(response, 401, 'UNAUTHENTICATED', 'Provider authorization required.');
+          const attemptId = acknowledgementPath[1];
+          if (!UUID.test(attemptId) || attemptId !== attemptId.toLowerCase()) return error(response, 400, 'INVALID_INPUT', 'Invalid attempt identifier.');
+          let body;
+          try { body = await readJson(request); }
+          catch (reason) { const oversized = reason.message === 'size'; return error(response, oversized ? 413 : 400, oversized ? 'PAYLOAD_TOO_LARGE' : 'INVALID_INPUT', 'Invalid request.'); }
+          const active = () => sessions.get(session.id) === current && current.expires > now() && providers.get(providerId) === provider && provider.expires > now();
+          if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
+          if (Object.keys(body).length !== 1 || body.acknowledgePossibleCharge !== true) return error(response, 400, 'INVALID_INPUT', 'Explicit acknowledgement is required.');
+          let receipt;
+          try { receipt = await journal.acknowledge(principal, attemptId, now(), active); }
+          catch {
+            if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
+            return error(response, 503, 'UNAVAILABLE', 'The attempt journal is unavailable; acknowledgement can be replayed.');
+          }
+          if (!receipt) return error(response, 409, 'CONFLICT', 'This attempt cannot be reviewed safely.');
+          return json(response, 200, { clientAttemptId: attemptId, ...receipt });
+        }
         if ((path === `${API}/images/approvals` || path === `${API}/images/generate`) && request.method === 'POST') {
           if (!journal || !imageConfig) return error(response, 503, 'UNAVAILABLE', 'Billable image generation is not enabled.');
           const current = sessions.get(session.id), provider = providerSession(request, session);
@@ -246,46 +281,75 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
           const bodyDigest = attemptDigest(body);
           if (path === `${API}/images/approvals`) {
             if (approvals.size >= 128) return error(response, 429, 'RATE_LIMITED', 'Too many pending approvals.');
+            let revision;
+            try { revision = await journal.revision(); }
+            catch { return error(response, 503, 'UNAVAILABLE', 'The attempt journal is unavailable; no approval was issued.'); }
+            if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
+            if (revision !== body.reviewRevision) return error(response, 409, 'APPROVAL_STALE', 'Review occurred after consent; new consent and approval are required before sending.');
             const id = randomUUID(), expires = Math.min(now() + 5 * 60 * 1000, current.expires, provider.expires);
-            approvals.set(id, { sessionId: session.id, providerId, bodyDigest, expires });
+            approvals.set(id, { sessionId: session.id, providerId, bodyDigest, expires, revision });
             return json(response, 201, { approvalId: id, expiresAt: new Date(expires).toISOString() });
           }
           const approvalId = request.headers['x-attempt-approval'], requestId = request.headers['x-client-request-id'];
-          if (requestId !== body.clientAttemptId || typeof approvalId !== 'string' || !UUID.test(approvalId)) return error(response, 400, 'INVALID_INPUT', 'Invalid attempt identifiers.');
-          const approval = approvals.get(approvalId);
-          if (!approval || approval.sessionId !== session.id || approval.providerId !== providerId || approval.expires <= now() || approval.bodyDigest !== bodyDigest) return error(response, 409, 'CONFLICT', 'Approval is invalid, expired or does not match this attempt.');
+          if (requestId !== body.clientAttemptId) return error(response, 400, 'INVALID_INPUT', 'Invalid attempt identifiers.');
+          const approval = typeof approvalId === 'string' && UUID.test(approvalId) ? approvals.get(approvalId) : null;
+          if (!approval || approval.sessionId !== session.id || approval.providerId !== providerId || approval.expires <= now() || approval.bodyDigest !== bodyDigest) return error(response, 409, 'CONFLICT', 'Approval is invalid, expired or does not match this attempt; its original outcome is unknown.', 'UNKNOWN');
           approvals.delete(approvalId);
-          if (!await journal.begin()) return error(response, 409, 'ATTEMPT_BUSY', 'Another attempt is active or requires owner review.');
-          let retainInflight = false, submitted = false, reply;
+          let begun;
+          try { begun = await journal.begin(principal, body.clientAttemptId); }
+          catch (reason) { return error(response, 503, reason.message.includes('manual recovery') ? 'RECOVERY_REQUIRED' : 'UNAVAILABLE', reason.message.includes('manual recovery') ? 'No request was sent; an in-flight marker may require manual recovery.' : 'The attempt journal is unavailable; no request was sent.'); }
+          if (begun === 'duplicate') return error(response, 409, 'CONFLICT', 'This attempt was already started; its original outcome is not known from this response.', 'UNKNOWN');
+          if (begun === 'busy') return error(response, 409, 'ATTEMPT_BUSY', 'Another attempt is active or requires owner review.');
+          let submitted = false, reserved = false, providerPromise, reply, retainInflight = false;
           try {
-            const reservation = await journal.reserve(principal, body.clientAttemptId, bodyDigest, now(), imageConfig.maxAttemptsPerHour);
-            if (reservation === 'duplicate') reply = { status: 409, code: 'CONFLICT', message: 'This attempt was already reserved and will not be sent again.' };
-            else if (reservation === 'rate') reply = { status: 429, code: 'RATE_LIMITED', message: 'The hourly attempt limit was reached.' };
-            else if (!active() || approval.expires <= now()) {
-              await journal.finish(principal, body.clientAttemptId, 'DEFINITIVE_FAILURE');
-              reply = { status: 401, code: 'UNAUTHENTICATED', message: 'Authorization expired or was revoked before submission.' };
-            } else {
+            const reservation = await journal.reserveAndDispatch(principal, body.clientAttemptId, bodyDigest, now(), imageConfig.maxAttemptsPerHour, approval.revision, () => active() && approval.expires > now(), () => {
               submitted = true;
-              const result = await generateStudioScene(imageConfig);
+              providerPromise = generateStudioScene(imageConfig);
+            }, () => { reserved = true; });
+            if (reservation === 'stale') reply = { status: 409, code: 'APPROVAL_STALE', message: 'Review occurred after consent; new consent and approval are required before sending.' };
+            else if (reservation === 'duplicate') reply = { status: 409, code: 'CONFLICT', message: 'This attempt was already reserved; its original outcome is not known from this response.', outcome: 'UNKNOWN' };
+            else if (reservation === 'rate') reply = { status: 429, code: 'RATE_LIMITED', message: 'The hourly attempt limit was reached.' };
+            else if (reservation === 'unauthorized') reply = { status: 401, code: 'UNAUTHENTICATED', message: 'Authorization expired or was revoked before submission.' };
+          } catch {
+            if (!submitted) reply = { status: 503, code: 'UNAVAILABLE', message: 'The attempt journal is unavailable; no request was sent.' };
+          }
+          if (submitted) {
+            try {
+              const result = await providerPromise;
+              if (!result || !['DEFINITIVE_SUCCESS', 'DEFINITIVE_FAILURE', 'UNKNOWN'].includes(result.outcome)) throw new Error('Invalid provider outcome');
               if (result.outcome === 'UNKNOWN') retainInflight = true;
               try { await journal.finish(principal, body.clientAttemptId, result.outcome); }
               catch { retainInflight = true; }
               if (retainInflight) reply = { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' };
+              else if (result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT') {
+                const retryAfterSeconds = Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 0 && result.retryAfterSeconds <= 86400 ? result.retryAfterSeconds : null;
+                reply = { status: 429, code: 'PROVIDER_LIMIT', message: 'Provider returned 429; check rate limits, quota and billing.', retryAfterSeconds };
+              }
               else if (result.outcome === 'DEFINITIVE_FAILURE') reply = { status: 502, code: 'PROVIDER_ERROR', message: 'The provider rejected the attempt.' };
               else reply = { status: 200, value: { clientAttemptId: body.clientAttemptId, outcome: 'DEFINITIVE_SUCCESS', model: STUDIO_MODEL, image: { mimeType: 'image/png', dataBase64: result.image, width: 1024, height: 1024 }, usage: null, observedUSD: null, providerRequestId: null } };
-            }
-          } catch {
-            reply = submitted
-              ? { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' }
-              : { status: 503, code: 'UNAVAILABLE', message: 'The attempt journal is unavailable; no request was sent.' };
-            if (submitted) retainInflight = true;
+            } catch { retainInflight = true; reply = { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' }; }
           }
-          if (!retainInflight) {
-            try { await journal.end(); }
-            catch { reply = submitted ? { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' } : { status: 503, code: 'UNAVAILABLE', message: 'The attempt journal is unavailable; no request was sent.' }; }
+          if (!submitted) {
+            try { await journal.abortBeforeDispatch(principal, body.clientAttemptId, reserved); }
+            catch {
+              if (reply?.outcome !== 'UNKNOWN') {
+                let pending = false;
+                try { pending = await journal.hasPendingFailure(principal, body.clientAttemptId); } catch {}
+                if (pending) response.setHeader('X-Studio-Cleanup-Pending', '1');
+                reply = { status: 503, code: 'RECOVERY_REQUIRED', message: 'No request was sent; journal evidence may require manual recovery.' };
+              }
+            }
+          } else if (!retainInflight) {
+            // The immutable result is durable even if marker cleanup meets a stale lock.
+            try { await journal.end(principal, body.clientAttemptId); }
+            catch {
+              let resolved = false;
+              try { resolved = await journal.cleanupResolved(principal, body.clientAttemptId); } catch {}
+              if (!resolved) response.setHeader('X-Studio-Cleanup-Pending', '1');
+            }
           }
           if (reply.status === 200) return json(response, 200, reply.value);
-          return error(response, reply.status, reply.code, reply.message, reply.outcome);
+          return error(response, reply.status, reply.code, reply.message, reply.outcome, reply.retryAfterSeconds ?? null);
         }
         return error(response, 404, 'NOT_FOUND', 'Endpoint not found.');
       }
