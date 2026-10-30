@@ -129,7 +129,7 @@ function attemptDigest(body) {
 
 // The caller supplies a SHA-256 digest of a random, high-entropy login token; it is not a password hash.
 // This loopback-only process is not a reviewed production identity system.
-export async function createGateway({ authTokenHash, providerConfigured, staticDirectory, now = Date.now, imageGeneration = null }) {
+export async function createGateway({ authTokenHash, providerConfigured, staticDirectory, now = Date.now, monotonicClock, imageGeneration = null }) {
   if (!/^[a-f0-9]{64}$/.test(authTokenHash ?? '')) throw new Error('A valid owner access-token digest is required.');
   if (typeof providerConfigured !== 'boolean') throw new Error('Provider configuration status is required.');
   const files = await staticFiles(resolve(staticDirectory));
@@ -137,7 +137,7 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
   if (imageGeneration?.enabled === true) {
     const { apiKey, journalDirectory, transport = fetch, timeoutMs = 120_000, maxEstimatedUSD = '0.010000', maxAttemptsPerHour = 10 } = imageGeneration;
     if (!providerConfigured || typeof apiKey !== 'string' || !apiKey || typeof transport !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300_000 || money(maxEstimatedUSD) === null || !Number.isInteger(maxAttemptsPerHour) || maxAttemptsPerHour < 1 || maxAttemptsPerHour > 100) throw new Error('Invalid image generation configuration.');
-    journal = await createAttemptJournal(journalDirectory);
+    journal = await createAttemptJournal(journalDirectory, { monotonicClock });
     imageConfig = { apiKey, transport, timeoutMs, maxEstimatedUSD, maxAttemptsPerHour };
   }
   // This gateway has exactly one local owner; token rotation must not reset
@@ -342,7 +342,7 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
               if (result.outcome === 'UNKNOWN') retainInflight = true;
               const waitSeconds = result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT' && Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 1 && result.retryAfterSeconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? result.retryAfterSeconds : null;
               const retryNotBefore = waitSeconds === null ? null : now() + waitSeconds * 1000;
-              try { await journal.finish(principal, body.clientAttemptId, result.outcome, retryNotBefore); }
+              try { await journal.finish(principal, body.clientAttemptId, result.outcome, retryNotBefore, waitSeconds); }
               catch { retainInflight = true; }
               if (retainInflight) reply = { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' };
               else if (result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT') {

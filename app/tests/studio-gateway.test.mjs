@@ -33,10 +33,10 @@ async function fixture(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'studio-attempt-')), journal = options.journal ?? join(root, 'journal'), web = join(root, 'web');
   if (!options.journal) await mkdir(journal, { mode: 0o700 });
   await mkdir(web); await writeFile(join(web, 'index.html'), 'fixture');
-  let time = 1_800_000_000_000, server, origin, calls = [], currentToken = loginToken, currentHash = authTokenHash;
+  let time = 1_800_000_000_000, monotonic = 0, server, origin, calls = [], currentToken = loginToken, currentHash = authTokenHash;
   const transport = options.transport ?? (async (url, init) => { calls.push({ url, init }); return success(); });
   async function start() {
-    server = await createGateway({ authTokenHash: currentHash, providerConfigured: true, staticDirectory: web, now: () => time, imageGeneration: options.disabled ? null : { enabled: true, apiKey: fakeKey, journalDirectory: journal, transport, timeoutMs: options.timeoutMs ?? 500, maxAttemptsPerHour: options.maxAttemptsPerHour ?? 10, maxEstimatedUSD: options.maxEstimatedUSD ?? '0.010000' } });
+    server = await createGateway({ authTokenHash: currentHash, providerConfigured: true, staticDirectory: web, now: () => time, monotonicClock: () => monotonic, imageGeneration: options.disabled ? null : { enabled: true, apiKey: fakeKey, journalDirectory: journal, transport, timeoutMs: options.timeoutMs ?? 500, maxAttemptsPerHour: options.maxAttemptsPerHour ?? 10, maxEstimatedUSD: options.maxEstimatedUSD ?? '0.010000' } });
     await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`;
   }
   async function stop() { if (server?.listening) await new Promise((resolve) => server.close(resolve)); }
@@ -51,7 +51,7 @@ async function fixture(t, options = {}) {
   async function generate(s, body, approvalId) { return req('/api/v2/images/generate', s, body, { 'X-Attempt-Approval': approvalId, 'X-Client-Request-Id': body.clientAttemptId }); }
   async function acknowledge(s, id, body = { acknowledgePossibleCharge: true }) { return req(`/api/v2/images/attempts/${id}/acknowledgement`, s, body); }
   async function revision(s) { return fetch(origin + '/api/v2/images/revision', { headers: { Cookie: s.cookie, 'X-CSRF-Token': s.csrf } }); }
-  return { journal, web, calls, start, stop, login, req, approve, generate, acknowledge, revision, advance: (ms) => { time += ms; }, rotate: () => { currentToken = randomBytes(32).toString('base64url'); currentHash = createHash('sha256').update(currentToken).digest('hex'); }, get origin() { return origin; }, get server() { return server; } };
+  return { journal, web, calls, start, stop, login, req, approve, generate, acknowledge, revision, advance: (ms) => { time += ms; monotonic += ms; }, jumpWall: (ms) => { time += ms; }, advanceMonotonic: (ms) => { monotonic += ms; }, rotate: () => { currentToken = randomBytes(32).toString('base64url'); currentHash = createHash('sha256').update(currentToken).digest('hex'); }, get origin() { return origin; }, get server() { return server; } };
 }
 async function approval(f, session, body) { const revision = await f.revision(session); assert.equal(revision.status, 200); body.reviewRevision = (await revision.json()).reviewRevision; const res = await f.approve(session, body); assert.equal(res.status, 201); return (await res.json()).approvalId; }
 async function acquireTestLock(path) {
@@ -541,6 +541,23 @@ test('gateway enforces provider wait across restart, independent of client histo
   f.advance(1);
   const later = attempt(); const retried = await f.generate(session, later, await approval(f, session, later));
   assert.equal(retried.status, 429); assert.equal((await retried.json()).error.code, 'PROVIDER_LIMIT'); assert.equal(calls, 2);
+});
+
+test('forward wall-clock jump and restart do not release a new provider wait', async (t) => {
+  let calls = 0;
+  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '86401' } }); } });
+  let session = await f.login(); const first = attempt();
+  const response = await f.generate(session, first, await approval(f, session, first));
+  assert.equal(response.status, 429);
+  assert.equal((await f.acknowledge(session, first.clientAttemptId)).status, 200);
+  await f.stop(); f.jumpWall(86401000); await f.start(); session = await f.login();
+  const early = attempt();
+  assert.equal((await f.generate(session, early, await approval(f, session, early))).status, 429);
+  assert.equal(calls, 1);
+  f.advanceMonotonic(86401000);
+  const later = attempt();
+  assert.equal((await f.generate(session, later, await approval(f, session, later))).status, 429);
+  assert.equal(calls, 2);
 });
 
 test('gateway retains the provider HTTP-date interval despite a fast local clock', async (t) => {

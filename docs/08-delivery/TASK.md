@@ -378,11 +378,18 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 gateway elapsed-proof integration — 2026-10-30
+
+- **Change:** For new definitive provider-limit responses with a supported positive delay, the gateway now records both the bounded duration and deadline in journal format 4. The final dispatch path requires the journal's durable monotonic wait proof as well as the wall deadline. Injected monotonic time is used only by synthetic tests; normal execution uses the process clock.
+- **Evidence:** A synthetic provider returned 86401 seconds; after acknowledgement, a wall-clock jump of 86401 seconds and restart did not result in a second provider call. After a separately simulated full monotonic wait and a fresh approval, a second call occurred. Existing long-delay and HTTP-date gateway tests passed; the full application suite passed 234 tests and the build passed with its existing bundle-size warning. No actual provider or real key was used.
+- **Limits:** Existing format 3 waits still use wall time and remain vulnerable; their review and migration are not implemented. A restart without an elapsed proof conservatively restarts the full wait. Separate OS-process, crash/fsync, sleep behavior, browser, live-provider and independent security acceptance remain open. BUG-001 remains IN_PROGRESS.
+- **Rollback:** Stop generation, preserve all journal results and proofs, and use a reviewed compatibility and recovery procedure; older gateway versions cannot read format 4 and must not be forced to start by deleting records.
+
 ## T-041 durable wait-proof foundation — 2026-10-30
 
 - **Change:** The journal accepts an explicit format 4 definitive-failure record containing the bounded duration and wall deadline. New-format waits are observed by a process-local monotonic tracker; under the journal lock, the final reservation and dispatch path refuses an unelapsed wait and publishes a durable attempt-bound proof after elapsed observation. A proof must match its result; malformed or orphaned evidence fails closed. Existing callers still write their previous formats.
 - **Evidence:** Isolated journal tests cover a forward wall-clock jump, the exact elapsed boundary, two separate journal instances sharing a proof, restart with and without a proof, mismatched evidence and final locked dispatch. The additional dispatch test was run separately after the full suite. No real key or provider request was used.
-- **Limits:** The gateway does not yet create format 4 records, and existing format 3 waits still use wall time. Legacy manual recovery, real multi-process/crash and sync-failure tests, actual platform suspend behavior, UI and independent security review remain open. These tests use synthetic clocks and multiple instances in one process; they do not prove OS process isolation. BUG-001 remains IN_PROGRESS and the current provider path is still vulnerable to forward clock jumps.
+- **Limits:** At this historical foundation stage, the gateway did not yet create format 4 records; the later integration does so for new waits, while existing format 3 waits still use wall time. Legacy manual recovery, real multi-process/crash and sync-failure tests, actual platform suspend behavior, UI and independent security review remain open. These tests use synthetic clocks and multiple instances in one process; they do not prove OS process isolation. BUG-001 remains IN_PROGRESS and the current provider path is still vulnerable to forward clock jumps.
 - **Rollback:** Disable generation and preserve all journal evidence. Older journal code rejects format 4 and proof records; do not remove them to force a downgrade. Revert with a reviewed compatibility and recovery plan.
 
 ## T-041 journal protocol barrier foundation — 2026-10-30
@@ -402,7 +409,7 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 ## T-041 elapsed-time recovery candidate — 2026-10-30
 
 - **Design:** [ADR-016](../02-architecture/ADR.md#adr-016--candidate-elapsed-time-proof-for-provider-retry-waits) proposes versioned duration records, process-local monotonic observation and durable serialized elapsed proofs, with a conservative legacy-review path and a fail-closed version barrier. It records crash, multi-process, old-gateway and rollback boundaries.
-- **Limits:** This remains a candidate: the tracker, version barrier and journal proof foundation have scoped tests, but gateway integration, legacy recovery, live-provider testing and independent review have not been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
+- **Limits:** This remains a candidate: the tracker, version barrier, journal proof and new gateway path have scoped tests, but legacy recovery, live-provider testing and independent review have not been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
 - **Rollback:** Revert this candidate and matching checksums; preserve all existing journal and product records.
 
 ## T-041 forward clock-jump investigation — 2026-10-30
