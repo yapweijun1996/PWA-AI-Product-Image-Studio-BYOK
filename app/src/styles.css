@@ -141,6 +141,7 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .style-plan { width: 100%; min-width: 0; border-top: 1px solid var(--border); padding-top: 12px; overflow-wrap: anywhere; }
 .style-plan summary { cursor: pointer; min-height: 44px; padding: 12px 0; }
 .studio-history { list-style: none; padding: 0; }
+.studio-scene-disclosure > summary { min-height: 44px; padding: 12px 0; cursor: pointer; }
 .studio-history li { border-top: 1px solid var(--border); padding: 12px 0; }
 .studio-scene { display: block; max-width: min(100%, 420px); height: auto; }
 .studio-composite-comparison label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; width: min(100%, 420px); }

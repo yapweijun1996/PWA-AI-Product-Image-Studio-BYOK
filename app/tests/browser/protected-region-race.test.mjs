@@ -211,6 +211,8 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     })()`);
     await client.call('Page.reload');
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
+    await until(() => evaluate(client, `[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(exportFixture.attemptId)})&&li.querySelector('.studio-scene-disclosure > summary'))`),'saved scene disclosure');
+    await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.attemptId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);
     await until(() => evaluate(client, `[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Prepare local composite' && !b.disabled)`),'composite inputs');
     await evaluate(client, `[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Prepare local composite').click()`);
     await until(() => evaluate(client, `!!document.querySelector('.strict-composite [aria-label="Original source zoom area"]')`),'unsaved composite preview');
@@ -360,6 +362,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'persisted synthetic scene');
     assert.equal(providerCalls,1,'Reload does not resend the synthetic request.');
     const attemptSelector=`.studio-history li`;
+    await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);
     await until(() => evaluate(client, `[...document.querySelectorAll(${JSON.stringify(attemptSelector)})].some(li=>li.innerText.includes(${JSON.stringify(generated.attemptId)})&&[...li.querySelectorAll('button')].some(b=>b.textContent==='Prepare local composite'&&!b.disabled))`),'generated scene composition');
     await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));[...li.querySelectorAll('button')].find(b=>b.textContent==='Prepare local composite').click();})()`);
     await until(() => evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));return [...li.querySelectorAll('button')].some(b=>b.textContent==='Save unapproved composite');})()`),'generated composite preview');

@@ -173,6 +173,14 @@ function Original({ product, attempt }: { product: Product; attempt: StudioAttem
   return url ? <img className="studio-scene" src={url} alt="Original product photograph" /> : <p>Original source unavailable or no longer matches this attempt.</p>;
 }
 
+function SceneDisclosure({ product, attempt, asset, disabled }: { product: Product; attempt: StudioAttempt; asset: StudioAsset; disabled: boolean }) {
+  const [visited, setVisited] = useState(false);
+  return <details className="studio-scene-disclosure" onToggle={(event) => { if (event.currentTarget.open) setVisited(true); }}>
+    <summary>View scene and compose product</summary>
+    {visited && <><p>Original product photograph compared with the unapproved generated empty scene. The scene alone is not the product; the original product must be composed and reviewed locally.</p><div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Original product photograph</figcaption><Original product={product} attempt={attempt} /></figure><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved generated empty scene</figcaption><Scene asset={asset} /></figure></div><StrictCompositePanel productId={product.productId} productVersion={JSON.stringify(product)} attemptId={attempt.attemptId} scene={asset} disabled={disabled} /></>}
+  </details>;
+}
+
 function CompositeComparison({ productId, productVersion, leftAttempt, rightAttempt }: { productId: string; productVersion: string; leftAttempt: string; rightAttempt: string }) {
   const [outputs, setOutputs] = useState<[StrictComposite[], StrictComposite[]] | null>(null);
   const [left, setLeft] = useState('');
@@ -643,6 +651,6 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
         {interruptedReviewUnavailable(attempt, navigator.locks) && <p>{interruptedReviewUnavailable(attempt, navigator.locks)}</p>}
         <button className="secondary-button" type="button" disabled={busy || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || Boolean(interruptedReviewUnavailable(attempt, navigator.locks)) || (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true)} onClick={() => void review(attempt)}>Record review of this attempt</button>
       </div> : <p>Reviewed at {attempt.acknowledgedAt}; gateway recorded outcome: {attempt.recordedOutcome}. Local outcome remains {attempt.cleanupPending === true ? attempt.status : 'UNKNOWN'}. A new attempt requires separate authorization.</p>)}
-      {attempt.status === 'DEFINITIVE_SUCCESS' && (asset ? <><p>Original product photograph compared with the unapproved generated empty scene. The scene alone is not the product; the original product must be composed and reviewed locally.</p><div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Original product photograph</figcaption><Original product={product} attempt={attempt} /></figure><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved generated empty scene</figcaption><Scene asset={asset} /></figure></div><StrictCompositePanel productId={product.productId} productVersion={JSON.stringify(product)} attemptId={attempt.attemptId} scene={asset} disabled={busy} /></> : <p className="error-message">Saved scene is missing.</p>)}</li>)}</ul>}
+      {attempt.status === 'DEFINITIVE_SUCCESS' && (asset ? <SceneDisclosure product={product} attempt={attempt} asset={asset} disabled={busy} /> : <p className="error-message">Saved scene is missing.</p>)}</li>)}</ul>}
   </section>;
 }

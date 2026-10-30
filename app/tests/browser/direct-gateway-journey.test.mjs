@@ -120,9 +120,14 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'generation ready');
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
     await until(()=>evaluate(client,`document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'generated scene');assert.equal(providerCalls,1);
+    await evaluate(client,`document.querySelector('.studio-scene-disclosure > summary').click()`);
     await until(()=>evaluate(client,`[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Prepare local composite'&&!b.disabled)`),'composition ready');
     await evaluate(client,`[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Prepare local composite').click()`);
     await until(()=>evaluate(client,`[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Save unapproved composite')`),'composite preview');
+    await evaluate(client,`document.querySelector('.studio-scene-disclosure > summary').click()`);
+    await evaluate(client,`document.querySelector('.studio-scene-disclosure > summary').click()`);
+    assert.equal(await evaluate(client,`document.querySelector('.studio-scene-disclosure').open`),true,'The scene disclosure reopened.');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Save unapproved composite')`),true,'Closing and reopening preserves the composition draft.');
     await evaluate(client,`[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Save unapproved composite').click()`);
     await until(()=>evaluate(client,`[...document.querySelectorAll('summary')].some(s=>s.textContent==='Review this composite')`),'saved composite');
     await evaluate(client,`[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').click()`);
@@ -216,7 +221,13 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(scenes.length,7);assert.equal(new Set(scenes.map(x=>x.asset)).size,7);assert.deepEqual(scenes.map(x=>x.attempt).sort(),[...queueIds].sort());
     assert.ok(scenes.every(x=>x.hash===createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex')),'Each attempt retains its own synthetic scene record.');
 
+    const historyLayout=await evaluate(client, `(() => {const h=document.querySelector('.studio-history');return {height:h.getBoundingClientRect().height,panels:h.querySelectorAll('.strict-composite').length,closed:[...h.querySelectorAll('.studio-scene-disclosure')].every(d=>!d.open),unknown:h.innerText.includes('UNKNOWN'),overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+    assert.ok(historyLayout.closed && historyLayout.panels===0 && historyLayout.height<5000 && historyLayout.unknown && !historyLayout.overflow,'Results start compact while UNKNOWN remains visible.');
+
     const billboardId=queue.find(x=>x.style==='billboard').id;
+    await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(billboardId)}));li.querySelector('.studio-scene-disclosure > summary').focus()})()`);
+    await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
+    await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
     const billboardPanel=`[...document.querySelectorAll('.studio-history > li')].find(li=>li.innerText.includes(${JSON.stringify(billboardId)})).querySelector('.strict-composite')`;
     await until(()=>evaluate(client,`${billboardPanel}?.innerText.includes('Inspect the scene and select')`),'billboard controls');
     const billboardControl=await evaluate(client, `(() => {const p=${billboardPanel};const label=[...p.querySelectorAll('label')].find(x=>x.innerText.includes('front-facing and unobstructed'));const checkbox=label.querySelector('input');const a=label.getBoundingClientRect(),b=checkbox.getBoundingClientRect();return {labelHeight:a.height,inputWidth:b.width,inputHeight:b.height,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
