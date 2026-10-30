@@ -632,6 +632,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Browser data and unencrypted backups remain user-owned and may contain prompts, estimates, reviewer notes, photos and EXIF. Credential scanning is heuristic and does not inspect image pixels. No real provider call, seller SKU, physical iOS device, natural quota exhaustion, large-project memory test, production key or formal independent security acceptance was used. Synthetic Chromium is not release approval.
 - **Rollback:** Disable backup/import and generation as necessary; preserve originals, masks, jobs, attempts, generated assets, reviews, local trust markers and gateway journals. Older clients cannot safely read v2 archives or silently discard newer records. Do not delete ambiguous evidence to clear a safety gate.
 
+## T-022 multi-source Chromium backup observation — 2026-10-30
+
+- **Evidence:** In an isolated desktop Chromium origin, four independently generated 1024 × 1024 synthetic noisy PNGs (approximately 3.61 MB each) were saved through the source module. A 14,438,772-byte ZIP was created through the backup module. Only the synthetic product and its source records were removed from that disposable origin, then the archive was inspected and restored through the application modules. The preview reported no conflict, all four originals were restored, and SHA-256 hashes of the restored blobs matched the saved sources. The console reported no errors or warnings. The complete application suite passed 247/247.
+- **Limits:** This invokes application modules in a real browser but does not exercise the upload, download or import UI. The project has no masks, jobs, outputs or reviews, and is below the archive size limit; it does not establish peak memory, large-history performance, quota recovery or physical-device behavior. No private data or credentials were used. T-022 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence record and its documentation hashes; the isolated browser context contained synthetic data only.
+
 ## T-022 cancellation during restore — 2026-10-30
 
 - **Evidence:** A synthetic fake-indexeddb regression cancels after the imported product's add request succeeds but before the transaction commits. The restore rejects with `AbortError`, the new product is absent and an existing synthetic project is unchanged. All nine backup-history storage tests passed.
