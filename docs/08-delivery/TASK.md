@@ -322,6 +322,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** No real-brand source, compositor/label ROI comparison, human QA, actual quota exhaustion, memory-leak profile, mid-range phone or installed iOS test was performed. Large masks/backups have documented size and count limits; older browsers may render on the main thread. The full E2E-005, PERF-002, T-011 and T-022 acceptance gates remain open.
 - **Rollback:** Revert editor, mask storage/backup, navigation guard, worker cache changes and corresponding documentation together. Preserve IndexedDB originals and mask records and existing backups; an older app cannot safely export projects containing masks.
 
+## T-040 malformed PNG chunk validation — 2026-10-30
+
+- **Problem and change:** Node's ASCII decoding masks the high bit of bytes; a synthetic PNG whose IHDR name began with `0xc9` and had a correct CRC was incorrectly accepted as `IHDR` and reported DEFINITIVE_SUCCESS. The provider adapter now decodes chunk names without discarding high bits, so invalid names cannot alias ASCII PNG chunks.
+- **Evidence:** Synthetic provider tests construct valid-CRC high-bit variants of IHDR, IDAT and IEND; all return UNKNOWN after exactly one provider call, while valid PNG/usage regressions pass. No real provider, credentials, seller image or paid call was used.
+- **Limits:** UNKNOWN preserves a potentially billed outcome and must not be automatically resent. This is a bounded malformed-input fix, not proof of complete PNG validation, real-provider acceptance or production security; T-040 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert the adapter and matching regression tests together; retain all attempt history and user assets.
+
 ## T-040 one Studio scene record — 2026-10-30
 
 - **Change:** Added a default-disabled, loopback-only Studio scene adapter and UI. The only accepted request is the fixed, empty-background prompt with `gpt-image-2.5-flare`, low quality, 1024×1024 PNG; no product image or facts are sent. The UI requires a verified original and non-empty source-bound mask, explicit authorization and a one-call estimate. The result is an unapproved background, not a composited product or approved asset.

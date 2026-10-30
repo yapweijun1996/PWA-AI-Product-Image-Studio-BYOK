@@ -22,7 +22,8 @@ function validatePng(base64) {
   while (offset + 12 <= bytes.length) {
     const length = bytes.readUInt32BE(offset), next = offset + 12 + length;
     if (next > bytes.length) throw new Error('Invalid image');
-    const type = bytes.toString('ascii', offset + 4, offset + 8), payload = bytes.subarray(offset + 8, offset + 8 + length);
+    // Latin-1 preserves high bits so malformed chunk bytes cannot alias valid ASCII names.
+    const type = bytes.toString('latin1', offset + 4, offset + 8), payload = bytes.subarray(offset + 8, offset + 8 + length);
     if (crc32(bytes.subarray(offset + 4, offset + 8 + length)) !== bytes.readUInt32BE(offset + 8 + length)) throw new Error('Invalid image');
     if (!ihdr) {
       if (type !== 'IHDR' || length !== 13 || payload.readUInt32BE(0) !== 1024 || payload.readUInt32BE(4) !== 1024 || payload[10] !== 0 || payload[11] !== 0 || payload[12] > 1) throw new Error('Invalid image');

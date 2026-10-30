@@ -34,3 +34,19 @@ test('missing or malformed usage never changes image success', async () => {
     assert.equal(await simulate(usage), null);
   }
 });
+
+
+test('provider PNG chunks with non-ASCII bytes cannot alias valid chunk names', async () => {
+  const signature = Buffer.from([137,80,78,71,13,10,26,10]);
+  const pixels = deflateSync(Buffer.alloc(1024 * (1 + 1024 * 4)));
+  for (const position of [0, 1, 2]) {
+    const names = [Buffer.from('IHDR'), Buffer.from('IDAT'), Buffer.from('IEND')];
+    names[position][0] |= 0x80;
+    const malformed = Buffer.concat([signature, chunk(names[0], header), chunk(names[1], pixels), chunk(names[2], Buffer.alloc(0))]).toString('base64');
+    let calls = 0;
+    const result = await generateStudioScene({ apiKey: 'synthetic-only', prompt: 'synthetic', timeoutMs: 1000,
+      transport: async () => { calls++; return new Response(JSON.stringify({ data: [{ b64_json: malformed }] }), { headers: { 'content-type': 'application/json' } }); } });
+    assert.deepEqual(result, { outcome: 'UNKNOWN' });
+    assert.equal(calls, 1);
+  }
+});
