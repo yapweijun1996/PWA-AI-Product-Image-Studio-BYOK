@@ -502,6 +502,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Image decoding and canvas preview were mocked; this verifies archive construction and import inspection, not an actual browser decoder, complete restore of this fixture, large project/device behavior or independent security review. Existing compression-bomb checks remain enabled. T-022 remains IMPLEMENTED_UNVERIFIED.
 - **Rollback:** Revert the new regression and this record with documentation hashes; preserve all originals and backups.
 
+## T-081 full optional documentation validator checks — 2026-10-30
+
+- **Evidence:** In a disposable Python virtual environment with `jsonschema` 4.26.0 and PyYAML 6.0.3, `scripts/validate_ssot.py` returned PASS with all eight checks and no warnings. `scripts/test_validate_ssot.py -v` passed six tests, including the YAML image-review contract regression. This closes the optional-dependency gap in the prior documentation-only observations for this checkout.
+- **Limits:** These are static documentation, fixture and validator checks, not app behavior, actual OpenAPI interoperability, provider/security review or release acceptance. Other T-081 gates remain open.
+- **Rollback:** Revert this record and its documentation hashes; the temporary environment is not part of the repository.
+
 ## T-081 dependency and documentation checks — 2026-10-30
 
 - **Evidence:** At `6626dbd`, `npm audit --audit-level=high --json` reported zero known vulnerabilities across the installed dependency graph. A bounded search of the application tree for OpenAI-style `sk-` credentials of at least 24 characters found no matching files, excluding dependency/build output and the lockfile. The SSOT validator passed all checks with `jsonschema` and `PyYAML` installed in a temporary virtual environment; no warnings were reported. The preceding malformed-date change passed the full 214-test suite before its additional gateway regression was added, and the adapter/gateway subset passed 54 tests afterward.
