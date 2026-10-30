@@ -24,6 +24,9 @@ export function ApprovedExportPanel({ productId, productVersion, disabled }: { p
   const [loadedVersion, setLoadedVersion] = useState<string | null>(null);
   const operation = useRef<AbortController | null>(null);
   const mounted = useRef(false);
+  const hasExportWork = useRef(false);
+  const refreshDiscardedWork = useRef(false);
+  hasExportWork.current = busy || previews !== null || selected.length > 0;
   const current = loadedVersion === productVersion;
   useUnsavedChanges(busy || previews !== null);
 
@@ -31,7 +34,9 @@ export function ApprovedExportPanel({ productId, productVersion, disabled }: { p
     mounted.current = true;
     const controller = new AbortController();
     operation.current?.abort(); operation.current = null;
-    setBusy(false); setCandidates(null); setSelected([]); setPreviews(null); setConfirmed(false); setLoadedVersion(null); setError(''); setNotice('');
+    setBusy(false); setCandidates(null); setSelected([]); setPreviews(null); setConfirmed(false); setLoadedVersion(null); setError('');
+    setNotice(refreshDiscardedWork.current ? 'Approvals are being rechecked because the app was reactivated or the project changed. Select images and prepare previews again.' : '');
+    refreshDiscardedWork.current = false;
     void listApprovedExportCandidates(productId, controller.signal).then((items) => {
       if (!controller.signal.aborted && mounted.current) { setCandidates(items); setLoadedVersion(productVersion); }
     }).catch((reason: unknown) => {
@@ -41,7 +46,7 @@ export function ApprovedExportPanel({ productId, productVersion, disabled }: { p
   }, [productId, productVersion, revision]);
 
   useEffect(() => {
-    const invalidate = () => { operation.current?.abort(); setPreviews(null); setConfirmed(false); setRevision((value) => value + 1); };
+    const invalidate = () => { if (hasExportWork.current) refreshDiscardedWork.current = true; operation.current?.abort(); setPreviews(null); setConfirmed(false); setRevision((value) => value + 1); };
     const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('product-image-studio-changes');
     if (channel) channel.onmessage = (event: MessageEvent) => { if (event.data === productId) invalidate(); };
     window.addEventListener('focus', invalidate);

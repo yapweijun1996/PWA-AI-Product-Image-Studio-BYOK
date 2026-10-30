@@ -427,3 +427,10 @@ This register tracks verified defects and their remediation. Application source 
 - **Finding:** Every route retained the same generic document title, making Help, Settings and other pages difficult to distinguish in browser tabs and history. The guide title assertion failed before the change.
 - **Remediation:** Known paths receive a route-specific title; unknown paths receive a page-not-found title. Product pages use a generic title rather than placing local product names in browser history. A product route that fails to load or has no matching local product retains its generic route title.
 - **Evidence and limits:** Synthetic Chromium checks direct navigation to the workspace, product creation, import, product route, missing page and trailing-slash Settings, plus guide-to-Settings navigation. The focused test, six-test browser suite and production build passed. Screen-reader announcements, physical-device tab UI and every error state remain unverified.
+
+## BUG-054 — Export preview disappears without explaining the recheck
+
+- **Status:** IMPLEMENTED_UNVERIFIED. **Priority:** P2. **Related tasks:** T-061 and T-080.
+- **Finding:** Returning focus to the app or receiving a project-change notification rechecks approvals and clears export selections and previews. When a user had begun preparing an export, this happened without explaining why or how to continue. A synthetic focus-event assertion for guidance failed before the change.
+- **Remediation:** If an export selection, preview or operation was active, the panel explains the recheck and asks the user to select images and prepare previews again. The existing invalidation, cancellation and fresh-approval checks are unchanged.
+- **Evidence and limits:** In a synthetic 320 px Chromium journey, a prepared preview was invalidated by a dispatched focus event, the explanation appeared, selection was cleared, and a new selection and preview led to a separately confirmed approved ZIP download. The focused browser test, six-test browser suite and production build passed. A real application switch, cross-tab event, physical device and screen reader were not tested in this follow-up.

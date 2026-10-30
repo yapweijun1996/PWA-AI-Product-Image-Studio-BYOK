@@ -358,6 +358,12 @@ test('protected mask gestures and approved export bundle remain consistent', { t
 
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'converted preview');
+    await evaluate(client, `window.dispatchEvent(new Event('focus'))`);
+    await until(() => evaluate(client, `!!document.querySelector('.approved-export fieldset') && !document.querySelector('.approved-export .strict-comparison')`), 'approval recheck after focus');
+    assert.equal(await evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Select images and prepare previews again')`),true,'The user is told why their preview was cleared.');
+    assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').disabled`),true,'Rechecking clears the selection and requires a fresh choice.');
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
+    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'preview after approval recheck');
     await evaluate(client, `document.querySelector('.approved-export .strict-comparison').scrollIntoView({block:'start'})`);
     const layout = await evaluate(client, `Array.from(document.querySelectorAll('.approved-export .strict-zoom')).map(el=>{const r=el.getBoundingClientRect();return {width:r.width,x:r.x,y:r.y,height:r.height}})`);
     assert.ok(layout.every(r=>r.width>=220),'Mobile previews have enough width for inspection.');
