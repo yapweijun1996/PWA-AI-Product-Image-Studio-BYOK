@@ -106,6 +106,14 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await evaluate(client, `(() => {const input=document.querySelector('#mask-y');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
     assert.equal(await evaluate(client, `document.querySelector('.mask-stamp button').disabled`),true,'An empty vertical position cannot apply a mark.');
     await evaluate(client, `(() => {const input=document.querySelector('#mask-y');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'50');input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+    await until(() => evaluate(client, `(async()=> (await import('/src/useUnsavedChanges.ts')).hasUnsavedChanges())()`),'unsaved mask mark');
+    await evaluate(client, `(() => {window.__oldConfirm=window.confirm;window.confirm=()=>false;const s=document.querySelector('#mask-source');s.value='';s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    assert.equal(await evaluate(client, `!!document.querySelector('#mask-tool')`),true,'Declining discard keeps the mask editor open.');
+    await evaluate(client, `(() => {window.confirm=()=>true;const s=document.querySelector('#mask-source');s.value='';s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await until(() => evaluate(client, `!document.querySelector('#mask-tool')`),'discarded mask editor');
+    assert.equal(await evaluate(client, `(async()=> (await import('/src/useUnsavedChanges.ts')).hasUnsavedChanges())()`),false,'Confirmed discard clears the draft guard.');
+    await evaluate(client, `(() => {window.confirm=window.__oldConfirm;const s=document.querySelector('#mask-source');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await until(() => evaluate(client, `document.querySelector('#mask-tool') && !document.querySelector('.mask-regions')?.disabled`),'reopened mask editor');
     await evaluate(client, `(() => {const tool = document.querySelector('#mask-tool'); tool.value = 'region'; tool.dispatchEvent(new Event('change', { bubbles: true })); document.querySelector('.mask-viewport').scrollIntoView({ block: 'center' });})()`);
     const point = await evaluate(client, `(() => {const r = document.querySelector('canvas[aria-label="Mask drawing surface"]').getBoundingClientRect(); return {x: r.left + r.width * 0.2, y: r.top + r.height * 0.2, x2: r.left + r.width * 0.7, y2: r.top + r.height * 0.7};})()`);
     const touch = async (type, points) => client.call('Input.dispatchTouchEvent', { type, touchPoints: points });

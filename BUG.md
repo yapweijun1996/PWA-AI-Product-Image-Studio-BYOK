@@ -229,3 +229,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Keep the entered text, require whole percentages from 0 through 100 on both axes, disable the action for invalid input and associate both controls with the instructions. Valid input is applied without silent clamping.
 - **Evidence and limits:** A synthetic 320 px Chromium journey verifies empty, negative, above-100 and fractional horizontal values and an empty vertical value disable the action. A valid non-drag erase affects the requested pixel; the subsequent protected-area mask, composition and export journey passes. The four-test browser suite, a focused rerun and production build pass. No physical device, screen reader, real SKU or full-image fidelity review was tested.
 - **Rollback:** Revert the coordinate validation and regression assertions together only with equivalent prevention of unintended marks; preserve original images and masks.
+
+## BUG-028 — Discarding a mask by clearing the source leaves a stale draft guard
+
+- **Status:** VERIFIED for the scoped synthetic Chromium flow. **Priority:** P2. **Related tasks:** T-050, T-011 and T-080.
+- **Reproduction:** Make a mask mark, choose the empty source option and confirm discarding the unsaved mask. The editor closes, but its unsaved-work owner remains registered, so navigation or an app update can continue to report a draft that the user already discarded.
+- **Fix:** Reset the editor's draft, review, region, pointer and status state for every source change, including the empty option. The existing confirmation still protects dirty work before changing sources.
+- **Evidence and limits:** A 320 px Chromium regression reproduced the stale guard before the fix. It now verifies that declining the confirmation keeps the editor open, confirming discard clears the guard, and reopening the original source allows the protected-area and export journey to complete. The browser suite and build pass. No physical device, screen reader, actual update during this exact interaction or real SKU was tested.
+- **Rollback:** Revert the source-reset change and regression together only with equivalent draft cleanup; preserve all saved originals and masks.

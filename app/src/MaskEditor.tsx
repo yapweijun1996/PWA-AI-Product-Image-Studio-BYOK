@@ -44,11 +44,12 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const stampReady = validStampCoordinate(x) && validStampCoordinate(y);
 
   useEffect(() => {
-    if (!sourceId) { setLoaded(null); return; }
+    setLoaded(null); setError(''); setStatus(''); setReview(false); setRegions([]);
+    strokes.current = []; points.current = 0; active.current = null; brushPointer.current = null; regionDrag.current = null; setRegionPreview(null); setSelectingRegion(false); setDirty(false);
+    if (!sourceId) { setLoading(false); return; }
     let alive = true;
     let url = '';
-    setLoading(true); setLoaded(null); setError(''); setStatus(''); setReview(false); setRegions([]);
-    strokes.current = []; points.current = 0; active.current = null; brushPointer.current = null; regionDrag.current = null; setRegionPreview(null); setSelectingRegion(false); setDirty(false);
+    setLoading(true);
     void (async () => {
       try {
         const current = await getProduct(product.productId);

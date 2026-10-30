@@ -1105,3 +1105,9 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Finding and fix:** Empty mask-stamp input became zero and invalid values were silently clamped, potentially placing a mark at an unintended location. Both axes now require explicit whole percentages from 0 to 100; see [BUG-027](../../BUG.md).
 - **Verification:** Synthetic Chromium at 320 px checks empty, negative, above-range and fractional input, then verifies a valid non-drag erase at the intended pixel and completes the protected-area, review and export flow. The four-test browser suite, focused rerun and production build passed.
 - **Limits and rollback:** A sampled pixel and emulated interactions do not establish real-SKU fidelity, physical-device or screen-reader acceptance. T-050/T-080 remain IMPLEMENTED_UNVERIFIED. Revert the validation and regression together only with equivalent invalid-input protection; retain saved images and masks.
+
+## T-050 / BUG-028 mask discard guard — 2026-10-31
+
+- **Finding and fix:** Confirming discard by clearing the selected source closed the mask editor but left its unsaved-work guard active. Source changes now clear the editor's draft state after the existing confirmation; see [BUG-028](../../BUG.md).
+- **Verification:** A synthetic 320 px Chromium test reproduced the stale guard, then verified declining discard preserves the editor, confirming it clears the guard, and reopening the source continues through mask and export. The full four-test browser suite and production build passed. A separate retry-journey test was corrected to wait for a new document after reload; its initial failure was a test timing issue.
+- **Limits and rollback:** Actual installed-device updates, screen-reader and real-SKU interactions remain open. T-050, T-011 and T-080 remain IMPLEMENTED_UNVERIFIED. Revert source-reset logic and matching regression only with equivalent draft cleanup; preserve saved data.
