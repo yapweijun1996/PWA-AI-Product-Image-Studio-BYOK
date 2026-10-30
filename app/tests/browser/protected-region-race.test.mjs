@@ -178,9 +178,30 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     })()`);
     await client.call('Page.reload');
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
+    await until(() => evaluate(client, `[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Prepare local composite' && !b.disabled)`),'composite inputs');
+    await evaluate(client, `[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Prepare local composite').click()`);
+    await until(() => evaluate(client, `!!document.querySelector('.strict-composite [aria-label="Original source zoom area"]')`),'unsaved composite preview');
+    assert.ok(await evaluate(client, `document.querySelector('.strict-composite input[type="range"]').getBoundingClientRect().height`) >= 44, 'Composite zoom has a usable touch target.');
+    for (const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const state=await evaluate(client, `(() => {const panes=['Original source zoom area','Composite zoom area'].map(name=>{const r=document.querySelector('[aria-label="'+name+'"]').getBoundingClientRect();return {y:r.y,width:r.width,height:r.height};});return {panes,overflow:document.documentElement.scrollWidth>innerWidth};})()`);
+      assert.equal(state.overflow,false);
+      if(width<800) assert.ok(state.panes[1].y>state.panes[0].y+state.panes[0].height && state.panes.every(p=>p.width>=220));
+      else assert.ok(Math.abs(state.panes[0].y-state.panes[1].y)<1);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client, `[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Discard preview').click()`);
+    await until(() => evaluate(client, `!document.querySelector('.strict-composite [aria-label="Original source zoom area"]')`),'discarded composite preview');
+    await evaluate(client, `[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Prepare local composite').click()`);
+    await until(() => evaluate(client, `[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Save unapproved composite')`),'second composite preview');
+    await evaluate(client, `[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Save unapproved composite').click()`);
+    await until(() => evaluate(client, `document.querySelector('.strict-composite')?.innerText.includes('Unapproved composite saved locally.')`),'saved unapproved composite');
+    const compositeIds=await evaluate(client, `(async () => {const p=await import('/src/products.ts');return (await p.listStrictComposites(${JSON.stringify(productId)},${JSON.stringify(exportFixture.attemptId)})).map(c=>c.assetId);})()`);
+    assert.equal(compositeIds.length,2);assert.ok(compositeIds.includes(exportFixture.assetId));
     await until(() => evaluate(client, `[...document.querySelectorAll('summary')].some(s=>s.textContent==='Review this composite')`),'composite review disclosure');
     await evaluate(client, `[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').click()`);
     await until(() => evaluate(client, `document.querySelectorAll('.visual-review .strict-comparison .strict-zoom').length===2`),'review comparison');
+    assert.ok(await evaluate(client, `document.querySelector('.visual-review input[type="range"]').getBoundingClientRect().height`) >= 44, 'Review zoom has a usable touch target.');
     const reviewLayout=await evaluate(client, `[...document.querySelectorAll('.visual-review .strict-comparison .strict-zoom')].map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})`);
     assert.equal(await evaluate(client, `document.querySelectorAll('.visual-review .strict-comparison figcaption')[1].textContent`), 'Composite under review · 1024 × 1024');
     assert.ok(reviewLayout.every(p=>p.width>=180),'Review previews need sufficient mobile width.');
