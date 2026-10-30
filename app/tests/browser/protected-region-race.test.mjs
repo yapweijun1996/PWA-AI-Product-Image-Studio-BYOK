@@ -349,7 +349,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await evaluate(client, `[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
     await until(() => evaluate(client, `![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'ready studio generation');
     await evaluate(client, `[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
-    await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'generated synthetic studio scene');
+    await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · Scene generated; unapproved')`),'generated synthetic studio scene');
     assert.equal(providerCalls,1,'Exactly one synthetic provider request was made.');
     assert.deepEqual(Object.keys(providerPayload).sort(),['model','n','output_format','prompt','quality','size']);
     assert.equal(providerPayload.n,1);assert.equal(providerPayload.output_format,'png');
@@ -359,7 +359,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.equal(generated.scene,createHash('sha256').update(Buffer.from(imageData,'base64')).digest('hex'));
     assert.equal(await evaluate(client, `document.body.innerText.includes('synthetic-provider-fixture') || JSON.stringify(localStorage).includes('synthetic-provider-fixture') || JSON.stringify(sessionStorage).includes('synthetic-provider-fixture')`),false);
     await client.call('Page.reload');
-    await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'persisted synthetic scene');
+    await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · Scene generated; unapproved')`),'persisted synthetic scene');
     assert.equal(providerCalls,1,'Reload does not resend the synthetic request.');
     const attemptSelector=`.studio-history li`;
     await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);

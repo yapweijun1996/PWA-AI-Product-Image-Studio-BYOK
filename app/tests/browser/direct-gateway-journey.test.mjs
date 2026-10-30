@@ -119,7 +119,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'generation ready');
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
-    await until(()=>evaluate(client,`document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'generated scene');assert.equal(providerCalls,1);
+    await until(()=>evaluate(client,`document.querySelector('.studio-history')?.innerText.includes('Studio · Scene generated; unapproved')`),'generated scene');assert.equal(providerCalls,1);
     await evaluate(client,`document.querySelector('.studio-scene-disclosure > summary').click()`);
     await until(()=>evaluate(client,`[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Prepare local composite'&&!b.disabled)`),'composition ready');
     await evaluate(client,`[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Prepare local composite').click()`);
@@ -158,11 +158,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'new attempt ready');
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
-    await until(()=>evaluate(client,`document.querySelector('.studio-history')?.innerText.includes('Studio · UNKNOWN')`),'unknown outcome');
+    await until(()=>evaluate(client,`document.querySelector('.studio-history')?.innerText.includes('Studio · Outcome unknown')`),'unknown outcome');
     assert.equal(providerCalls,2,'An ambiguous response causes no automatic resend.');
-    const unknownId=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes('Studio · UNKNOWN')).innerText.match(/[0-9a-f-]{36}/i)[0]`);
+    const unknownId=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes('Studio · Outcome unknown')).innerText.match(/[0-9a-f-]{36}/i)[0]`);
     await client.call('Page.reload');
-    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('UNKNOWN'))`),'persisted unknown');
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('Outcome unknown'))`),'persisted unknown');
     assert.equal(providerCalls,2,'Reload does not resend an unknown attempt.');
     const unknownSelector=`.studio-history li`;
     assert.equal(await evaluate(client,`[...[...document.querySelectorAll(${JSON.stringify(unknownSelector)})].find(li=>li.innerText.includes(${JSON.stringify(unknownId)})).querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').disabled`),true,'Unreviewed uncertainty cannot be acknowledged.');
@@ -178,12 +178,12 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'retry consent');
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
-    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes('Studio · DEFINITIVE_SUCCESS')&&li.innerText.includes('Retry of attempt ${unknownId}'))`),'successful separately authorized retry');
-    const retryId=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes('Studio · DEFINITIVE_SUCCESS')&&li.innerText.includes('Retry of attempt ${unknownId}')).innerText.match(/[0-9a-f-]{36}/i)[0]`);
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes('Studio · Scene generated; unapproved')&&li.innerText.includes('Retry of attempt ${unknownId}'))`),'successful separately authorized retry');
+    const retryId=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes('Studio · Scene generated; unapproved')&&li.innerText.includes('Retry of attempt ${unknownId}')).innerText.match(/[0-9a-f-]{36}/i)[0]`);
     assert.notEqual(retryId,unknownId);assert.equal(providerCalls,3,'A separately authorized retry makes exactly one new synthetic request.');
     await evaluate(client,`window.__beforeRetryReload=true`);
     await client.call('Page.reload');
-    await until(()=>evaluate(client,`window.__beforeRetryReload!==true && [...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('UNKNOWN')&&li.innerText.includes('Reviewed at'))&&[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(retryId)})&&li.innerText.includes('DEFINITIVE_SUCCESS'))`),'reloaded retry lineage');
+    await until(()=>evaluate(client,`window.__beforeRetryReload!==true && [...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('Outcome unknown')&&li.innerText.includes('Reviewed at'))&&[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(retryId)})&&li.innerText.includes('Scene generated; unapproved'))`),'reloaded retry lineage');
     assert.equal(providerCalls,3,'Reload preserves both outcomes without another request.');
     const attemptsBefore=await evaluate(client, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const q=db.transaction('attempts').objectStore('attempts').getAll();q.onsuccess=()=>resolve(q.result.map(x=>x.attemptId));q.onerror=()=>reject(q.error)})}finally{db.close()}})()`);
     for(const style of ['Hero','Lifestyle','Flat Lay','Macro','UGC','Billboard']) {
@@ -221,10 +221,13 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(scenes.length,7);assert.equal(new Set(scenes.map(x=>x.asset)).size,7);assert.deepEqual(scenes.map(x=>x.attempt).sort(),[...queueIds].sort());
     assert.ok(scenes.every(x=>x.hash===createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex')),'Each attempt retains its own synthetic scene record.');
 
-    const historyLayout=await evaluate(client, `(() => {const h=document.querySelector('.studio-history');return {height:h.getBoundingClientRect().height,panels:h.querySelectorAll('.strict-composite').length,closed:[...h.querySelectorAll('.studio-scene-disclosure')].every(d=>!d.open),unknown:h.innerText.includes('UNKNOWN'),overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+    const historyLayout=await evaluate(client, `(() => {const h=document.querySelector('.studio-history');return {height:h.getBoundingClientRect().height,panels:h.querySelectorAll('.strict-composite').length,closed:[...h.querySelectorAll('.studio-scene-disclosure')].every(d=>!d.open),unknown:h.innerText.includes('Outcome unknown'),overflow:document.documentElement.scrollWidth>innerWidth}})()`);
     assert.ok(historyLayout.closed && historyLayout.panels===0 && historyLayout.height<5000 && historyLayout.unknown && !historyLayout.overflow,'Results start compact while UNKNOWN remains visible.');
 
     const billboardId=queue.find(x=>x.style==='billboard').id;
+    const retryLabel=await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(billboardId)}));const b=[...li.querySelectorAll('button')].find(x=>x.textContent.startsWith('Prepare another attempt'));return {text:b.textContent,name:b.getAttribute('aria-label'),height:b.getBoundingClientRect().height}})()`);
+    assert.equal(retryLabel.text,'Prepare another attempt for Billboard');
+    assert.ok(retryLabel.name.includes(billboardId)&&retryLabel.height>=44,'The shorter action retains an accessible attempt identity and usable height.');
     await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(billboardId)}));li.querySelector('.studio-scene-disclosure > summary').focus()})()`);
     await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
