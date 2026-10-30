@@ -539,11 +539,12 @@ test('guide describes current local workflow and supports keyboard navigation', 
     await client.call('Page.navigate',{url:`http://localhost:${vite.httpServer.address().port}/help`});
     await until(()=>evaluate(client, `document.querySelector('h1')?.innerText==='Get started' && document.querySelectorAll('.guide-list section').length===6`),'local onboarding guide');
     assert.equal(await evaluate(client, `document.querySelector('#availability-heading').parentElement.innerText.includes('Pi agent and remote mobile gateway are not available yet')`),true);
+    assert.equal(await evaluate(client, `(() => {const section=document.querySelector('#install-heading').parentElement;return section.innerText.includes('Installing does not connect a phone') && section.querySelectorAll('a').length===2})()`),true,'Install guidance distinguishes installation from gateway access.');
     for(const width of [320,390,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
-      const layout=await evaluate(client, `(() => ({overflow:document.documentElement.scrollWidth>innerWidth, links:[...document.querySelectorAll('.guide-list a')].map(a=>a.getBoundingClientRect().height)}))()`);
+      const layout=await evaluate(client, `(() => ({overflow:document.documentElement.scrollWidth>innerWidth, links:[...document.querySelectorAll('.guide-list a, .install-links a')].map(a=>a.getBoundingClientRect().height)}))()`);
       assert.equal(layout.overflow,false,`The guide fits ${width}px.`);
-      assert.ok(layout.links.length===3 && layout.links.every(height=>height>=44),`Guide links have usable height at ${width}px.`);
+      assert.ok(layout.links.length===5 && layout.links.every(height=>height>=44),`Guide links have usable height at ${width}px.`);
     }
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     await evaluate(client, `[...document.querySelectorAll('.guide-list a')].find(a=>a.textContent.includes('Create a product')).focus()`);

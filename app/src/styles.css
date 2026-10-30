@@ -179,6 +179,7 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .approved-export figure { min-width: 0; margin: 12px 0; }
 .approved-export figure img { display: block; height: auto; }
 .approved-export figcaption { color: var(--muted); font-size: 13px; }
+.install-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .guide-list { border-top: 1px solid var(--border); }.guide-list section { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 16px; padding: 26px 0; border-bottom: 1px solid var(--border); }.guide-list h2 { margin: 0 0 8px; font-size: 19px; }.guide-list p { max-width: 680px; margin: 0; }.guide-footnote { margin-top: 28px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 footer { display: flex; justify-content: space-between; gap: 16px; padding: 22px 48px calc(22px + env(safe-area-inset-bottom)); color: var(--muted); border-top: 1px solid var(--border); font-size: 10px; letter-spacing: .06em; }
 .update-notice { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 48px; color: var(--ink); background: var(--tint); border-bottom: 1px solid var(--border); }
