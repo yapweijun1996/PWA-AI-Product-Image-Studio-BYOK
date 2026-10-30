@@ -32,8 +32,8 @@
     },
     {
       "path": "BUG.md",
-      "bytes": 23891,
-      "sha256": "2dc6fb5403a642ff9acc7b7a20ba8bdefa6a32073e068e9addf036a13b73c4fb"
+      "bytes": 24652,
+      "sha256": "1202c9d54ca7c670ad692cc45ffdd16bc787c1c3f96712a2589d20d4b9eed1bd"
     },
     {
       "path": "DESIGN.md",
@@ -157,8 +157,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 30730,
-      "sha256": "38fc9c58a46828909072a94f18426d72ac129a994fe67ef9b15815e6a9b723ee"
+      "bytes": 30797,
+      "sha256": "6b5bfb231b8dbb524fbacc4c3c401b672ce2a1edaddd0769ff4cf9a7d4797cc2"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -212,8 +212,8 @@
     },
     {
       "path": "docs/04-data/EXPORT_IMPORT.md",
-      "bytes": 8926,
-      "sha256": "6f82c004a1eb59566acb08bd4563568e32243a702252d7f92e7bfcc268bc2bf9"
+      "bytes": 9003,
+      "sha256": "7d7f32804ad1ba4300cd88eec4499d2c57e6528ac175f3da8fdac7be1e373838"
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 175820,
-      "sha256": "13a0678479729f2b7d9486b3520c33ec480c28d510fe194fc23045ef79d0b01c"
+      "bytes": 177692,
+      "sha256": "afc7dc02cc6ac73a1d1f7dce63b8e7b90a1288b514d8c8c7959ec3a772f72197"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

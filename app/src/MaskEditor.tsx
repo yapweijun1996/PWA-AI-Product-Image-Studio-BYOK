@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { getProduct, loadSourceMask, loadOriginalSource, saveMask, type Product } from './products';
 import { paintStroke, renderMask, type MaskPoint, type MaskStroke } from './maskRendering';
 import { useUnsavedChanges } from './useUnsavedChanges';
+import type { StrictRect } from './strictComposite';
 
 type Source = Product['sourceAssets'][number];
 type Loaded = { source: Source; sourceUrl: string; original: Blob; base: Blob | null; expectedMaskId: string | null };
+type RegionDraft = { id: string; x: string; y: string; width: string; height: string };
 const MAX_POINTS = 50000;
 
 export function MaskEditor({ product, onChange }: { product: Product; onChange: (product: Product) => void }) {
@@ -19,6 +21,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const [size, setSize] = useState(5);
   const [zoom, setZoom] = useState(100);
   const [showMask, setShowMask] = useState(true);
+  const [regions, setRegions] = useState<RegionDraft[]>([]);
   const [x, setX] = useState(50);
   const [y, setY] = useState(50);
   const [error, setError] = useState('');
@@ -36,7 +39,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     if (!sourceId) { setLoaded(null); return; }
     let alive = true;
     let url = '';
-    setLoading(true); setLoaded(null); setError(''); setStatus(''); setReview(false);
+    setLoading(true); setLoaded(null); setError(''); setStatus(''); setReview(false); setRegions([]);
     strokes.current = []; points.current = 0; active.current = null; setDirty(false);
     void (async () => {
       try {
@@ -53,7 +56,10 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
         const image = new Image();
         await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('The verified source could not be decoded.')); image.src = url; });
         if (image.naturalWidth !== source.width || image.naturalHeight !== source.height) throw new Error('This browser could not apply the source orientation safely.');
-        if (alive) setLoaded({ source, sourceUrl: url, original, base: mask?.blob ?? null, expectedMaskId });
+        if (alive) {
+          setRegions((mask?.protectedEvidence?.regions ?? []).map((region) => ({ id: crypto.randomUUID(), x: String(region.x), y: String(region.y), width: String(region.width), height: String(region.height) })));
+          setLoaded({ source, sourceUrl: url, original, base: mask?.blob ?? null, expectedMaskId });
+        }
       } catch (reason) {
         if (alive) setError(reason instanceof Error ? reason.message : 'The source or mask could not be loaded.');
       } finally { if (alive) setLoading(false); }
@@ -174,14 +180,26 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     if (event.button !== 0 || !loaded || !previewReady || saving || review || error) return;
     event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); start(position(event));
   }
+  function parsedRegions(): StrictRect[] {
+    return regions.map((region) => {
+      const values = [region.x, region.y, region.width, region.height];
+      if (values.some((value) => !/^\d+$/.test(value))) throw new Error('Enter whole source-pixel coordinates for each protected area.');
+      const [x, y, width, height] = values.map(Number);
+      if (![x, y, width, height].every(Number.isSafeInteger) || width < 1 || height < 1 ||
+          x + width > loaded!.source.width || y + height > loaded!.source.height)
+        throw new Error('Each protected area must have positive dimensions and fit inside the source.');
+      return { x, y, width, height };
+    });
+  }
   async function save() {
     if (!loaded || !review || saving) return;
     setSaving(true); setError(''); setStatus('');
     const abort = new AbortController(); controller.current = abort;
     try {
+      const protectedRegions = parsedRegions();
       const blob = await renderMask(loaded.source.width, loaded.source.height, loaded.original, loaded.base, strokes.current, abort.signal);
       if (abort.signal.aborted) return;
-      const saved = await saveMask(product.productId, loaded.source, blob, loaded.expectedMaskId);
+      const saved = await saveMask(product.productId, loaded.source, blob, loaded.expectedMaskId, protectedRegions.length ? protectedRegions : undefined);
       if (abort.signal.aborted) return;
       onChange(saved);
       strokes.current = []; points.current = 0;
@@ -195,13 +213,31 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     <p className="muted">The initial selection includes the source's visible pixels, including any background. Erase areas you do not want, or draw to restore them. Each save creates a separate mask version and makes it active for this product; the original remains unchanged. No image is sent to a provider.</p>
     {product.sourceAssets.length === 0 ? <p className="muted">Add a source image to begin.</p> : <><label htmlFor="mask-source">Source image</label><select id="mask-source" value={sourceId} disabled={saving || loading} onChange={(event) => chooseSource(event.target.value)}><option value="">Choose a source</option>{product.sourceAssets.map((source) => <option value={source.assetId} key={source.assetId}>{source.filename}</option>)}</select></>}
     {loading && <p role="status">Verifying the source and loading its mask…</p>}
-    {error && <p className="error-message" role="alert">{error}</p>}
+    {error && !review && <p className="error-message" role="alert">{error}</p>}
     {status && <p role="status">{status}</p>}
     {loaded && <>
       <div className="mask-controls"><label htmlFor="mask-tool">Tool</label><select id="mask-tool" value={tool} disabled={saving || review} onChange={(event) => setTool(event.target.value as 'draw' | 'erase')}><option value="draw">Draw selection</option><option value="erase">Erase selection</option></select><label htmlFor="mask-size">Brush size: {size}%</label><input id="mask-size" type="range" min="1" max="30" value={size} disabled={saving || review} onChange={(event) => setSize(Number(event.target.value))} /><label htmlFor="mask-zoom">Zoom: {zoom}%</label><input id="mask-zoom" type="range" min="50" max="300" step="25" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /><label className="checkbox-label"><input type="checkbox" checked={showMask} onChange={(event) => setShowMask(event.target.checked)} /> Show mask overlay</label></div>
       <p className="muted">Drag on the image with a mouse, pen or finger. White overlay indicates selected pixels. Zoom and scroll to inspect edges. Focus the mask viewport and use arrow keys to scroll.</p>
-      <div className="mask-viewport" role="region" aria-label="Mask viewport" tabIndex={0}><div className="mask-surface" style={{ width: `${zoom}%`, aspectRatio: `${loaded.source.width} / ${loaded.source.height}` }}><img src={loaded.sourceUrl} alt={`Verified source: ${loaded.source.filename}`} draggable={false} /><canvas ref={canvas} className={showMask ? '' : 'mask-hidden'} aria-label="Mask drawing surface" onPointerDown={pointerDown} onPointerMove={(event) => { if (active.current) { event.preventDefault(); move(position(event)); } }} onPointerUp={() => { active.current = null; }} onPointerCancel={() => { active.current = null; }} onLostPointerCapture={() => { active.current = null; }} /></div></div>
+      <div className="mask-viewport" role="region" aria-label="Mask viewport" tabIndex={0}><div className="mask-surface" style={{ width: `${zoom}%`, aspectRatio: `${loaded.source.width} / ${loaded.source.height}` }}><img src={loaded.sourceUrl} alt={`Verified source: ${loaded.source.filename}`} draggable={false} /><canvas ref={canvas} className={showMask ? '' : 'mask-hidden'} aria-label="Mask drawing surface" onPointerDown={pointerDown} onPointerMove={(event) => { if (active.current) { event.preventDefault(); move(position(event)); } }} onPointerUp={() => { active.current = null; }} onPointerCancel={() => { active.current = null; }} onLostPointerCapture={() => { active.current = null; }} />{regions.map((region, index) => {
+        const values = [region.x, region.y, region.width, region.height];
+        if (values.some((value) => !/^\d+$/.test(value))) return null;
+        const [rx, ry, rw, rh] = values.map(Number);
+        if (![rx, ry, rw, rh].every(Number.isSafeInteger) || rw < 1 || rh < 1 || rx + rw > loaded.source.width || ry + rh > loaded.source.height) return null;
+        return <div key={region.id} className="mask-region-outline" aria-hidden="true" style={{ left: `${rx / loaded.source.width * 100}%`, top: `${ry / loaded.source.height * 100}%`, width: `${rw / loaded.source.width * 100}%`, height: `${rh / loaded.source.height * 100}%` }}><span>{index + 1}</span></div>;
+      })}</div></div>
       <fieldset className="mask-stamp" disabled={saving || review || !previewReady}><legend>Place a brush mark without dragging</legend><label htmlFor="mask-x">Horizontal position (%)</label><input id="mask-x" type="number" min="0" max="100" value={x} onChange={(event) => setX(Number(event.target.value))} /><label htmlFor="mask-y">Vertical position (%)</label><input id="mask-y" type="number" min="0" max="100" value={y} onChange={(event) => setY(Number(event.target.value))} /><button className="secondary-button" type="button" onClick={() => { start({ x: Math.max(0, Math.min(100, x)) * loaded.source.width / 100, y: Math.max(0, Math.min(100, y)) * loaded.source.height / 100 }); active.current = null; }}>Apply brush mark</button></fieldset>
+      <fieldset className="mask-regions" disabled={saving || review || !previewReady}>
+        <legend>Protected areas (optional)</legend>
+        <p>Mark every visible label or other required detail using source-pixel coordinates. The mask must fully cover each area. Areas are saved with this mask version; they do not yet block approval or export. Selecting areas cannot guarantee you found every detail.</p>
+        <p>Source: {loaded.source.width} × {loaded.source.height} pixels. Coordinates start at the top-left. Outlines show valid areas on the image above.</p>
+        {regions.map((region, index) => <fieldset className="mask-region" key={region.id}>
+          <legend>Area {index + 1}</legend>
+          <div className="mask-region-fields">{(['x', 'y', 'width', 'height'] as const).map((key) => <label key={key}>{({ x: 'Left', y: 'Top', width: 'Width', height: 'Height' })[key]} (px)<input type="number" inputMode="numeric" min={key === 'width' || key === 'height' ? 1 : 0} step="1" value={region[key]} onChange={(event) => { const value = event.target.value; setRegions((current) => current.map((item) => item.id === region.id ? { ...item, [key]: value } : item)); setDirty(true); setStatus(''); }} /></label>)}</div>
+          <button className="secondary-button" type="button" onClick={() => { setRegions((current) => current.filter((item) => item.id !== region.id)); setDirty(true); setStatus(''); }}>Remove area {index + 1}</button>
+        </fieldset>)}
+        <button className="secondary-button" type="button" disabled={regions.length >= 32} onClick={() => { setRegions((current) => [...current, { id: crypto.randomUUID(), x: '0', y: '0', width: '1', height: '1' }]); setDirty(true); setStatus(''); }}>Add protected area</button>
+      </fieldset>
+      {error && review && <p className="error-message" role="alert">{error}</p>}
       <div className="form-actions">{review ? <><button className="secondary-button" type="button" disabled={saving} onClick={() => { setError(''); setReview(false); }}>Continue editing</button><button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Rendering and saving…' : 'Save mask'}</button></> : <button className="primary-button" type="button" disabled={saving || !previewReady} onClick={() => { active.current = null; setError(''); setShowMask(true); setReview(true); }}>Review mask</button>}</div>
       {review && <p role="status">Review the white selection and its edges above before saving. Saving creates a separate full-resolution PNG mask.</p>}
     </>}
