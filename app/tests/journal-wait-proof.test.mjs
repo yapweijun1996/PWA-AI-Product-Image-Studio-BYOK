@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { fork } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -61,4 +63,56 @@ test('the final locked dispatch cannot run before monotonic wait completion', as
   now = 60000;
   assert.equal(await journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, dispatch, onReserved), 'submitted');
   assert.equal(calls, 1); assert.equal(reserved, 1);
+});
+
+
+test('separate processes serialize proof publication and honor it after restart', async (t) => {
+  const path = await directory(t);
+  const original = await createAttemptJournal(path, { monotonicClock: () => 0 });
+  await prepare(original);
+  async function startWorker() {
+    const child = fork(new URL('./fixtures/journal-wait-worker.mjs', import.meta.url), [path, principal, digest], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+    t.after(() => child.kill());
+    const [ready] = await once(child, 'message', { signal: AbortSignal.timeout(10000) });
+    assert.deepEqual(ready, { ready: true });
+    return child;
+  }
+  async function reserve(child, n, monotonic) {
+    const request = `request-${n}`;
+    child.send({ action: 'reserve', request, attempt: id(n), monotonic, wallTime: 999999999 });
+    const [reply] = await once(child, 'message', { signal: AbortSignal.timeout(10000) });
+    assert.equal(reply.request, request);
+    assert.equal(reply.error, undefined);
+    return reply.result;
+  }
+  const first = await startWorker(), second = await startWorker();
+  assert.deepEqual(await Promise.all([reserve(first, 2, 59999), reserve(second, 3, 59999)]), ['rate', 'rate']);
+  assert.deepEqual(await Promise.all([reserve(first, 2, 60000), reserve(second, 3, 60000)]), ['reserved', 'reserved']);
+  assert.deepEqual(JSON.parse(await readFile(join(path, `${principal}-${id(1)}.waitproof`), 'utf8')), { retryAfterSeconds: 60 });
+  first.kill(); second.kill();
+  const restarted = await startWorker();
+  assert.equal(await reserve(restarted, 4, 0), 'reserved');
+});
+
+test('a process terminated before publishing proof cannot shorten a restarted wait', async (t) => {
+  const path = await directory(t);
+  await prepare(await createAttemptJournal(path, { monotonicClock: () => 0 }));
+  async function startWorker() {
+    const child = fork(new URL('./fixtures/journal-wait-worker.mjs', import.meta.url), [path, principal, digest], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+    t.after(() => child.kill());
+    assert.deepEqual((await once(child, 'message', { signal: AbortSignal.timeout(10000) }))[0], { ready: true });
+    return child;
+  }
+  async function reserve(child, monotonic) {
+    child.send({ action: 'reserve', request: 'retry', attempt: id(2), monotonic, wallTime: 999999999 });
+    const [reply] = await once(child, 'message', { signal: AbortSignal.timeout(10000) });
+    assert.equal(reply.error, undefined);
+    return reply.result;
+  }
+  const first = await startWorker();
+  assert.equal(await reserve(first, 59999), 'rate');
+  const exited = once(first, 'exit', { signal: AbortSignal.timeout(10000) }); first.kill('SIGKILL'); await exited;
+  const restarted = await startWorker();
+  assert.equal(await reserve(restarted, 59999), 'rate');
+  assert.equal(await reserve(restarted, 60000), 'reserved');
 });

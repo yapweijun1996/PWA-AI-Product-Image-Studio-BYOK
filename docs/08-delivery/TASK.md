@@ -378,6 +378,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 separate-process elapsed proof checks — 2026-10-30
+
+- **Evidence:** Two separate Node child processes opened the same synthetic journal and used independently injected monotonic clocks. Concurrent reservations at 59,999 ms for a 60-second wait were both blocked; at 60,000 ms they serialized through the journal lock, shared one durable proof and reserved distinct attempts. A newly started process accepted that proof. In a separate case, SIGKILL before proof publication was followed by a new process that remained blocked until its own full 60-second simulated interval elapsed. The focused journal suite passed 6 tests.
+- **Limits:** The clocks and provider outcome are synthetic. This checks separate OS processes and termination before proof, not power loss during fsync, suspension on supported devices, actual provider behavior or independent security review. The simulated elapsed time is not a real one-minute wait. BUG-001 remains IN_PROGRESS.
+- **Rollback:** Revert the test and this record; preserve all production journal results and proofs.
+
 ## T-041 legacy wait recovery — 2026-10-30
 
 - **Change:** A format 3 provider wait now blocks dispatch even when the wall clock passes its deadline, until a separate explicit external review is durably recorded. Authenticated, CSRF-protected endpoints list pending legacy waits and record an attempt-specific review bound to the current review revision. The UI shows pending records across products, requires a separate confirmation that provider wait and billing were checked externally, and clears previous generation consent. Review does not call the provider; a new attempt still requires fresh authorization and the saved wall deadline remains an additional conservative gate.
