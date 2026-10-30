@@ -123,7 +123,7 @@ test('imported uncertainty requires a local review and never mutates attempt or 
     const tx = db.transaction(['jobs', 'attempts', 'userSettings'], 'readwrite');
     tx.objectStore('jobs').add({ jobId: attempt.jobId, productId: product.productId });
     tx.objectStore('attempts').add(attempt);
-    tx.objectStore('userSettings').add({ key: `backup-import-unresolved:${attempt.attemptId}`, snapshot: JSON.stringify(attempt), reviewed: false });
+    tx.objectStore('userSettings').add({ key: `backup-import-unresolved:${attempt.attemptId}`, snapshot: JSON.stringify(attempt), reviewed: false, markerVersion: 2, legacyReviewed: null });
     tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
   });
   let [entry] = await storage.listStudioAttempts(product.productId);
@@ -184,7 +184,7 @@ test('acknowledging a local attempt preserves imported prepared history and fail
   const markerKey = `backup-import-unresolved:${pending.attemptId}`;
   await new Promise((resolve, reject) => {
     const tx = db.transaction('userSettings', 'readwrite');
-    tx.objectStore('userSettings').add({ key: markerKey, snapshot: JSON.stringify(pending), reviewed: false });
+    tx.objectStore('userSettings').add({ key: markerKey, snapshot: JSON.stringify(pending), reviewed: false, markerVersion: 2, legacyReviewed: null });
     tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
   });
   await storage.acknowledgeStudioAttempt(first.attemptId, new Date().toISOString(), 'UNKNOWN');
@@ -192,7 +192,7 @@ test('acknowledging a local attempt preserves imported prepared history and fail
   assert.deepEqual(entries.find((row) => row.attempt.attemptId === pending.attemptId).attempt, pending);
   await new Promise((resolve, reject) => {
     const tx = db.transaction('userSettings', 'readwrite');
-    tx.objectStore('userSettings').put({ key: markerKey, snapshot: 'corrupt', reviewed: false });
+    tx.objectStore('userSettings').put({ key: markerKey, snapshot: 'corrupt', reviewed: false, markerVersion: 2, legacyReviewed: null });
     tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
   });
   await new Promise((resolve, reject) => {
@@ -240,11 +240,12 @@ test('reviewed imported rate-limit timestamps do not override local delay enforc
     const tx = db.transaction(['jobs', 'userSettings'], 'readwrite'), jobs = tx.objectStore('jobs');
     const request = jobs.get(old.jobId);
     request.onsuccess = () => { const job = request.result; job.attempts[0].completedAt = '2099-01-01T00:00:00.000Z'; jobs.put(job); };
-    tx.objectStore('userSettings').add({ key: markerKey, snapshot: JSON.stringify(limited), reviewed: false });
+    tx.objectStore('userSettings').add({ key: markerKey, snapshot: JSON.stringify(limited), reviewed: false, markerVersion: 2, legacyReviewed: null });
     tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
   });
   await assert.rejects(storage.createStudioAttempt(makeAttempt(), consent), /review|uncertainty/i);
   await storage.resolveImportedUncertainty(old.attemptId);
+  await assert.rejects(storage.createStudioAttempt(makeAttempt(), consent), /review changed/i);
   const local = makeAttempt(), newConsent = await storage.globalStudioReviewFingerprint();
   await storage.createStudioAttempt(local, newConsent);
   await storage.updateStudioAttempt({ ...local, status: 'SUBMITTED' }, undefined, newConsent);

@@ -55,7 +55,7 @@ function notifyProductChanged(productId: string): void {
     try { channel.postMessage(productId); } finally { channel.close(); }
   } catch { /* Notifications are advisory; the committed transaction remains authoritative. */ }
 }
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let connection: Promise<IDBDatabase> | null = null;
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -85,7 +85,7 @@ function openDatabase(): Promise<IDBDatabase> {
             const store = db.createObjectStore(name, { keyPath: key });
             for (const index of indexes) store.createIndex(index, index);
           }
-        } else if (event.oldVersion === 1) {
+        } else if (event.oldVersion === 1 || event.oldVersion === 2) {
           const required: Array<[string, string[]]> = [['products', ['sku', 'updatedAt']], ...stores.map(([name, , indexes]) => [name, indexes] as [string, string[]])];
           for (const [name, indexes] of required) {
             if (!db.objectStoreNames.contains(name)) throw new Error('The existing workspace schema is incomplete. No data was changed.');
@@ -93,6 +93,31 @@ function openDatabase(): Promise<IDBDatabase> {
             if (indexes.some((index) => !store.indexNames.contains(index))) throw new Error('The existing workspace indexes are incomplete. No data was changed.');
           }
         } else throw new Error('The existing workspace version is unsupported. No data was changed.');
+        if (event.oldVersion > 0) {
+          const settings = transaction.objectStore('userSettings');
+          const attempts = transaction.objectStore('attempts');
+          const cursorRequest = settings.openCursor();
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) return;
+            const row = cursor.value as Record<string, unknown>;
+            if (typeof row?.key !== 'string' || !row.key.startsWith('backup-import-unresolved:')) { cursor.continue(); return; }
+            const saved = attempts.get(row.key.slice('backup-import-unresolved:'.length));
+            saved.onsuccess = () => {
+              try {
+                if (!exactKeys(row, ['key', 'snapshot', 'reviewed']) || typeof row.snapshot !== 'string' ||
+                    typeof row.reviewed !== 'boolean' || !saved.result || row.snapshot !== JSON.stringify(saved.result)) {
+                  throw new Error('Imported attempt review data is inconsistent. Storage upgrade was cancelled without changes.');
+                }
+                cursor.update({ ...row, reviewed: false, markerVersion: 2, legacyReviewed: row.reviewed });
+                cursor.continue();
+              } catch (error) {
+                upgradeFailure = error instanceof Error ? error : new Error('Storage upgrade failed. No data was changed.');
+                transaction.abort();
+              }
+            };
+          };
+        }
         transaction.objectStore('migrations').add({ version: DB_VERSION, appliedAt: new Date().toISOString() });
       } catch (error) {
         upgradeFailure = error instanceof Error ? error : new Error('Storage upgrade failed. No data was changed.');
@@ -832,11 +857,7 @@ export async function restoreProduct(product: Product, sources: BackupSource[], 
     for (const job of history.jobs) tx.objectStore('jobs').add(job);
     for (const attempt of history.attempts) {
       tx.objectStore('attempts').add(attempt);
-      const unresolved = attempt.status === 'PREPARED' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED' ||
-        attempt.cleanupPending === true || attempt.acknowledgedAt !== undefined ||
-        attempt.failure?.category === 'rate_limited' || attempt.failure?.category === 'provider_limit' ||
-        attempt.failure?.retryAfterSeconds !== undefined;
-      tx.objectStore('userSettings').add({ key: importAttemptKey(attempt.attemptId), snapshot: JSON.stringify(attempt), reviewed: !unresolved });
+      tx.objectStore('userSettings').add({ key: importAttemptKey(attempt.attemptId), snapshot: JSON.stringify(attempt), reviewed: false, markerVersion: 2, legacyReviewed: null });
     }
     for (const asset of history.assets) {
       tx.objectStore('generatedAssets').add(asset);
@@ -943,26 +964,29 @@ export function studioAttemptBlocks(attempt: StudioAttempt): boolean {
     !validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome));
 }
 
-export function studioReviewFingerprint(attempts: StudioAttempt[]): string {
-  return JSON.stringify(attempts.filter((attempt) => validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome))
+export function studioReviewFingerprint(attempts: StudioAttempt[], settings: unknown[] = []): string {
+  const imported = attempts.map((attempt) => importedAttemptMarker(settings, attempt)).filter((marker) => marker !== undefined)
+    .map((marker) => [marker.key, marker.reviewed]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return JSON.stringify([imported, attempts.filter((attempt) => validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome))
     .map((attempt) => [attempt.attemptId, attempt.acknowledgedAt, attempt.recordedOutcome])
-    .sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
 }
 
 export async function globalStudioReviewFingerprint(): Promise<string> {
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('attempts', 'readonly');
+    const tx = db.transaction(['attempts', 'userSettings'], 'readonly');
     const request = tx.objectStore('attempts').getAll();
-    tx.oncomplete = () => resolve(studioReviewFingerprint(request.result as StudioAttempt[]));
+    const settings = tx.objectStore('userSettings').getAll();
+    tx.oncomplete = () => { try { resolve(studioReviewFingerprint(request.result as StudioAttempt[], settings.result)); } catch (error) { reject(error); } };
     tx.onabort = () => reject(transactionError(tx));
   });
 }
-type ImportedAttemptMarker = { key: string; snapshot: string; reviewed: boolean };
+type ImportedAttemptMarker = { key: string; snapshot: string; reviewed: boolean; markerVersion: 2; legacyReviewed: boolean | null };
 
 function importedAttemptMarker(settings: unknown[], attempt: StudioAttempt): ImportedAttemptMarker | undefined {
   const marker = settings.find((row) => row && typeof row === 'object' && (row as { key?: unknown }).key === importAttemptKey(attempt.attemptId)) as ImportedAttemptMarker | undefined;
-  if (marker && (!exactKeys(marker, ['key', 'snapshot', 'reviewed']) || marker.snapshot !== JSON.stringify(attempt) || typeof marker.reviewed !== 'boolean')) {
+  if (marker && (!exactKeys(marker, ['key', 'snapshot', 'reviewed', 'markerVersion', 'legacyReviewed']) || marker.snapshot !== JSON.stringify(attempt) || typeof marker.reviewed !== 'boolean' || marker.markerVersion !== 2 || (marker.legacyReviewed !== null && typeof marker.legacyReviewed !== 'boolean'))) {
     throw new Error('Imported attempt history changed; local billing review cannot be trusted.');
   }
   return marker;
@@ -1368,7 +1392,7 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
         if (attempt.retryOf && (attempts.result as StudioAttempt[]).some((entry) => entry.attemptId === attempt.retryOf && importedAttemptMarker(settings.result, entry))) {
           throw new Error('Imported uncertainty cannot be retried as the same job; start a new job after local review.');
         }
-        if (studioReviewFingerprint(attempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
+        if (studioReviewFingerprint(attempts.result as StudioAttempt[], settings.result) !== consentReviewFingerprint) {
           throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
         }
         if (attempt.budgetSessionId !== undefined &&
@@ -1448,7 +1472,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
             (attempt.cleanupPending !== true || previous.status !== 'SUBMITTED' ||
              (attempt.status !== 'DEFINITIVE_SUCCESS' && attempt.status !== 'DEFINITIVE_FAILURE')))) throw new Error('Invalid cleanup metadata.');
         if (attempt.status === 'SUBMITTED' &&
-            studioReviewFingerprint(allAttempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
+            studioReviewFingerprint(allAttempts.result as StudioAttempt[], settings.result) !== consentReviewFingerprint) {
           throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
         }
         if (attempt.status === 'SUBMITTED' && expectedSessionTotal !== undefined &&

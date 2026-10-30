@@ -56,10 +56,10 @@ test('upgrade preserves legacy data, closes the old connection and blocks reopen
   assert.equal(closed, true);
   await assert.rejects(open(factory, 1), { name: 'VersionError' });
   const current = await open(factory);
-  assert.equal(current.version, 2);
+  assert.equal(current.version, 3);
   assert.deepEqual(await read(current, 'userSettings', 'synthetic-preserve'), { key: 'synthetic-preserve', value: 'retained' });
   assert.equal((await read(current, 'migrations', 1)).version, 1);
-  assert.equal((await read(current, 'migrations', 2)).version, 2);
+  assert.equal((await read(current, 'migrations', 3)).version, 3);
   current.close();
 });
 test('a non-cooperating old tab blocks upgrade until it closes', async () => {
@@ -70,7 +70,7 @@ test('a non-cooperating old tab blocks upgrade until it closes', async () => {
   assert.equal((await read(db, 'products', product.productId)).sku, 'SYNTH-V1');
   db.close();
   const current = await open(factory);
-  assert.equal(current.version, 2); current.close();
+  assert.equal(current.version, 3); current.close();
   assert.deepEqual(await runtime.getProduct(product.productId), product);
 });
 test('an incomplete version 1 schema aborts upgrade without modifying its data', async () => {
@@ -83,4 +83,54 @@ test('an incomplete version 1 schema aborts upgrade without modifying its data',
   assert.deepEqual(await read(legacy, 'products', product.productId), product);
   assert.equal(await read(legacy, 'migrations', 2), undefined);
   legacy.close();
+});
+
+test('version 2 imported reviews are preserved as evidence but require a fresh review', async () => {
+  const { factory, db, product } = await legacyWorkspace();
+  db.close();
+  const upgraded = await open(factory, 2);
+  const attempts = [true, false].map((reviewed) => ({ attempt: { attemptId: randomUUID(), status: 'DEFINITIVE_FAILURE' }, reviewed }));
+  await new Promise((resolve, reject) => {
+    const tx = upgraded.transaction(['attempts', 'userSettings'], 'readwrite');
+    for (const { attempt, reviewed } of attempts) {
+      tx.objectStore('attempts').add(attempt);
+      tx.objectStore('userSettings').add({ key: `backup-import-unresolved:${attempt.attemptId}`, snapshot: JSON.stringify(attempt), reviewed });
+    }
+    tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+  });
+  upgraded.onversionchange = () => upgraded.close();
+  const runtime = await import(`${moduleUrl}#marker-migration`);
+  await runtime.getProduct(product.productId);
+  await assert.rejects(open(factory, 2), { name: 'VersionError' });
+  const current = await open(factory);
+  for (const { attempt, reviewed } of attempts) {
+    const key = `backup-import-unresolved:${attempt.attemptId}`;
+    assert.deepEqual(await read(current, 'userSettings', key), { key, snapshot: JSON.stringify(attempt), reviewed: false, markerVersion: 2, legacyReviewed: reviewed });
+    assert.deepEqual(await read(current, 'attempts', attempt.attemptId), attempt);
+  }
+  const before = await runtime.globalStudioReviewFingerprint();
+  await runtime.resolveImportedUncertainty(attempts[0].attempt.attemptId);
+  assert.notEqual(await runtime.globalStudioReviewFingerprint(), before);
+  assert.equal((await read(current, 'userSettings', `backup-import-unresolved:${attempts[0].attempt.attemptId}`)).legacyReviewed, true);
+  current.close();
+});
+
+test('invalid legacy marker aborts version 3 upgrade atomically', async () => {
+  const { factory, db, product } = await legacyWorkspace();
+  db.close();
+  const legacy = await open(factory, 2);
+  const key = `backup-import-unresolved:${randomUUID()}`;
+  const marker = { key, snapshot: '{}', reviewed: true };
+  await new Promise((resolve, reject) => {
+    const tx = legacy.transaction('userSettings', 'readwrite'); tx.objectStore('userSettings').add(marker);
+    tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+  });
+  legacy.onversionchange = () => legacy.close();
+  const runtime = await import(`${moduleUrl}#marker-invalid`);
+  await assert.rejects(runtime.getProduct(product.productId), /inconsistent/i);
+  const unchanged = await open(factory, 2);
+  assert.deepEqual(await read(unchanged, 'userSettings', key), marker);
+  assert.deepEqual(await read(unchanged, 'products', product.productId), product);
+  assert.equal(await read(unchanged, 'migrations', 3), undefined);
+  unchanged.close();
 });
