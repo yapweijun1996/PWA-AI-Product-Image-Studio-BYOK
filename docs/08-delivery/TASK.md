@@ -187,6 +187,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Offline page reload, service-worker updates, real-device iOS installation, screen-reader and comprehensive accessibility testing remain pending. The failed offline reload before T-011 confirms that offline launch is not yet available. Product creation, storage, upload, generation and export are not implemented.
 - **Rollback:** Revert the `app/` tree and corresponding documentation/validator boundary changes together; do not delete user-managed environment files or other local data.
 
+## T-011 two-build failed update and retained asset — 2026-10-30
+
+- **Setup:** Two independently built versions from the same code were served in an isolated Chromium origin. Build B added a synthetic CSS rule, producing different hashed CSS and JavaScript assets and a different worker cache ID. One of two tabs held an unsaved synthetic SKU. A local server switched from build A to B and deliberately returned 404 for B's required icon.
+- **Evidence:** B's worker became redundant, A stayed active, only A's shell cache remained and the draft persisted with an update-failure notice. Once the icon was available, B installed and waited. The clean tab's user-selected update loaded B's CSS; the dirty tab retained its exact draft and A CSS and showed the new-version-active notice. A `cache: no-store` fetch in the old tab returned A's CSS with HTTP 200 (17,068 bytes), while a direct server request for that same A URL returned 404; both shell caches remained. This supports retained service-worker cache retrieval in this scenario, without proving the cause of the earlier JavaScript observation.
+- **Limits:** The failure was an injected 404, not natural quota exhaustion or eviction. No suspended tab, physical device, provider or seller data was used; the synthetic CSS change is not a full application-version migration. T-011 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this record and its documentation hashes; preserve product data and caches.
+
 ## T-011 failed active update and retry — 2026-10-30
 
 - **Evidence:** A built worker was active in two isolated desktop Chromium tabs; one held an unsaved synthetic SKU. A synthetic local server served a modified copy of that worker with a different cache ID and returned 404 for a required icon. The new worker went from installing to redundant, the active worker and its cache remained, both tabs displayed the update failure, and the exact draft remained. After the server returned the icon, a new update check installed the same modified worker into a waiting state; both caches and the draft remained. No user-selected activation was attempted.
