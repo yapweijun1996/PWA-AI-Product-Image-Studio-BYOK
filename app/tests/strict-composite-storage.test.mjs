@@ -205,6 +205,20 @@ test('completed versioned scene remains accessible after product facts or name c
   assert.equal(inputs.sourceSha256, f.source.sha256);
 });
 
+test('explicit protected evidence rejects an overlapping billboard copy layer', async () => {
+  const inputs = { source: blob(sourceBytes), mask: blob(sourceBytes), scene: blob(sceneBytes), sourceWidth: 2, sourceHeight: 1 };
+  const protectedEvidence = { version: 1, sourceSha256: hash(sourceBytes), maskSha256: hash(sourceBytes),
+    width: 2, height: 1, regions: [{ x: 0, y: 0, width: 2, height: 1 }] };
+  const recipe = { version: 1, styleId: 'billboard', sourceView: 'OTHER',
+    display: { x: 100, y: 100, width: 600, height: 600 }, displayFrontFacing: true, copy: 'Copy' };
+  const rendered = await renderStrictCompositePixels({ ...inputs, recipe, protectedEvidence });
+  assert.ok(rendered.ad && rendered.copyLayer);
+  await assert.doesNotReject(renderStrictCompositePixels({ ...inputs, recipe, protectedEvidence, copyLayer: rendered.copyLayer }));
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, recipe, protectedEvidence, copyLayer: blob(sceneBytes) }), /copy overlaps/);
+  // The legacy path does not provide protected evidence and remains unchanged.
+  await assert.doesNotReject(renderStrictCompositePixels({ ...inputs, recipe, copyLayer: blob(sceneBytes) }));
+});
+
 test('billboard rerenders from frozen copy pixels after font changes and rejects layer tampering', async () => {
   const f = await fixture('billboard'), inputs = await load(f);
   const recipe = { version: 1, styleId: 'billboard', sourceView: 'OTHER',

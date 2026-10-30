@@ -101,6 +101,26 @@ export function assertProtectedCoverage(width: number, height: number, source: U
   }
 }
 
+// Conservatively keep copy off the entire product rectangle when protected
+// evidence is supplied. This does not prove fidelity after resampling.
+export function assertBillboardCopyClear(layer: Uint8ClampedArray, width: number, height: number,
+  product: { x: number; y: number; width: number; height: number }): void {
+  if (!(layer instanceof Uint8ClampedArray) || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) ||
+      width < 1 || height < 1 || width * height > MAX_PIXELS || layer.length !== width * height * 4 ||
+      !product || ![product.x, product.y, product.width, product.height].every(Number.isFinite) ||
+      product.x < 0 || product.y < 0 || product.width <= 0 || product.height <= 0 ||
+      product.x + product.width > width || product.y + product.height > height) {
+    throw new Error('The billboard copy coverage is invalid.');
+  }
+  // Include a pixel around the geometric bounds for edge sampling.
+  const left = Math.max(0, Math.floor(product.x) - 1), top = Math.max(0, Math.floor(product.y) - 1);
+  const right = Math.min(width, Math.ceil(product.x + product.width) + 1);
+  const bottom = Math.min(height, Math.ceil(product.y + product.height) + 1);
+  for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+    if (layer[(y * width + x) * 4 + 3] !== 0) throw new Error('Billboard copy overlaps the protected product area.');
+  }
+}
+
 type Canvas = HTMLCanvasElement | OffscreenCanvas;
 type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 type Decoded = { image: CanvasImageSource; width: number; height: number; release: () => void };
@@ -216,13 +236,19 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
       const copy = recipe.copy!;
       const scale = Math.min(720 / sw, (copy ? 650 : 820) / sh);
       const w = sw * scale, h = sh * scale;
-      adContext.drawImage(product, (EDGE - w) / 2, (copy ? 720 : EDGE) / 2 - h / 2, w, h);
+      const productRect = { x: (EDGE - w) / 2, y: (copy ? 720 : EDGE) / 2 - h / 2, width: w, height: h };
+      adContext.drawImage(product, productRect.x, productRect.y, w, h);
       if (copy) {
         if (inputs.copyLayer) {
           const layerHeader = await header(inputs.copyLayer);
           if (layerHeader.mimeType !== 'image/png' || layerHeader.width !== EDGE || layerHeader.height !== EDGE || layerHeader.orientation !== 1) throw new Error('The copy layer dimensions are invalid.');
           decoded = await decode(inputs.copyLayer); checkCancelled();
           if (decoded.width !== EDGE || decoded.height !== EDGE) throw new Error('The copy layer dimensions are invalid.');
+          if (protectedEvidence) {
+            const layer = makeCanvas(EDGE, EDGE); canvases.push(layer);
+            const layerContext = context(layer); layerContext.drawImage(decoded.image, 0, 0);
+            assertBillboardCopyClear(layerContext.getImageData(0, 0, EDGE, EDGE).data, EDGE, EDGE, productRect);
+          }
           adContext.drawImage(decoded.image, 0, 0); decoded.release(); decoded = undefined;
           copyLayer = inputs.copyLayer;
         } else {
@@ -231,6 +257,7 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
           text.fillStyle = '#111111'; text.font = '40px sans-serif'; text.textAlign = 'center'; text.textBaseline = 'middle';
           if (text.measureText(copy).width > 920) throw new Error('The exact copy does not fit on the ad.');
           text.fillText(copy, EDGE / 2, 875);
+          if (protectedEvidence) assertBillboardCopyClear(text.getImageData(0, 0, EDGE, EDGE).data, EDGE, EDGE, productRect);
           copyLayer = await png(layer); checkCancelled();
           adContext.drawImage(layer, 0, 0);
         }

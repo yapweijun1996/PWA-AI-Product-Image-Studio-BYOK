@@ -731,6 +731,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
 - **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
 
+## T-052 protected billboard copy foundation — 2026-10-30
+
+- **Change:** When explicit source/mask-bound protected evidence is provided to the renderer, billboard copy pixels cannot overlap the entire product rectangle or its one-pixel margin. The conservative rule checks both generated and supplied frozen copy layers. Existing callers that omit protected evidence retain their behavior.
+- **Evidence:** Nine renderer tests and all 13 strict-composite storage tests passed; the production build and TypeScript check passed with the existing large-chunk warning. An isolated Chromium development-module probe using synthetic images exercised the worker path: generated copy and its frozen layer rendered, a fully opaque overlapping layer was rejected, and the no-evidence legacy path still rendered. No provider was used.
+- **Limits:** This is not end-to-end protected-region enforcement: normal application callers do not provide evidence, no region-selection or persistence was added, and resampling, display placement, exports, devices and real labels remain unverified. [BUG-007](../../BUG.md) and T-052 remain open. The full-product exclusion is intentionally conservative and may reject harmless copy outside selected regions.
+- **Rollback:** Revert the billboard copy check and focused tests with this record; preserve stored images, copy layers and histories.
+
 ## T-052 interim fidelity notice — 2026-10-30
 
 - **Change:** Review and approved-export panels now explain that mask coverage is not automatically verified, that MATCH or human approval can miss altered or hidden labels, and that required details must be compared with the original. This disclosure does not enforce coverage or resolve [BUG-007](../../BUG.md).

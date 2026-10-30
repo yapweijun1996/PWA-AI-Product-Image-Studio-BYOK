@@ -8,7 +8,7 @@ const result = await build({
 });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
-const { applyFinalCoverage, assertProtectedCoverage, strictMapping, recipeMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { applyFinalCoverage, assertProtectedCoverage, assertBillboardCopyClear, strictMapping, recipeMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const rgba = (...values) => new Uint8ClampedArray(values);
 
@@ -34,6 +34,18 @@ test('protected evidence and crop bounds fail closed with bounded work', () => {
   assert.throws(() => assertProtectedCoverage(4, 4, pixels, pixels.slice(1), [region]), /invalid/);
   assert.throws(() => assertProtectedCoverage(4, 4, pixels, pixels, [region], { x: 1, y: 1, width: 1, height: 2 }), /crop excludes/);
   assert.throws(() => assertProtectedCoverage(4, 4, pixels, pixels, [region], { x: 0, y: 0, width: 5, height: 4 }), /crop is invalid/);
+});
+
+test('protected billboard rejects copy over the product and its edge margin', () => {
+  const pixels = new Uint8ClampedArray(8 * 8 * 4), rect = { x: 2, y: 2, width: 3, height: 3 };
+  pixels[3] = 255;
+  assert.doesNotThrow(() => assertBillboardCopyClear(pixels, 8, 8, rect));
+  for (const [x, y] of [[2, 2], [4, 4], [1, 3], [5, 3]]) {
+    const overlap = pixels.slice(); overlap[(y * 8 + x) * 4 + 3] = 1;
+    assert.throws(() => assertBillboardCopyClear(overlap, 8, 8, rect), /overlaps/);
+  }
+  assert.throws(() => assertBillboardCopyClear(pixels.slice(1), 8, 8, rect), /invalid/);
+  assert.throws(() => assertBillboardCopyClear(pixels, 8, 8, { ...rect, x: -1 }), /invalid/);
 });
 
 test('coverage is final alpha, not multiplied by source alpha', () => {
