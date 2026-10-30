@@ -34,7 +34,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-081 | EP-07 | Security/privacy/backup/perf regression and remediation | T-071,T-080 | IMPLEMENTED_UNVERIFIED — synthetic auth/XSS/secret checks and bounded cancellable archive validation exercised; production threat review, device performance and complete SEC/PERF gates remain open. |
 | T-082 | EP-07 | Five-category SKU pilot, real brand QA and measured cost | T-081 | documented approval/veto & economics |
 | T-083 | EP-07 | Validate seller setup, BYOK comprehension and single-SKU task with consenting target users | T-010,T-084 | PENDING — synthetic or rights-cleared task script; record completion, time and friction; separate proposed findings from population claims. No outreach without authorization |
-| T-084 | EP-06 | Review the proposed visual anchors and accessibility paths for the MVP | T-010 | PENDING — owner records Accept/Change/Reject for representative desktop/tablet/mobile and critical state anchors; verify keyboard, non-drag actions and real zoom when an interactive flow exists |
+| T-084 | EP-06 | Review the proposed visual anchors and accessibility paths for the MVP | T-010 | IN_PROGRESS — owner accepted the overall direction represented by desktop 01, tablet 30 and mobile 43; individual anchors, interactions, critical states and accessibility remain to be reviewed. See the owner direction record below. |
 | T-090 | EP-07 | Production deployment + rollback runbook with explicit owner approval | T-082 | release gates A–F, URL and post-deploy smoke |
 
 ## Prioritized remaining work and acceptance criteria — 2026-10-30
@@ -1335,3 +1335,8 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Finding and change:** Browser titles previously remained generic across routes. Route-specific titles now identify the workspace, guide, settings, import and product views; the product title deliberately omits local product names. Unknown routes have a page-not-found title. See [BUG-053](../../BUG.md).
 - **Verification:** The guide title assertion failed before the fix. Synthetic Chromium checks direct navigation to each route category, an unknown route and a trailing-slash route, as well as guide-to-Settings navigation. The focused test, six-test browser suite and production build passed.
 - **Limits and rollback:** Product-not-found and page-load errors retain the generic route title. No screen-reader announcement or physical-device browser UI was tested. T-010's existing scope is unchanged; T-080 and BUG-053 remain IMPLEMENTED_UNVERIFIED. Revert only with equivalent route identification and without including sensitive project data in titles.
+
+## T-084 owner visual direction — 2026-10-31
+
+- **Decision:** The owner accepted the overall visual direction represented by desktop 01, tablet 30 and mobile 43, and requested separate review of specific interactions. The authoritative scope and image links are in [Design System: Owner direction](../10-design/DESIGN_SYSTEM.md#owner-direction--2026-10-31).
+- **Remaining acceptance:** This is not individual image or interaction approval. Review critical states and component specimen, correct known misleading generated copy and controls, and verify keyboard, non-drag, real zoom, accessibility and target-device behavior. T-084 is IN_PROGRESS; T-083 remains dependent on its acceptance. No application behavior or release approval changed.

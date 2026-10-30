@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 279460,
-      "sha256": "d64542aed8b2b74f14bebe7795096df89c73ba29c7c354e5d2a7388d90f9955e"
+      "bytes": 280244,
+      "sha256": "cdae7a6ad3909ca05391725132866d9f743921fb284e78db0daca071207c94d3"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -362,13 +362,13 @@
     },
     {
       "path": "docs/10-design/DESIGN_SYSTEM.md",
-      "bytes": 5635,
-      "sha256": "124088b8987582e29f4cd8e809e4f86cc45f9c89ce97ab3b0777bba3dba435fd"
+      "bytes": 6332,
+      "sha256": "f3b208e7c5b0754cacd23888b1be8036078b08fce66298af014b8624d8f728ba"
     },
     {
       "path": "docs/10-design/VISUAL_ANCHORS.md",
-      "bytes": 6746,
-      "sha256": "ce3517dd59e45f48a43fe7861d2af6e67f284bd6fe4f94b420aaae99c05be9bb"
+      "bytes": 7041,
+      "sha256": "1854bdb035b85aa9f071f78c0f97f384db7fdebe1fc65a48e1478933dc3cec35"
     },
     {
       "path": "docs/10-design/visual-anchors/01-desktop-product-workspace.png",

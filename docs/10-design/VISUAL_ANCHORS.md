@@ -2,6 +2,8 @@
 
 **Status:** PROPOSED; individual owner review and visual accessibility verification remain pending. These are static generative images, not implemented application screens. See [Design System](DESIGN_SYSTEM.md) for authority, known inaccuracies and promotion criteria.
 
+The owner accepted the overall visual direction represented by 01, 30 and 43 on 2026-10-31, with interactions to be reviewed separately. This does not individually approve any anchor or the generated claims and controls; see the [scoped decision](DESIGN_SYSTEM.md#owner-direction--2026-10-31).
+
 ## Preview
 
 ### Desktop product workspace
