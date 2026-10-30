@@ -345,7 +345,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   useEffect(() => {
     let active = true;
     setEntries(null); setOtherBlockers(null); setReviewFingerprint(null); setSessionTotal(null); clearQueueConsent();
-    Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null), listOtherStudioBlockers(product.productId)]).then(([value, fingerprint, total, blockers]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); setOtherBlockers(blockers); } }).catch(() => { if (active) setError('Local attempt history is unavailable. Generation is disabled.'); });
+    Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null), listOtherStudioBlockers(product.productId)]).then(([value, fingerprint, total, blockers]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); setOtherBlockers(blockers); } }).catch((reason: unknown) => { if (active) setError(reason instanceof Error && reason.message.startsWith('The local attempt history has inconsistent') ? reason.message : 'Local attempt history is unavailable. Generation is disabled. Preserve your local data and backups; seek recovery assistance.'); });
     void refreshGateway();
     const offline = () => { gatewayCheck.current++; clearQueueConsent(); setGateway('unavailable'); };
     window.addEventListener('offline', offline);
@@ -623,6 +623,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     <p>Planned calls: <strong>{selectedStyles.length}</strong>; estimated total: <strong>{planError || !sources || sessionTotal === null ? 'unavailable' : `$${plannedTotal} USD`}</strong>. One call per selected scene; no automatic retry. Estimate only, not a cap or invoice. Model {STUDIO_MODEL}, {STUDIO_QUALITY}, {STUDIO_SIZE}, PNG; pricing snapshot 2026-10-29. <a href="https://developers.openai.com/api/docs/guides/image-generation" target="_blank" rel="noreferrer">Pricing evidence</a>.</p>
     {gateway === 'checking' ? <p role="status">Checking local gateway…</p> : gateway === 'unavailable' ? <p role="status">Offline or local gateway unavailable. Generation is disabled.</p> : gateway === 'signed-out' ? <p>Sign in to the local app in provider settings first.</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>Local app and provider session active.</p>}
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
+    {entries === null && error && <p className="error-message" role="alert">{error}</p>}
     {localBlockers.length > 0 && <p role="status">{localBlockers.length} {localBlockers.length === 1 ? 'attempt in this project needs' : 'attempts in this project need'} attention before generation. <Link to={{ pathname: location.pathname, hash: '#studio-history-heading' }}>Open local attempt history</Link>.</p>}
     {otherBlockers && otherBlockers.length > 0 && <section aria-labelledby="other-blockers-heading">
       <h3 id="other-blockers-heading">Attempts in other projects need attention</h3>
@@ -656,7 +657,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       {plans.length > 0 && !busy && <p className="queue-consent-progress" role="status">Style authorizations: {plans.length - missingStyleConsent.length} of {plans.length}.{missingStyleConsent.length > 0 ? ` Still needed: ${missingStyleConsent.map((plan) => STYLE_LABELS[plan.styleId]).join(', ')}.` : ' Other required confirmations and gateway checks still apply.'}</p>}
       <button className="primary-button" type="submit" disabled={busy || unresolved || (typeof gateway === 'object' && gateway.legacyWaits.length > 0) || !ready || Boolean(planError) || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || reviewFingerprint === null || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate selected scenes'}</button>
     </form>
-    {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
+    {entries !== null && error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <section className="studio-scene-comparison" aria-labelledby="studio-comparison-heading">
       <h3 id="studio-comparison-heading">Compare generated scenes</h3>
       <p>Choose two attempts of the same style. These are unapproved empty backgrounds, not product photographs; inspect the original and the locally composed product separately.</p>

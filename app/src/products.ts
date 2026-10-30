@@ -1560,7 +1560,11 @@ export async function listStudioAttempts(productId: string): Promise<Array<{ att
     tx.oncomplete = () => {
       try {
         const ids = new Set((jobs.result as Array<{ jobId: string }>).map((job) => job.jobId));
-        resolve((attempts.result as StudioAttempt[]).filter((attempt) => ids.has(attempt.jobId))
+        const rows = attempts.result as StudioAttempt[];
+        if (rows.some((attempt) => (attempt.productId === productId) !== ids.has(attempt.jobId))) {
+          throw new Error('The local attempt history has inconsistent project or job references. Generation is disabled. Preserve your local data and backups; seek recovery assistance.');
+        }
+        resolve(rows.filter((attempt) => ids.has(attempt.jobId))
           .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
           .map((attempt) => {
             const marker = importedAttemptMarker(settings.result, attempt);

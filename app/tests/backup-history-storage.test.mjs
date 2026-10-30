@@ -263,3 +263,32 @@ test('reviewed imported rate-limit timestamps do not override local delay enforc
   });
   db.close();
 });
+
+test('orphaned or cross-project attempt history fails closed without changing records', async () => {
+  const product = await storage.createProduct({ sku: randomUUID(), name: 'Synthetic orphan', category: 'Test', rightsAcknowledged: true });
+  const other = await storage.createProduct({ sku: randomUUID(), name: 'Synthetic other', category: 'Test', rightsAcknowledged: true });
+  const db = await database();
+  const orphan = { attemptId: randomUUID(), jobId: randomUUID(), productId: product.productId, status: 'UNKNOWN', submittedAt: new Date().toISOString() };
+  const foreign = { ...orphan, attemptId: randomUUID(), jobId: randomUUID(), productId: other.productId };
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(['attempts', 'jobs'], 'readwrite');
+    tx.objectStore('attempts').add(orphan);
+    tx.objectStore('attempts').add(foreign);
+    tx.objectStore('jobs').add({ jobId: foreign.jobId, productId: product.productId });
+    tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+  });
+  await assert.rejects(storage.listStudioAttempts(product.productId), /inconsistent.*preserve/i);
+  await assert.rejects(storage.listStudioAttempts(other.productId), /inconsistent.*preserve/i);
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('attempts', 'readonly'), a = tx.objectStore('attempts').get(orphan.attemptId), b = tx.objectStore('attempts').get(foreign.attemptId);
+    tx.oncomplete = () => { assert.deepEqual(a.result, orphan); assert.deepEqual(b.result, foreign); resolve(); };
+    tx.onabort = () => reject(tx.error);
+  });
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(['attempts', 'jobs'], 'readwrite');
+    tx.objectStore('attempts').delete(orphan.attemptId); tx.objectStore('attempts').delete(foreign.attemptId); tx.objectStore('jobs').delete(foreign.jobId);
+    tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+  });
+  assert.deepEqual(await storage.listStudioAttempts(product.productId), []);
+  db.close();
+});
