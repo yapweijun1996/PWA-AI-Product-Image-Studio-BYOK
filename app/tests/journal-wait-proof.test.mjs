@@ -3,7 +3,7 @@ import { fork } from 'node:child_process';
 import fs from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { once } from 'node:events';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -186,4 +186,23 @@ test('proof file sync failure prevents publication and dispatch', async (t) => {
   } finally { fs.open = original; syncBuiltinESMExports(); }
   assert.equal(await journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, () => { calls++; }, () => {}), 'submitted');
   assert.equal(calls, 1);
+});
+
+
+test('crash after proof link retains a stale lock and fails closed until controlled recovery', async (t) => {
+  const path = await directory(t);
+  await prepare(await createAttemptJournal(path, { monotonicClock: () => 0 }));
+  const child = fork(new URL('./fixtures/journal-wait-worker.mjs', import.meta.url), [path, principal, digest], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+  t.after(() => child.kill());
+  assert.deepEqual((await once(child, 'message', { signal: AbortSignal.timeout(10000) }))[0], { ready: true });
+  child.send({ action: 'crash-before-dir-sync', attempt: id(2), monotonic: 60000, wallTime: 999999999 });
+  assert.deepEqual((await once(child, 'message', { signal: AbortSignal.timeout(10000) }))[0], { linked: true });
+  const exited = once(child, 'exit', { signal: AbortSignal.timeout(10000) }); child.kill('SIGKILL'); await exited;
+  assert.deepEqual(JSON.parse(await readFile(join(path, `${principal}-${id(1)}.waitproof`), 'utf8')), { retryAfterSeconds: 60 });
+  await assert.rejects(readFile(join(path, `${principal}-${id(2)}`)), { code: 'ENOENT' });
+  await assert.rejects(createAttemptJournal(path, { monotonicClock: () => 0 }), /locked or unavailable/);
+  // Only this disposable test journal is manually unlocked after the worker's death.
+  await rmdir(join(path, '.lock'));
+  const recovered = await createAttemptJournal(path, { monotonicClock: () => 0 });
+  assert.equal(await recovered.reserve(principal, id(2), digest, 999999999, 10, 0), 'reserved');
 });

@@ -378,6 +378,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 process termination during proof publication — 2026-10-30
+
+- **Evidence:** A separate synthetic Node process was paused after linking its elapsed-wait proof and before directory sync, then terminated with SIGKILL. Its journal lock remained; another open failed closed after the bounded lock wait, and no subsequent attempt reservation was present. In the disposable test journal only, after confirming worker exit, the test removed the stale lock; reopening synchronized the directory, validated the retained proof and allowed a separately requested reservation. The focused journal suite passed 10 tests.
+- **Limits:** The monotonic clock and provider outcome were synthetic; this is a process-kill test, not a physical power failure or proof of disk durability on all filesystems. Removing a lock in this isolated fixture is not an authorized production recovery procedure. Actual device sleep, real-provider billing, reviewed stale-lock recovery and independent security acceptance remain open; BUG-001 remains IN_PROGRESS.
+- **Rollback:** Revert this test and evidence with matching documentation hashes; preserve all production journal locks, records and proofs.
+
 ## T-041 wait-proof publication failure checks — 2026-10-30
 
 - **Evidence:** Synthetic filesystem faults during format 4 wait-proof publication covered proof-file sync failure, hard-link failure and directory sync failure immediately after linking. Each caused the final locked dispatch to reject before invoking its callback. After the injected failure was removed, a separate call synchronized and completed the proof and dispatched once. The focused journal suite passed 9 tests, including separate-process and pre-proof termination cases.
