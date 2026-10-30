@@ -374,7 +374,7 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 ## T-041 elapsed-time recovery candidate — 2026-10-30
 
-- **Design:** [ADR-015](../02-architecture/ADR.md#adr-015--candidate-elapsed-time-proof-for-provider-retry-waits) proposes versioned duration records, process-local monotonic observation and durable serialized elapsed proofs, with a conservative legacy-review path and a fail-closed version barrier. It records crash, multi-process, old-gateway and rollback boundaries.
+- **Design:** [ADR-016](../02-architecture/ADR.md#adr-016--candidate-elapsed-time-proof-for-provider-retry-waits) proposes versioned duration records, process-local monotonic observation and durable serialized elapsed proofs, with a conservative legacy-review path and a fail-closed version barrier. It records crash, multi-process, old-gateway and rollback boundaries.
 - **Limits:** This is a candidate only: no implementation, simulated-clock proof, live-provider test or independent review has been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
 - **Rollback:** Revert this candidate and matching checksums; preserve all existing journal and product records.
 

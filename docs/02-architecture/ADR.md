@@ -139,7 +139,7 @@ The owner selected a **self-hosted gateway with server-configured provider key**
 - **Limits:** Server enforcement applies to clients sharing that journal and depends on its clock; browser enforcement is profile-local. Owner acknowledgement of an unrepresentable value is an explicit external-review override, not automatic enforcement of its exact delay. A synthetic desktop Chromium backup round-trip preserved an extended delay and import trust markers; physical-device backup, real-provider and independent security evidence remain open.
 - **Rollback:** Disable generation and review journal and backup compatibility before reverting; never discard delay, attempt or user data.
 
-## ADR-015 — Candidate elapsed-time proof for provider retry waits
+## ADR-016 — Candidate elapsed-time proof for provider retry waits
 
 - **State:** PROPOSED for BUG-001; not implemented, reviewed or approved for production. The existing format 3 wall-clock deadline remains vulnerable to a forward clock jump. This candidate does not authorize a provider call or remove any existing hold.
 - **New waits:** Record the exact bounded duration and the immutable attempt identity in a versioned journal result before clearing the in-flight marker. In each gateway process, start a monotonic timer no earlier than its first observation of the durable result. Under the existing cross-process journal lock, publish an immutable completion proof bound to that result only after the full duration measured by that process has elapsed. A successful durable proof can be shared by other processes; checking and publishing must be serialized with dispatch and review. Merely reaching the wall-clock deadline or acknowledging a charge is not proof of elapsed time.
