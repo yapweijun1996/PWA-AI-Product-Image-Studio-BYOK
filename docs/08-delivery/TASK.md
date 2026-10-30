@@ -36,7 +36,58 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-084 | EP-06 | Review the proposed visual anchors and accessibility paths for the MVP | T-010 | PENDING — owner records Accept/Change/Reject for representative desktop/tablet/mobile and critical state anchors; verify keyboard, non-drag actions and real zoom when an interactive flow exists |
 | T-090 | EP-07 | Production deployment + rollback runbook with explicit owner approval | T-082 | release gates A–F, URL and post-deploy smoke |
 
-## Code review progress snapshot and priorities — 2026-10-30
+## Prioritized remaining work and acceptance criteria — 2026-10-30
+
+This is a planning snapshot for `main` at `e66b135`, not a new runtime or release verification. The task table above is the sole owner of each task's status and direct task dependencies; the checks below expand its remaining acceptance criteria. `IMPLEMENTED_UNVERIFIED` means some code and evidence exist but the full named gate is open. For T-033, T-082 and T-090 the table records acceptance without an explicit status; do not infer completion or a blocker. Priority expresses urgency and can differ from implementation dependency order. Work requiring real credentials, seller assets, participants, spending or deployment must follow the applicable authorization and security gates. Preserve originals, history and unresolved charge evidence throughout.
+
+### P1 — provider, isolation and billable attempts
+
+| Task | Remaining acceptance criteria |
+|---|---|
+| T-030 | Complete the self-hosted authentication, server-secret lifecycle and provider boundary; prove authorization, CSRF, expiry/revocation, allowlists and redacted errors with negative tests; obtain an independent security review and scoped live-provider evidence. The loopback development gateway is not production acceptance. |
+| T-031 | On supported installed devices, exercise sign-in, connect, status, expiry, disconnect and sign-out; confirm no provider key enters browser storage or logs, and distinguish disconnect from server-key removal and provider revocation (E2E-009). Complete T-030 security acceptance. |
+| T-032 | Review OS-level isolation and restricted IPC, absence of shell escape, principal binding, one-use approvals and provider contracts; validate cross-principal and injection failures with synthetic data. Resolve the Pi/app Node runtime compatibility before accepting the preflight for T-033. |
+| T-033 | After the table's T-032 and T-040 dependencies are accepted, implement the isolated Pi host and browser journey. Verify principal-bound restricted tools, cross-user isolation, prompt-injection resistance, redacted traces and browser E2E; a controlled live call requires the applicable authorization and budget. |
+| T-034 | Document the Pi text-model trust boundary and test with fake credentials: session/principal binding, allowed models, budget limits, no key disclosure and no arbitrary outbound URLs. Complete security review before real credentials. |
+| T-040 | Run E2E-007/008 with a controlled authorized provider call after security and cost gates: one chosen Studio attempt, invalid model/size/quality rejected without a call, retained source and attempt provenance, redacted diagnostics and recorded outcome. |
+| T-041 | Exercise crash/restart, cross-tab and installed-device cases for E2E-010/015/023. Preserve UNKNOWN when delivery is ambiguous; no automatic paid resend; a retry requires explicit review, new identity and approval. Prove safe recovery or documented hold where terminal outcome cannot be established. |
+| T-042 | Validate estimate, one-attempt consent and server-bound authorization (E2E-014), sanitized receipts and missing usage; compare observed provider usage with billing when available. Verify scope and limits of local soft budgets and complete installed-device/security checks. |
+
+### P1 — product fidelity, review and export
+
+| Task | Remaining acceptance criteria |
+|---|---|
+| T-050 | Exercise full-resolution mask creation, restore, alpha, versioning and quota failure on representative devices; preserve original bytes and source binding; verify E2E-005 and PERF-002 in the complete composition flow. |
+| T-051 | Test authorized representative SKU originals with labels, color, geometry, perspective and mask edges; verify source-bound composition and QA-001..003 on target devices. Record resampling and unsupported-view limitations; no generative claim of pixel identity. |
+| T-060 | Complete E2E-011..013 and QA-004/005 with real or rights-cleared cases, including a wrong-label hard veto at a high score and explicit human approval. Resolve OPEN-009 before enabling unsupported unbranded scoring. |
+| T-061 | Complete E2E-013/021/022: export approved outputs only in supported formats/ratios, exclude rejected assets, retain accurate provenance after retry/import and verify no credentials in bundles; test real SKU and installed-device cases. |
+| T-070 | Exercise 1-of-7 and 7-of-7 with real or rights-cleared SKU evidence and a controlled authorized provider; verify stable style IDs, independent jobs/attempts/statuses/receipts, suitable scene fit and no cross-style leakage (E2E-006/007/010). |
+| T-071 | Verify full E2E-015/023 error matrix, explicit billable retry consent, unique attempt lineage and source/output comparison on installed devices and a controlled provider; preserve history and UNKNOWN rather than silently resending. |
+
+### P2 — recovery, device and release quality
+
+| Task | Remaining acceptance criteria |
+|---|---|
+| T-011 | Test two actual builds across active and suspended tabs, user-driven update/loader, drafts and pending transactions; verify retained old assets and explicit cache cleanup under quota/eviction and missing-lock conditions. Complete installed-iOS acceptance and investigate the earlier cached-asset observation (E2E-019). |
+| T-020 | Validate selected confirmed facts in a real-provider acceptance case without treating user confirmation as independent truth. Test natural quota/storage failure on physical devices; verify atomic rollback, reopen and actionable recovery (E2E-003/016). |
+| T-022 | Round-trip full supported project history and v1 imports on representative devices and large projects; reject tampering, conflict, unsafe archives and unsupported versions without partial writes or overwrites. Verify quota/cancellation recovery and obtain independent security acceptance (E2E-017). |
+| T-080 | Complete E2E-018..020 on physical installed iOS and representative Android/desktop browsers: offline local work, update, safe areas, responsive layouts, keyboard, screen reader, contrast, touch targets and reduced motion. Record device/version, evidence and failures. |
+| T-081 | Complete security/privacy and performance gates: independent threat review, authorization/session/CSRF and rate-limit tests, redaction/secret scan, backup recovery and target-device performance. Fix and retest findings; document residual risks and release decision. |
+| T-082 | After T-081, run a rights-cleared five-category SKU pilot. Record per-style fidelity and human approval/veto, retry and UNKNOWN outcomes, measured spend per approved image and owner review; retain only authorized evidence. |
+| T-083 | After T-010/T-084, use consented seller sessions and a synthetic or rights-cleared task script to test setup, BYOK understanding and a single-SKU journey. Record task completion, time and friction; distinguish observations from population claims. No outreach without authorization. |
+| T-084 | Obtain owner Accept/Change/Reject decisions for representative desktop/tablet/mobile and critical-state visual anchors. Verify keyboard, non-drag alternatives and actual zoom for interactive flows; record decisions and required changes. |
+| T-090 | After T-082 and release gates A–F, produce a reviewed deployment/rollback runbook, isolated configuration, monitoring and rehearsal evidence. Obtain explicit owner deployment approval, then record release identity, actual URL and post-deployment smoke results. |
+
+### Cross-cutting decisions and execution order
+
+- Resolve the applicable [OPEN-001..009](../00-governance/DECISION_REGISTER.md) with their recorded owners before work or release that depends on them, particularly hosting/identity/key lifecycle, provider usage, channel presets, duplicate recovery and unbranded QA. Do not treat this checklist as an approval.
+- Recommended sequence: validate T-011 and local recovery in parallel with T-030/032/034 security design; then verify T-040–042 and T-050/051/060/061. Integrate T-033 only after its stated prerequisites; complete T-070/071, T-080/081, pilot/research and T-090 in dependency order. Independent evidence work may proceed earlier without marking downstream gates complete.
+- T-021 has scoped VERIFIED evidence for synthetic Chromium source handling; physical-device/EXIF and natural quota verification remain in T-080/T-081 rather than changing that historical scope. T-001/002/003/004/010 are also VERIFIED only within their recorded scopes.
+- The earlier 31% estimate below predates substantial subsequent implementation and is a historical snapshot, not a current project percentage. Recalculate only from current scope and evidence; do not infer release readiness from task counts.
+
+## Historical code review progress snapshot and priorities — 2026-10-30
+
+**Historical:** The following observations apply to the earlier `8e4295d` review, not the present task status. Use the current table and prioritized remaining-work section above.
 
 - **Estimated overall progress: approximately 31%** (rough range 25–35%). This is an engineering judgment for the full intended BYOK image studio, not a measured completion rate or release-readiness score. The dated [code review](../09-research/CODE_REVIEW_2026-10-30.md) owns the weighting, calculation, findings and review limits; revisit the estimate when scope or evidence changes.
 - **P1 — one safe image journey:** T-030/032/034 and their security gates precede or accompany T-040. Establish the restricted provider boundary, then deliver one synthetic-first SKU/Studio attempt with explicit cost approval and a controlled live check only when authorized. T-041/042 must preserve UNKNOWN outcomes and prevent accidental repeat billing.
@@ -45,7 +96,9 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **P3 — maintenance:** T-004 tracks the stale gateway statement in `.env.example`. Investigate the build's chunk-size warning based on device measurements; preserve existing tests and avoid speculative refactoring.
 - **Baseline:** The code review examined `main` at `8e4295d`; the later `9429f50` records the scoped forced-quota observation without changing application source. The percentage is unchanged as an estimate, not a new verification of that later observation.
 
-## Improvement priorities from simulated reviewers — 2026-10-30
+## Historical improvement priorities from simulated reviewers — 2026-10-30
+
+**Historical:** Subsequent implementation and acceptance evidence are recorded in the task table and dated records; these initial priorities are not current completion claims.
 
 - The previous ten-persona review was a simulation based on project evidence, not seller interviews. See [review and task mapping](../09-research/PERSONA_REVIEW_2026-10-30.md).
 - Near term: reconcile stale docs (T-003), then use the existing task dependencies to build the smallest one-SKU / one-style / human-QA / approved-export journey. Extend T-022 as masks, jobs, outputs, QA and receipts are implemented; define a migration only when a supported historical schema exists.
