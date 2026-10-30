@@ -344,6 +344,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-041 malformed retry date hardening — 2026-10-30
+
+- **Change:** Require HTTP-date `Retry-After` values to round-trip exactly after parsing. Impossible calendar dates and mismatched weekdays now follow the existing malformed-guidance review gate rather than being normalized into a potentially misleading wait.
+- **Evidence:** A synthetic adapter regression first reproduced normalization of an impossible date; tests cover impossible dates, mismatched weekdays and valid HTTP dates. A synthetic gateway regression checks that malformed guidance retains the durable review gate across restart and blocks another provider dispatch. No real credential or provider call was used.
+- **Limits:** The explicit review acknowledgement still depends on external guidance and can lift the hold; real-provider, installed-device and independent security acceptance remain open. BUG-001 remains IN_PROGRESS and T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert the adapter and associated tests and this record together; preserve journal entries and manual-review evidence.
+
 ## T-041 synthetic gateway and browser retry observation — 2026-10-30
 
 - **Evidence:** In isolated desktop Chromium, the built application connected to a loopback gateway using a synthetic credential and synthetic transport. A UI-created product, synthetic original and locally saved mask produced one authorized Studio attempt. The transport returned HTTP 429 with `Retry-After: 86401`; the UI displayed that delay and no automatic retry, and the gateway format 3 journal recorded a definitive failure with a retry deadline. After reload, the history retained 86401; preparing and authorizing a retry before expiry produced a local wait message. The preserved browser network trace contained one generation POST and no second generation POST.

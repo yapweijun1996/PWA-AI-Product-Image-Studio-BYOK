@@ -40,6 +40,15 @@ test('a provider HTTP-date retry delay is interpreted without automatic retry', 
   } finally { Date.now = now; }
 });
 
+test('malformed HTTP-date guidance requires review instead of normalizing it', async () => {
+  const now = Date.now; Date.now = () => Date.parse('Wed, 28 Feb 2024 00:00:00 GMT');
+  try {
+    for (const value of ['Thu, 31 Feb 2024 00:00:00 GMT', 'Mon, 01 Mar 2024 00:00:00 GMT']) {
+      assert.deepEqual(await simulate(value), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null, retryAfterRequiresReview: true });
+    }
+  } finally { Date.now = now; }
+});
+
 test('unused error response streams are cancelled without delaying or changing the outcome', async () => {
   for (const [status, outcome] of [[400, 'DEFINITIVE_FAILURE'], [408, 'UNKNOWN'], [429, 'DEFINITIVE_FAILURE'], [500, 'UNKNOWN']]) {
     let cancelled = false, calls = 0;
