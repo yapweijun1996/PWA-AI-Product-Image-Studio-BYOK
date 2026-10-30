@@ -446,12 +446,12 @@ async function verifyMaskAlpha(source: BackupSource, mask: BackupMask, signal?: 
           if (maskPixels[offset] > sourcePixels[offset]) throw new Error('The mask alpha exceeds the original source alpha.');
           if (maskPixels[offset] > 0) selected = true;
         }
-        for (const rect of mask.metadata.protectedEvidence?.regions ?? []) {
+        for (const [regionIndex, rect] of (mask.metadata.protectedEvidence?.regions ?? []).entries()) {
           for (let sy = Math.max(y, rect.y); sy < Math.min(y + rows, rect.y + rect.height); sy++) {
             for (let sx = rect.x; sx < rect.x + rect.width; sx++) {
               const alpha = ((sy - y) * width + sx) * 4 + 3;
               if (sourcePixels[alpha] !== 255 || maskPixels[alpha] !== 255)
-                throw new Error('A protected mask region is not fully covered.');
+                throw new Error(`A protected mask region is not fully covered (area ${regionIndex + 1}). Check that both the source and mask are fully opaque in this area.`);
             }
           }
         }
