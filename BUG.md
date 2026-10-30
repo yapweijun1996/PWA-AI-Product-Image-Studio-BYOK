@@ -420,3 +420,10 @@ This register tracks verified defects and their remediation. Application source 
 - **Finding:** After a keyboard user activated the Help-to-Settings link, the removed link lost focus and the destination's main content did not receive it. The focused browser assertion failed before the change.
 - **Remediation:** For a different-path forward or replacement navigation without a fragment, focus moves to the existing main landmark after scrolling to the top. Fragment navigation, history POP and initial load are not forced to the landmark; the existing history-heading focus handling remains separate.
 - **Evidence and limits:** In synthetic 320 px Chromium, Enter opens Settings, focus reaches its main landmark and the next Tab reaches the theme control. The focused guide test, six-test browser suite and production build passed. No screen reader, physical device, all routes or full browser-history focus behavior was tested; focusing the landmark does not by itself prove a screen-reader announcement.
+
+## BUG-053 — Browser title does not identify the current page
+
+- **Status:** IMPLEMENTED_UNVERIFIED. **Priority:** P2. **Related tasks:** T-010 and T-080.
+- **Finding:** Every route retained the same generic document title, making Help, Settings and other pages difficult to distinguish in browser tabs and history. The guide title assertion failed before the change.
+- **Remediation:** Known paths receive a route-specific title; unknown paths receive a page-not-found title. Product pages use a generic title rather than placing local product names in browser history. A product route that fails to load or has no matching local product retains its generic route title.
+- **Evidence and limits:** Synthetic Chromium checks direct navigation to the workspace, product creation, import, product route, missing page and trailing-slash Settings, plus guide-to-Settings navigation. The focused test, six-test browser suite and production build passed. Screen-reader announcements, physical-device tab UI and every error state remain unverified.

@@ -538,6 +538,7 @@ test('guide describes current local workflow and supports keyboard navigation', 
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     await client.call('Page.navigate',{url:`http://localhost:${vite.httpServer.address().port}/help`});
     await until(()=>evaluate(client, `document.querySelector('h1')?.innerText==='Get started' && document.querySelectorAll('.guide-list section').length===6`),'local onboarding guide');
+    assert.equal(await evaluate(client, `document.title`),'Help & guide | Product Image Studio','The browser tab identifies the guide.');
     assert.equal(await evaluate(client, `document.querySelector('#availability-heading').parentElement.innerText.includes('Pi agent and remote mobile gateway are not available yet')`),true);
     assert.equal(await evaluate(client, `(() => {const section=document.querySelector('#install-heading').parentElement;return section.innerText.includes('Installing does not connect a phone') && section.querySelectorAll('a').length===2})()`),true,'Install guidance distinguishes installation from gateway access.');
     for(const width of [320,390,1280]) {
@@ -554,6 +555,7 @@ test('guide describes current local workflow and supports keyboard navigation', 
     await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
     await until(()=>evaluate(client, `location.pathname==='/settings' && document.querySelector('.provider-session')?.innerText.includes('Remote mobile gateway access is not available yet.')`),'guide settings link');
+    assert.equal(await evaluate(client, `document.title`),'Settings | Product Image Studio','The browser tab identifies Settings.');
     assert.equal(await evaluate(client, `document.activeElement?.id`),'main-content','Keyboard navigation moves focus into the destination page.');
     await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
@@ -572,6 +574,10 @@ test('guide describes current local workflow and supports keyboard navigation', 
       assert.ok(position.heading>=0 && position.heading<800 && !position.overflow,`Settings is visible without overflow at ${width}px.`);
     }
     assert.equal(await evaluate(client, `window.__apiRequests.length`),0);
+    for(const [path,title] of [['/','Workspace'],['/products/new','Create a product'],['/import','Import backup'],['/products/synthetic-id','Product workspace'],['/missing-page','Page not found'],['/settings/','Settings']]) {
+      await client.call('Page.navigate',{url:`http://localhost:${vite.httpServer.address().port}${path}`});
+      await until(()=>evaluate(client, `document.title===${JSON.stringify(title+' | Product Image Studio')}`),`title for ${path}`);
+    }
   } finally {
     client?.close();
     if(browser && browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(resolve=>browser.once('exit',resolve)),delay(3000)]);}

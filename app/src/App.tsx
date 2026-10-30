@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, NavLink, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
+import { Link, matchPath, NavLink, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { useServiceWorker } from './useServiceWorker';
 import { NewProduct, Workspace } from './ProductPages';
 import { ProviderSessionPanel } from './ProviderSessionPanel';
@@ -105,6 +105,11 @@ function NotFound() {
   return <><div className="eyebrow">NOT FOUND</div><h1>Page not found</h1><p className="lead">This address does not match a page in the workspace.</p><Link className="text-link" to="/">Return to workspace <span aria-hidden="true">→</span></Link></>;
 }
 
+function pageTitle(pathname: string): string {
+  const pages: Array<[string, string]> = [['/', 'Workspace'], ['/settings', 'Settings'], ['/help', 'Help & guide'], ['/import', 'Import backup'], ['/products/new', 'Create a product'], ['/products/:productId', 'Product workspace']];
+  return pages.find(([pattern]) => matchPath(pattern, pathname))?.[1] ?? 'Page not found';
+}
+
 export function App() {
   const { theme, setTheme } = useAppearance();
   const location = useLocation();
@@ -112,6 +117,7 @@ export function App() {
   const previousPath = useRef(location.pathname);
   const mainContent = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
+    document.title = `${pageTitle(location.pathname)} | Product Image Studio`;
     const changedPage = previousPath.current !== location.pathname;
     previousPath.current = location.pathname;
     if (changedPage && navigationType !== 'POP' && !location.hash) {
