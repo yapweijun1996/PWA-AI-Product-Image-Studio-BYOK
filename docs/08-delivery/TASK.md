@@ -1340,3 +1340,8 @@ Do not mark production deployed from CI green alone. Human permission required f
 
 - **Decision:** The owner accepted the overall visual direction represented by desktop 01, tablet 30 and mobile 43, and requested separate review of specific interactions. The authoritative scope and image links are in [Design System: Owner direction](../10-design/DESIGN_SYSTEM.md#owner-direction--2026-10-31).
 - **Remaining acceptance:** This is not individual image or interaction approval. Review critical states and component specimen, correct known misleading generated copy and controls, and verify keyboard, non-drag, real zoom, accessibility and target-device behavior. T-084 is IN_PROGRESS; T-083 remains dependent on its acceptance. No application behavior or release approval changed.
+
+## T-080 / T-084 real browser zoom sample — 2026-10-31
+
+- **Evidence:** On macOS with Chrome 156.0.8078.74 and the local Vite development app, the browser's actual page zoom was raised from 100% to 200% using Chrome's keyboard control. At 200%, the workspace and create-product page had a 735 CSS px viewport and document scroll width of 735 px. Three labelled inputs each measured 625 × 46 CSS px and accepted synthetic text; no product was submitted. Test inputs were cleared and the browser zoom returned to 100% (1,470 CSS px viewport).
+- **Limits and rollback:** This is one desktop browser, viewport and form state, not a physical mobile device, full keyboard or screen-reader test, real SKU, installed PWA or full zoom/accessibility acceptance. The owner must still review individual anchors and critical interactions. T-080 remains IMPLEMENTED_UNVERIFIED and T-084 remains IN_PROGRESS. The evidence record changes no application or user data and can be corrected independently.
