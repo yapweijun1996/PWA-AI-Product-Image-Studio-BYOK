@@ -189,3 +189,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Increase paragraph line spacing within the studio, separate the comparison section from the queue, and lay out its selectors with explicit label spacing.
 - **Evidence and limits:** The synthetic seven-style browser journey checks paragraph line height, control separation and document overflow at 320, 390 and 1280 px, and exercises individual authorization and generation. Before and after 320 px screenshots were inspected. This does not establish readability on physical devices, at browser zoom, or with screen readers, and does not evaluate real provider billing or seller comprehension.
 - **Rollback:** Revert the scoped studio CSS, comparison class and corresponding regression assertions together; preserve all attempt and review data.
+
+## BUG-023 — Missing style authorization is hard to locate in a long queue
+
+- **Status:** VERIFIED for the scoped synthetic Chromium flow. **Priority:** P2. **Related tasks:** T-070 and T-080.
+- **Finding:** In a seven-style queue the submit button remained disabled until every style was authorized, but the bottom of the long form did not identify which authorization was missing. On a narrow screen the user had to search the preceding style cards.
+- **Fix:** Show the number of style authorizations and name the outstanding styles next to the action. The live status also says that other required confirmations and gateway checks still apply; it does not change any billing, approval or readiness checks.
+- **Evidence and limits:** The synthetic browser journey checks 0/7, 6/7 with Billboard missing, and 7/7 before running seven independent provider stubs. The partial state makes no provider call. A 320 px screenshot was inspected and the browser suite and build passed. No actual screen reader, physical device, seller comprehension study or real billing was tested.
+- **Rollback:** Remove the status and matching assertions together; retain every per-style authorization and existing submission guard.

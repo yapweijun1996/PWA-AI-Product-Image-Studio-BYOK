@@ -179,6 +179,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
       await evaluate(client, `(() => {const group=[...document.querySelectorAll('.studio-panel fieldset')].find(f=>f.querySelector('legend')?.textContent==='Choose styles');const label=[...group.querySelectorAll('label')].find(l=>l.innerText.trim()===${JSON.stringify(style)});if(!label.querySelector('input').checked)label.querySelector('input').click()})()`);
     }
     await until(()=>evaluate(client,`document.querySelectorAll('.style-plan').length===7`),'seven independent style plans');
+    assert.match(await evaluate(client,`document.querySelector('.queue-consent-progress').innerText`),/Style authorizations: 0 of 7/);
     for (const width of [320,390,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<600});
       const layout=await evaluate(client, `(() => {const p=document.querySelector('.style-plan > p');const submit=document.querySelector('.studio-panel button[type="submit"]');const comparison=document.querySelector('.studio-scene-comparison');const labels=[...comparison.querySelectorAll(':scope > label')];const rect=e=>e.getBoundingClientRect();return {lineHeight:parseFloat(getComputedStyle(p).lineHeight),fontSize:parseFloat(getComputedStyle(p).fontSize),gap:rect(comparison).top-rect(submit).bottom,labelGap:rect(labels[1]).top-rect(labels[0]).bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
@@ -191,9 +192,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
       await evaluate(client, `[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes(${JSON.stringify('I authorize this single '+style+' attempt')})).querySelector('input').click()`);
     }
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Every style needs its own consent.');
+    assert.match(await evaluate(client,`document.querySelector('.queue-consent-progress').innerText`),/Style authorizations: 6 of 7\. Still needed: Billboard\./);
     assert.equal(providerCalls,3,'Partial queue consent sends nothing.');
     await evaluate(client, `[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Billboard attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'seven-style consent');
+    assert.match(await evaluate(client,`document.querySelector('.queue-consent-progress').innerText`),/Style authorizations: 7 of 7\. Other required confirmations and gateway checks still apply\./);
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
     await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('7 independent scene attempts completed') && [...document.querySelectorAll('.studio-panel button')].some(b=>b.textContent==='Authorize and generate selected scenes')`),'completed seven-style queue');
     assert.equal(providerCalls,10,'Exactly seven new synthetic provider calls occur.');

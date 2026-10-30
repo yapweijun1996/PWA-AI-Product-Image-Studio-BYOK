@@ -286,6 +286,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const ready = plans.length > 0 && plans.every((plan) => styleConsent[plan.styleId] &&
     (!plan.perAttemptOverride || attemptOverrides[plan.styleId]) && (!plan.sessionOverride || sessionOverrides[plan.styleId]) &&
     (plan.styleId !== 'flat_lay' || plan.context.sourceView !== 'TOP' || topConfirmed));
+  const missingStyleConsent = plans.filter((plan) => !styleConsent[plan.styleId]);
   function clearQueueConsent() { setStyleConsent({}); setAttemptOverrides({}); setSessionOverrides({}); setTopConfirmed(false); }
 
   async function refreshGateway() {
@@ -613,6 +614,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
         {plan.perAttemptOverride && <label className="checkbox-label"><input type="checkbox" checked={Boolean(attemptOverrides[plan.styleId])} disabled={busy} onChange={(event) => { const checked = event.target.checked; setAttemptOverrides((old) => ({ ...old, [plan.styleId]: checked })); setStyleConsent({}); }} /><span>For {STYLE_LABELS[plan.styleId]} only, I approve exceeding the per-attempt soft estimate limit.</span></label>}
         {plan.sessionOverride && <label className="checkbox-label"><input type="checkbox" checked={Boolean(sessionOverrides[plan.styleId])} disabled={busy} onChange={(event) => { const checked = event.target.checked; setSessionOverrides((old) => ({ ...old, [plan.styleId]: checked })); setStyleConsent({}); }} /><span>For {STYLE_LABELS[plan.styleId]} only, I approve exceeding the session soft estimate limit.</span></label>}
         <label className="checkbox-label"><input type="checkbox" checked={Boolean(styleConsent[plan.styleId])} disabled={busy || entries === null || reviewFingerprint === null || sessionTotal === null || typeof gateway !== 'object'} onChange={(event) => { const checked = event.target.checked; setStyleConsent((old) => ({ ...old, [plan.styleId]: checked })); }} /><span>I authorize this single {STYLE_LABELS[plan.styleId]} attempt, including the displayed provider data and estimate, and understand a timeout may still incur a charge.</span></label></section>)}
+      {plans.length > 0 && !busy && <p className="queue-consent-progress" role="status">Style authorizations: {plans.length - missingStyleConsent.length} of {plans.length}.{missingStyleConsent.length > 0 ? ` Still needed: ${missingStyleConsent.map((plan) => STYLE_LABELS[plan.styleId]).join(', ')}.` : ' Other required confirmations and gateway checks still apply.'}</p>}
       <button className="primary-button" type="submit" disabled={busy || unresolved || (typeof gateway === 'object' && gateway.legacyWaits.length > 0) || !ready || Boolean(planError) || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || reviewFingerprint === null || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate selected scenes'}</button>
     </form>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
