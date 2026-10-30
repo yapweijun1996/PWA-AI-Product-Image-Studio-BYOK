@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
+import { createGateway } from '../../gateway.mjs';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +53,13 @@ async function evaluate(client, expression) {
 test('protected mask gestures and approved export bundle remain consistent', { timeout: 90000 }, async () => {
   assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable before running browser tests.');
   const userDir = await mkdtemp(join(tmpdir(), 'studio-region-browser-'));
-  const vite = await createServer({ root: appRoot, configFile: join(appRoot, 'vite.config.ts'), logLevel: 'silent', server: { host: '127.0.0.1', port: 0 } });
+  const web=join(userDir,'gateway-web'), journal=join(userDir,'journal');
+  await mkdir(web);await mkdir(journal,{mode:0o700});await writeFile(join(web,'index.html'),'synthetic gateway fixture');
+  const token=randomBytes(32).toString('base64url');let imageData='', providerCalls=0, providerPayload;
+  const gateway=await createGateway({authTokenHash:createHash('sha256').update(token).digest('hex'),providerConfigured:true,staticDirectory:web,imageGeneration:{enabled:true,apiKey:'synthetic-provider-fixture',journalDirectory:journal,transport:async (_url, request) => {providerCalls++;providerPayload=JSON.parse(request.body);return new Response(JSON.stringify({data:[{b64_json:imageData}]}),{status:200,headers:{'content-type':'application/json'}});}}});
+  await new Promise((resolve,reject)=>{gateway.once('error',reject);gateway.listen(0,'127.0.0.1',resolve);});
+  const gatewayOrigin=`http://127.0.0.1:${gateway.address().port}`;
+  const vite = await createServer({ root: appRoot, configFile: join(appRoot, 'vite.config.ts'), logLevel: 'silent', server: { host: '127.0.0.1', port: 0, proxy:{'/api':{target:gatewayOrigin,changeOrigin:true,configure(proxy){proxy.on('proxyReq',(request,original)=>{if(original.headers.origin) request.setHeader('origin',gatewayOrigin);});}}} } });
   let browser, client;
   try {
     await vite.listen();
@@ -68,6 +76,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await client.call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
     await client.call('Page.navigate', { url: origin });
     await until(() => evaluate(client, `location.origin === ${JSON.stringify(origin)} && document.readyState === 'complete'`), 'application load');
+    imageData=await evaluate(client, `(() => {const c=document.createElement('canvas');c.width=1024;c.height=1024;const x=c.getContext('2d');x.fillStyle='#225588';x.fillRect(0,0,1024,1024);return c.toDataURL('image/png').split(',')[1];})()`);
     await until(() => evaluate(client, `[...document.querySelectorAll('a')].some(a=>a.textContent==='Create product')`),'product creation link');
     await evaluate(client, `[...document.querySelectorAll('a')].find(a=>a.textContent==='Create product').click()`);
     await until(() => evaluate(client, `location.pathname==='/products/new' && !!document.querySelector('#product-sku')`),'product form');
@@ -302,11 +311,42 @@ test('protected mask gestures and approved export bundle remain consistent', { t
       const pixel=await evaluate(client, `(async () => {const bytes=Uint8Array.from(atob(${JSON.stringify(Buffer.from(output).toString('base64'))}),c=>c.charCodeAt(0));const image=await createImageBitmap(new Blob([bytes],{type:'image/png'}));const c=document.createElement('canvas');c.width=image.width;c.height=image.height;const ctx=c.getContext('2d');ctx.drawImage(image,0,0);image.close();return {width:c.width,height:c.height,pixel:[...ctx.getImageData(512,512,1,1).data]};})()`);
       assert.deepEqual(pixel,{width:1024,height:1024,pixel:[170,51,17,255]});
     } finally { await zip.close(); }
+    await client.call('Page.navigate',{url:`${origin}/settings`});
+    await until(() => evaluate(client, `!!document.querySelector('#local-access-token')`),'local gateway sign-in');
+    await evaluate(client, `(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(token)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await evaluate(client, `document.querySelector('.provider-login button').click()`);
+    await until(() => evaluate(client, `[...document.querySelectorAll('.provider-session button')].some(b=>b.textContent==='Connect provider'&&!b.disabled)`),'provider connect');
+    await evaluate(client, `[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Connect provider').click()`);
+    await until(() => evaluate(client, `document.querySelector('.provider-session')?.innerText.includes('Provider authorization active')`),'provider authorization');
+    await client.call('Page.navigate',{url:`${origin}/products/${productId}`});
+    await until(() => evaluate(client, `document.querySelector('.studio-panel')?.innerText.includes('Local app and provider session active')`),'active studio gateway');
+    await until(() => evaluate(client, `[...document.querySelectorAll('.style-plan label')].some(l=>l.innerText.includes('I authorize this single Studio attempt')&&!l.querySelector('input').disabled)`),'studio authorization');
+    assert.equal(providerCalls,0,'No provider request before explicit consent.');
+    assert.equal(await evaluate(client, `[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true);
+    await evaluate(client, `[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
+    await until(() => evaluate(client, `![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'ready studio generation');
+    await evaluate(client, `[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
+    await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'generated synthetic studio scene');
+    assert.equal(providerCalls,1,'Exactly one synthetic provider request was made.');
+    assert.deepEqual(Object.keys(providerPayload).sort(),['model','n','output_format','prompt','quality','size']);
+    assert.equal(providerPayload.n,1);assert.equal(providerPayload.output_format,'png');
+    assert.ok(providerPayload.prompt.includes('Synthetic region test'));
+    const generated=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const entries=await p.listStudioAttempts(${JSON.stringify(productId)});const e=entries.find(x=>x.attempt.styleId==='studio' && x.attempt.status==='DEFINITIVE_SUCCESS');return {source:e.attempt.sourceSha256,scene:e.asset.sha256};})()`);
+    assert.equal(generated.source,originalHash);
+    assert.equal(generated.scene,createHash('sha256').update(Buffer.from(imageData,'base64')).digest('hex'));
+    assert.equal(await evaluate(client, `document.body.innerText.includes('synthetic-provider-fixture') || JSON.stringify(localStorage).includes('synthetic-provider-fixture') || JSON.stringify(sessionStorage).includes('synthetic-provider-fixture')`),false);
+    await client.call('Page.reload');
+    await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · DEFINITIVE_SUCCESS')`),'persisted synthetic scene');
+    assert.equal(providerCalls,1,'Reload does not resend the synthetic request.');
+
+
+    assert.equal(await evaluate(client, `document.documentElement.scrollWidth===innerWidth`),true);
     assert.equal(await evaluate(client, 'document.documentElement.scrollWidth === innerWidth'), true);
   } finally {
     client?.close();
     if (browser && browser.exitCode === null) { browser.kill('SIGTERM'); await Promise.race([new Promise((resolve) => browser.once('exit', resolve)), delay(3000)]); }
     await vite.close();
+    await new Promise((resolve,reject)=>gateway.close(error=>error?reject(error):resolve()));
     await rm(userDir, { recursive: true, force: true });
   }
 });
