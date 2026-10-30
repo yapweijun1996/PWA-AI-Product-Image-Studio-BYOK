@@ -173,6 +173,17 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.equal(providerCalls,0,'Mask rejection and correction do not call the provider.');
     await evaluate(client, `[...document.querySelectorAll('.mask-regions button')].find(b=>b.textContent==='Add protected area').click()`);
     await until(() => evaluate(client, `document.querySelectorAll('.mask-region').length===2`),'second protected area');
+    await evaluate(client, `(() => {const fields=document.querySelectorAll('.mask-region')[1].querySelectorAll('input');for(const [field,value] of [[fields[0],'199'],[fields[1],'99']]){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
+    await until(() => evaluate(client, `document.querySelectorAll('.mask-region-outline:not(.mask-region-preview)').length===2`),'edge area outline');
+    for(const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const edge=await evaluate(client, `(() => {const surface=document.querySelector('.mask-surface').getBoundingClientRect(),badge=[...document.querySelectorAll('.mask-region-outline span')].find(e=>e.textContent==='2').getBoundingClientRect();return {left:badge.left>=surface.left,right:badge.right<=surface.right,top:badge.top>=surface.top,bottom:badge.bottom<=surface.bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      assert.deepEqual(edge,{left:true,right:true,top:true,bottom:true,overflow:false},`Edge area label stays within the image at ${width}px.`);
+      const controls=await evaluate(client, `([...document.querySelectorAll('.mask-stamp label')].map(label=>{const l=label.getBoundingClientRect(),i=label.querySelector('input').getBoundingClientRect();return {grouped:i.left>=l.left && i.right<=l.right && i.top>l.top && i.bottom<=l.bottom,height:i.height}}))`);
+      assert.ok(controls.length===2 && controls.every(c=>c.grouped && c.height>=44),`Coordinate labels and inputs stay grouped at ${width}px.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client, `(() => {const fields=document.querySelectorAll('.mask-region')[1].querySelectorAll('input');for(const field of [fields[0],fields[1]]){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,'0');field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
     await evaluate(client, `(() => {const tool=document.querySelector('#mask-tool');tool.value='erase';tool.dispatchEvent(new Event('change',{bubbles:true}));for(const id of ['mask-x','mask-y']){const input=document.getElementById(id);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'0');input.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('.mask-stamp button').click()})()`);
     await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Review mask').click()`);
     await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask').click()`);

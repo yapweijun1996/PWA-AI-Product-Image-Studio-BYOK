@@ -356,3 +356,15 @@ This register tracks verified defects and their remediation. Application source 
 - **Finding:** When a mask failed coverage with multiple selected protected areas, the error identified neither the affected area nor whether source transparency could also be the cause. Users had to search every area to find the mismatch.
 - **Remediation:** The existing coverage check now identifies the first uncovered area encountered by its one-based list position and explains that both source and mask pixels must be fully opaque. The selection and coverage rules are unchanged; an error identifies one area, not necessarily every affected area.
 - **Evidence and limits:** In synthetic 320 px Chromium, the second of two areas was uncovered, the error identified area 2, and the test corrected the mask and continued through the existing approval/export flow. A test fixture initially left a coordinate changed for an unrelated later check; restoring it resolved that test issue. Real transparent product images, physical devices and screen readers remain unverified.
+
+## BUG-044 — Edge protected-area number can extend beyond the image
+
+- **Status:** IMPLEMENTED_UNVERIFIED — synthetic viewport and screenshot checks passed; physical-device acceptance remains open. **Priority:** P2. **Related tasks:** T-050, T-052 and T-080.
+- **Finding:** A 1 × 1 protected area at the source image's bottom-right placed its number outside the image. This made the visual marker harder to relate to the selected pixels; the area and coverage data were unaffected.
+- **Remediation:** Area numbers anchor inward based on their position in the image. A synthetic browser assertion failed before the change and passed at 320, 390 and 1280 px afterward; mobile and desktop screenshots were inspected. Edge cases with overlapping areas and physical devices remain open.
+
+## BUG-045 — Mask coordinate labels can wrap away from their inputs
+
+- **Status:** IMPLEMENTED_UNVERIFIED — synthetic viewport and screenshot checks passed; accessibility acceptance remains open. **Priority:** P2. **Related tasks:** T-050 and T-080.
+- **Finding:** At a 1280 px viewport, the vertical-position label stayed at the end of one row while its input wrapped to the next, obscuring their relationship.
+- **Remediation:** Each coordinate input is grouped with its label and the explanatory text has its own row. Synthetic checks at 320, 390 and 1280 px confirm both input groups remain together with 44 px minimum input height; mobile and desktop screenshots were inspected. Screen-reader, actual zoom and physical-device acceptance remain open.
