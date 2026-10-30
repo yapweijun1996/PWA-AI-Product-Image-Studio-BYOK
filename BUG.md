@@ -30,3 +30,10 @@ This register tracks verified defects and their remediation. Application source 
 - **Cause:** Vite development mode exposed the AJV Unicode-length default export as a CommonJS namespace, while generated validators called it as a function. Synthetic product creation failed with `func2 is not a function`.
 - **Fix and evidence:** The virtual validator normalizes both namespace and direct-function exports. A Vite development-module regression validates all four canonical fixtures and rejects an overlong Unicode product name. Before the fix, a baseline Vite module probe reproduced the error; after it, real Chromium created a synthetic product through the UI. Production build and the application suite are checked separately.
 - **Limits:** Synthetic desktop Chromium and Vite evidence does not establish all browsers or production release acceptance. Roll back the Vite configuration and its test together; preserve product data.
+
+## BUG-003 — Zoomed mask viewport has no explicit keyboard target or accessible name
+
+- **Status:** VERIFIED for the scoped Chromium fix. **Priority:** P2. **Related tasks:** T-050 and T-080.
+- **Evidence:** The zoomed mask scroll container had no explicit `tabindex`, role or accessible name. Chromium implicitly focused and scrolled it, but its accessibility snapshot did not expose a named region; behavior in other browsers was unverified.
+- **Fix and verification:** The viewport is explicitly keyboard-focusable and exposed as the named `Mask viewport` region; nearby instructions describe arrow-key scrolling. In synthetic Chromium, Tab reached it, Arrow Right scrolled the 300% canvas and the focus outline was visible. Emulated 320 px and desktop views had no document-width overflow; the production build passed.
+- **Limits:** This does not establish screen-reader behavior, physical-device operation or all-browser accessibility acceptance. Revert the markup and matching documentation together if necessary; preserve source images and masks.

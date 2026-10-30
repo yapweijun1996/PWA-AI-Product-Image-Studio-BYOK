@@ -350,6 +350,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-050 / T-080 named keyboard-scroll region — 2026-10-30
+
+- **Change:** The zoomable mask viewport now has an explicit keyboard tab stop and accessible region name, with an arrow-key scrolling hint. See BUG-003. The drawing and mask storage paths are unchanged.
+- **Evidence:** In an isolated synthetic Chromium session, the pre-change viewport had no accessible name or explicit tab index. After the change, the accessibility tree exposed `Mask viewport`; on an emulated 320 px viewport Tab focused it, Arrow Right scrolled its 300% canvas, the focus outline was visible, and the document remained 320 px wide. A desktop viewport also exposed the region and scrolled by keyboard without document overflow. Mobile and desktop screenshots were inspected; browser console had no errors or warnings. Production build passed with the existing large-chunk warning.
+- **Limits:** These are scoped Chromium checks, not physical touch, installed iOS, screen-reader, complete keyboard navigation or all-browser acceptance. T-050 and T-080 remain IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert the viewport markup, text and this record together; preserve images and masks.
+
 ## T-050 / T-084 mask keyboard and zoom observation — 2026-10-30
 
 - **Evidence:** In an isolated desktop Chromium context with a synthetic 64×64 source and actual Vite development UI, a 320×740 emulated touch viewport displayed a 224 px mask canvas at 100% zoom. Keyboard Home/End on the zoom slider changed the value to 50%/300%; at 300% the canvas measured 672 px within a 224 px horizontally scrollable region, while the document remained 320 px wide. Selecting erase and activating the non-drag brush changed the center overlay pixel from opaque to transparent; selecting draw, focusing the same button and pressing Space restored it to opaque. The focused button had a solid outline. Review and Save mask were activated, and the editor reopened after a viewport-triggered reload.
