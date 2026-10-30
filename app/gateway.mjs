@@ -189,7 +189,8 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
     const bodyLimit = path === `${API}/images/approvals` || path === `${API}/images/generate` ? MAX_IMAGE_BODY : MAX_BODY;
     if (length && (!/^\d+$/.test(length) || Number(length) > bodyLimit)) return error(response, 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large.');
     const acknowledgementPath = /^\/api\/v2\/images\/attempts\/([^/]*)\/acknowledgement$/.exec(path ?? '');
-    const expectsBody = request.method === 'POST' && (path === `${API}/auth/login` || path === `${API}/session/connect` || path === `${API}/images/approvals` || path === `${API}/images/generate` || acknowledgementPath);
+    const legacyReviewPath = /^\/api\/v2\/images\/attempts\/([^/]*)\/legacy-wait-review$/.exec(path ?? '');
+    const expectsBody = request.method === 'POST' && (path === `${API}/auth/login` || path === `${API}/session/connect` || path === `${API}/images/approvals` || path === `${API}/images/generate` || acknowledgementPath || legacyReviewPath);
     if (!expectsBody && ((length && Number(length) > 0) || request.headers['transfer-encoding'])) return error(response, 400, 'INVALID_INPUT', 'Request body is not allowed.');
     clean();
     try {
@@ -265,6 +266,32 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
           catch { return error(response, 503, 'UNAVAILABLE', 'The attempt journal is unavailable.'); }
           if (sessions.get(session.id) !== current || current.expires <= now() || providers.get(providerId) !== provider || provider.expires <= now()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
           return json(response, 200, { reviewRevision });
+        }
+        if ((path === `${API}/images/legacy-waits` && request.method === 'GET') || (legacyReviewPath && request.method === 'POST')) {
+          if (!journal || !imageConfig) return error(response, 503, 'UNAVAILABLE', 'Billable image generation is not enabled.');
+          if (!validCsrf(request, session)) return error(response, 403, 'FORBIDDEN', 'Request authorization failed.');
+          const current = sessions.get(session.id), provider = providerSession(request, session);
+          const providerValue = readCookie(request, 'provider_session'), providerId = providerValue && digest(providerValue);
+          if (!provider) return error(response, 401, 'UNAUTHENTICATED', 'Provider authorization required.');
+          const active = () => sessions.get(session.id) === current && current.expires > now() && providers.get(providerId) === provider && provider.expires > now();
+          if (request.method === 'GET') {
+            let pending;
+            try { pending = await journal.legacyWaits(principal); } catch { return error(response, 503, 'UNAVAILABLE', 'The attempt journal is unavailable.'); }
+            if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
+            return json(response, 200, pending);
+          }
+          const attemptId = legacyReviewPath[1];
+          if (!UUID.test(attemptId) || attemptId !== attemptId.toLowerCase()) return error(response, 400, 'INVALID_INPUT', 'Invalid attempt identifier.');
+          let body;
+          try { body = await readJson(request); } catch (reason) { const oversized = reason.message === 'size'; return error(response, oversized ? 413 : 400, oversized ? 'PAYLOAD_TOO_LARGE' : 'INVALID_INPUT', 'Invalid request.'); }
+          if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
+          if (Object.keys(body).length !== 2 || body.reviewedProviderWait !== true || !Number.isSafeInteger(body.reviewRevision) || body.reviewRevision < 0) return error(response, 400, 'INVALID_INPUT', 'Explicit provider wait review is required.');
+          let receipt;
+          try { receipt = await journal.reviewLegacyWait(principal, attemptId, body.reviewRevision, now(), active); }
+          catch { if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.'); return error(response, 503, 'UNAVAILABLE', 'The attempt journal is unavailable.'); }
+          if (receipt === 'stale') return error(response, 409, 'APPROVAL_STALE', 'Review state changed; check again and confirm separately.');
+          if (!receipt) return error(response, 409, 'CONFLICT', 'This legacy wait cannot be reviewed.');
+          return json(response, 200, { clientAttemptId: attemptId, ...receipt });
         }
         if (acknowledgementPath && request.method === 'POST') {
           if (!journal || !imageConfig) return error(response, 503, 'UNAVAILABLE', 'Billable image generation is not enabled.');

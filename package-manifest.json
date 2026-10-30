@@ -1,6 +1,6 @@
 {
   "name": "PWA-AI-Product-Image-Studio-BYOK-SSOT",
-  "version": "7.0.0",
+  "version": "7.1.0",
   "date": "2026-10-30",
   "status": "DOCUMENTATION_ONLY_NOT_IMPLEMENTED",
   "source": "user-confirmed repo name + KB-MCP skills + official reference documentation",
@@ -32,8 +32,8 @@
     },
     {
       "path": "BUG.md",
-      "bytes": 7674,
-      "sha256": "24d92f62d0e322092026d62c107429ec65a509267d908d488d37a59f1f39a2c2"
+      "bytes": 7740,
+      "sha256": "f209a39408549d30d4a754712243cd74a1a4c639806b70e6990764c92ed401c9"
     },
     {
       "path": "DESIGN.md",
@@ -72,8 +72,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 31401,
-      "sha256": "a0ea8192b4b5fdc9961bc5e8021d0f2abfa18ec8e7e0f365e2ee5ad6c019c690"
+      "bytes": 34759,
+      "sha256": "cee28fe5fe2b2262a8329481c3ec3e6df6fbf553001151d8dc9a0c59e161df0a"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -122,8 +122,8 @@
     },
     {
       "path": "docs/00-governance/SSOT_POLICY.md",
-      "bytes": 4846,
-      "sha256": "ee61445d8767e0a950fdba42065b460ebcbb9132247ea91732618e3402a175d6"
+      "bytes": 4958,
+      "sha256": "fb0317641f36ac1014ccd315a068a4164d2a435371010d656252220cebe0dbfa"
     },
     {
       "path": "docs/01-product/FEATURE_PRIORITY.md",
@@ -157,8 +157,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 28789,
-      "sha256": "3a2db01ee8a12ed7dadbf8e3ba8a94ffdf8ec2423bbf1f2a18632e0d1d56faa6"
+      "bytes": 28822,
+      "sha256": "f4e99269819219a8c827d0e22a0ca662716bf267d86f90555c945d2e3cec753a"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 137629,
-      "sha256": "9877522d64a662fec80cece0b1a2b4a6b0098ef751662c9173da94b742ef7df4"
+      "bytes": 139692,
+      "sha256": "3c0cb3109b665b6b8890b6677d186abd8646a45db82db5136d9e2e0479d32673"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -672,8 +672,8 @@
     },
     {
       "path": "scripts/validate_ssot.py",
-      "bytes": 13398,
-      "sha256": "3ee174ffdf8b8c7cbfda22f8c7b1593ad0c9a84aa0ce2a26283e78ea5ac4f711"
+      "bytes": 13996,
+      "sha256": "b9b0dba1d007f8f6b3cc6b3dbee53a9dd9400e771fd68531a0a4978891e7f46a"
     }
   ]
 }

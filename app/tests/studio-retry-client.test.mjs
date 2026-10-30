@@ -6,7 +6,7 @@ import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION,
 const result = await build({ configFile: 'vite.config.ts', logLevel: 'silent', build: { write: false, minify: false, lib: { entry: 'src/StudioPanel.tsx', formats: ['es'], fileName: 'studio' } } });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { retryableStudioAttempt, sanitizedStudioFailure } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { retryableStudioAttempt, sanitizedStudioFailure, decodeLegacyWaits } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const base = { attemptId: 'a', jobId: 'job', styleId: 'studio', sceneContext: {}, selectedFactIds: [], productSnapshotFingerprint: 'hash', presetVersion: STUDIO_PRESET_VERSION, promptVersion: STUDIO_SCENE_PROMPT_VERSION, model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, status: 'DEFINITIVE_FAILURE' };
 
@@ -36,4 +36,11 @@ test('failure metadata is bounded and never stores gateway text', () => {
   assert.deepEqual(sanitizedStudioFailure(500, { outcome: 'UNKNOWN', message: 'secret' }), { category: 'unknown' });
   assert.deepEqual(sanitizedStudioFailure(400, { outcome: 'DEFINITIVE_FAILURE', message: 'secret' }), { category: 'rejected' });
   assert.deepEqual(sanitizedStudioFailure(400, {}, true), { category: 'pre_send' });
+});
+
+
+test('legacy wait response validates identities, bounds and pagination', () => {
+  const id = '00000000-0000-4000-8000-000000000001';
+  assert.deepEqual(decodeLegacyWaits({ waits: [{ clientAttemptId: id, retryNotBefore: 123 }], hasMore: false }), { waits: [{ clientAttemptId: id, retryNotBefore: 123 }], hasMore: false });
+  for (const value of [{ waits: [], hasMore: true }, { waits: [{ clientAttemptId: id, retryNotBefore: -1 }], hasMore: false }, { waits: [{ clientAttemptId: id, retryNotBefore: 1 }, { clientAttemptId: id, retryNotBefore: 1 }], hasMore: false }, { waits: [], hasMore: 'yes' }]) assert.throws(() => decodeLegacyWaits(value));
 });

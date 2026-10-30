@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
-  version: 7.0.0
+  version: 7.1.0
   description: >-
-    Draft 7.0.0 permits longer retry delays in local job history; older clients may reject extended records.
+    Draft 7.1.0 adds explicit legacy wait review; older clients cannot complete that recovery.
     The local-only gateway retains /api/v2 as the server-key route namespace;
     no deployed compatibility endpoint or production deployment is claimed.
     A default-disabled local seven-style scene subset has only synthetic-provider evidence.
@@ -210,8 +210,8 @@ paths:
       summary: Read the durable global review revision before consent
       description: >-
         Fetch before enabling confirmation and capture the returned revision at the
-        consent click. Each first durable acknowledgement increments this revision
-        once globally; replay of an existing acknowledgement does not increment it.
+        consent click. Each first durable acknowledgement or legacy wait review increments this revision
+        once globally; replay of an existing receipt does not increment it.
         This read does not authorize or submit a provider request.
       security:
         - AppSession: []
@@ -242,6 +242,87 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /images/legacy-waits:
+    get:
+      tags: [Images]
+      operationId: listLegacyWaits
+      summary: List up to 100 earlier waits requiring external review
+      security:
+        - AppSession: []
+          ProviderSession: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: Pending records; review and fetch again when hasMore is true
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [waits, hasMore]
+                properties:
+                  waits:
+                    type: array
+                    maxItems: 100
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [clientAttemptId, retryNotBefore]
+                      properties:
+                        clientAttemptId: {type: string, format: uuid}
+                        retryNotBefore: {type: integer, minimum: 0, maximum: 9007199254740991}
+                  hasMore: {type: boolean}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {description: Feature disabled or journal unavailable}
+  /images/attempts/{clientAttemptId}/legacy-wait-review:
+    post:
+      tags: [Images]
+      operationId: reviewLegacyWait
+      summary: Record explicit external review of one earlier provider wait
+      description: >-
+        The owner confirms externally that the provider wait has elapsed and billing
+        was reviewed. This does not send a provider request. It creates a separate
+        durable receipt and invalidates earlier consent. It does not prove elapsed time.
+      security:
+        - AppSession: []
+          ProviderSession: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+        - name: clientAttemptId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reviewedProviderWait, reviewRevision]
+              properties:
+                reviewedProviderWait: {type: boolean, const: true}
+                reviewRevision: {type: integer, minimum: 0, maximum: 9007199254740991}
+      responses:
+        '200':
+          description: Durable review receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [clientAttemptId, retryNotBefore, reviewedAt]
+                properties:
+                  clientAttemptId: {type: string, format: uuid}
+                  retryNotBefore: {type: integer, minimum: 0, maximum: 9007199254740991}
+                  reviewedAt: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {description: Stale review revision or non-reviewable attempt}
+        '503': {description: Feature disabled or journal unavailable}
   /images/approvals:
     post:
       tags: [Images]

@@ -543,6 +543,34 @@ test('gateway enforces provider wait across restart, independent of client histo
   assert.equal(retried.status, 429); assert.equal((await retried.json()).error.code, 'PROVIDER_LIMIT'); assert.equal(calls, 2);
 });
 
+test('legacy waits require a separate authenticated provider review before dispatch', async (t) => {
+  const f = await fixture(t), journal = await createAttemptJournal(f.journal);
+  const principal = createHash('sha256').update('studio-local-owner-v1').digest('hex');
+  const old = attempt();
+  assert.equal(await journal.begin(principal, old.clientAttemptId), 'begun');
+  assert.equal(await journal.reserve(principal, old.clientAttemptId, 'a'.repeat(64), 1800000000000, 10, 0), 'reserved');
+  await journal.finish(principal, old.clientAttemptId, 'DEFINITIVE_FAILURE', 1800000060000);
+  await journal.end(principal, old.clientAttemptId);
+  f.jumpWall(86401000); const session = await f.login();
+  const next = attempt();
+  assert.equal((await f.generate(session, next, await approval(f, session, next))).status, 429);
+  assert.equal(f.calls.length, 0);
+  assert.equal((await fetch(f.origin + '/api/v2/images/legacy-waits')).status, 401);
+  assert.equal((await fetch(f.origin + '/api/v2/images/legacy-waits', { headers: { Cookie: session.cookie } })).status, 403);
+  const list = await fetch(f.origin + '/api/v2/images/legacy-waits', { headers: { Cookie: session.cookie, 'X-CSRF-Token': session.csrf } });
+  assert.deepEqual(await list.json(), { waits: [{ clientAttemptId: old.clientAttemptId, retryNotBefore: 1800000060000 }], hasMore: false });
+  const path = `/api/v2/images/attempts/${old.clientAttemptId}/legacy-wait-review`;
+  assert.equal((await f.req(path, session, { reviewedProviderWait: false, reviewRevision: 0 })).status, 400);
+  assert.equal((await f.req(path, session, { reviewedProviderWait: true, reviewRevision: 1 })).status, 409);
+  assert.equal((await f.req(path, session, { reviewedProviderWait: true, reviewRevision: 0 }, { 'X-CSRF-Token': 'invalid' })).status, 403);
+  const reviewed = await f.req(path, session, { reviewedProviderWait: true, reviewRevision: 0 });
+  assert.equal(reviewed.status, 200); assert.equal((await reviewed.json()).clientAttemptId, old.clientAttemptId);
+  assert.equal(f.calls.length, 0);
+  const fresh = attempt();
+  assert.equal((await f.generate(session, fresh, await approval(f, session, fresh))).status, 200);
+  assert.equal(f.calls.length, 1);
+});
+
 test('forward wall-clock jump and restart do not release a new provider wait', async (t) => {
   let calls = 0;
   const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '86401' } }); } });

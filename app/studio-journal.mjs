@@ -107,10 +107,10 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
     try { await syncDir(); return await fn(); }
     finally { await rmdir(lock); await syncDir(); }
   }
-  async function waiting(principal, results, proofs, wallTime) {
+  async function waiting(principal, results, proofs, reviews, wallTime) {
     for (const [name, result] of results) {
       if (!name.startsWith(`${principal}-`)) continue;
-      if (result.format === 3 && result.retryNotBefore > wallTime) return true;
+      if (result.format === 3 && (!reviews.has(name) || result.retryNotBefore > wallTime)) return true;
       if (result.format !== 4) continue;
       if (!proofs.has(name)) {
         if (!waitTracker.elapsed(name)) return true;
@@ -231,6 +231,14 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
     async revision() {
       return locked(async () => { const { acknowledgements, reviews } = await scan(); return acknowledgements.size + reviews.size; });
     },
+    async legacyWaits(principal) {
+      if (typeof principal !== 'string' || !HASH.test(principal)) throw new Error('Invalid journal identity');
+      return locked(async () => {
+        const { results, reviews } = await scan();
+        const pending = [...results.entries()].filter(([name, result]) => name.startsWith(`${principal}-`) && result.format === 3 && !reviews.has(name));
+        return { waits: pending.slice(0, 100).map(([name, result]) => ({ clientAttemptId: name.slice(65), retryNotBefore: result.retryNotBefore })), hasMore: pending.length > 100 };
+      });
+    },
     // This records only the reviewed legacy wait; it never dispatches or changes
     // the original outcome. The caller must authenticate and confirm the review.
     async reviewLegacyWait(principal, attempt, revision, time, authorized) {
@@ -254,7 +262,7 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
         const { reservations, results, acknowledgements, proofs, reviews } = await scan(), name = `${principal}-${attempt}`;
         if (acknowledgements.size + reviews.size !== revision) return 'stale';
         if (reservations.has(name)) return 'duplicate';
-        if (await waiting(principal, results, proofs, time)) return 'rate';
+        if (await waiting(principal, results, proofs, reviews, time)) return 'rate';
         let recent = 0;
         for (const [key, value] of reservations) if (key.startsWith(`${principal}-`) && value.reservedAt > time - 60 * 60 * 1000) recent++;
         if (recent >= maxPerHour) return 'rate';
@@ -268,7 +276,7 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
         const { reservations, results, acknowledgements, proofs, reviews } = await scan(), name = `${principal}-${attempt}`;
         if (acknowledgements.size + reviews.size !== revision) return 'stale';
         if (reservations.has(name)) return 'duplicate';
-        if (await waiting(principal, results, proofs, time)) return 'rate';
+        if (await waiting(principal, results, proofs, reviews, time)) return 'rate';
         let recent = 0;
         for (const [key, value] of reservations) if (key.startsWith(`${principal}-`) && value.reservedAt > time - 60 * 60 * 1000) recent++;
         if (recent >= maxPerHour) return 'rate';

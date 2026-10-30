@@ -8,7 +8,8 @@ import { StrictCompositePanel } from './StrictCompositePanel';
 import { LocalImage } from './LocalImage';
 
 type Entry = Awaited<ReturnType<typeof listStudioAttempts>>[number];
-type Gateway = { csrf: string; reviewRevision: number } | 'checking' | 'unavailable' | 'signed-out' | 'disconnected';
+type LegacyWait = { clientAttemptId: string; retryNotBefore: number };
+type Gateway = { csrf: string; reviewRevision: number; legacyWaits: LegacyWait[]; hasMoreLegacyWaits: boolean } | 'checking' | 'unavailable' | 'signed-out' | 'disconnected';
 type SourceOption = Awaited<ReturnType<typeof listStyleInputs>>[number];
 type PlannedStyle = { styleId: StudioStyleId; input: SourceOption; context: StudioSceneContext; prompt: string; estimate: string; prior: string; perAttemptOverride: boolean; sessionOverride: boolean };
 const STYLE_LABELS: Record<StudioStyleId, string> = { studio: 'Studio', hero: 'Hero', lifestyle: 'Lifestyle', flat_lay: 'Flat Lay', macro: 'Macro', ugc: 'UGC', billboard: 'Billboard' };
@@ -38,6 +39,19 @@ export function decodeReviewRevision(value: unknown): number {
   const revision = record(value).reviewRevision;
   if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid gateway review revision.');
   return revision;
+}
+
+export function decodeLegacyWaits(value: unknown): { waits: LegacyWait[]; hasMore: boolean } {
+  const body = record(value);
+  if (!Array.isArray(body.waits) || body.waits.length > 100 || typeof body.hasMore !== 'boolean') throw new Error('Invalid legacy wait response.');
+  const seen = new Set<string>();
+  const waits = body.waits.map((item: unknown) => {
+    const entry = record(item), id = entry.clientAttemptId, deadline = entry.retryNotBefore;
+    if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) || seen.has(id) || typeof deadline !== 'number' || !Number.isSafeInteger(deadline) || deadline < 0) throw new Error('Invalid legacy wait response.');
+    seen.add(id); return { clientAttemptId: id, retryNotBefore: deadline };
+  });
+  if (body.hasMore && waits.length === 0) throw new Error('Invalid legacy wait response.');
+  return { waits, hasMore: body.hasMore };
 }
 
 export async function withStudioAttemptLock<T>(attemptId: string, locks: LockManager | undefined, action: () => Promise<T>): Promise<T> {
@@ -220,6 +234,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const [attemptOverrides, setAttemptOverrides] = useState<Partial<Record<StudioStyleId, boolean>>>({});
   const [sessionOverrides, setSessionOverrides] = useState<Partial<Record<StudioStyleId, boolean>>>({});
   const [topConfirmed, setTopConfirmed] = useState(false);
+  const [legacyConfirmed, setLegacyConfirmed] = useState<Record<string, boolean>>({});
   const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -228,7 +243,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const gatewayCheck = useRef(0);
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useUnsavedChanges(busy || Object.values(styleConsent).some(Boolean) || Object.values(reviewConfirmed).some(Boolean));
+  useUnsavedChanges(busy || Object.values(styleConsent).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
   const unresolved = entries?.some((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? false;
   const validMoney = (value: string) => !value || /^\d{1,9}\.\d{1,6}$/.test(value);
   let plans: PlannedStyle[] = [];
@@ -285,7 +300,10 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       const revisionResponse = await request('/images/revision', { headers: { 'X-CSRF-Token': auth.csrfToken } });
       if (!revisionResponse.ok) throw new Error();
       const reviewRevision = decodeReviewRevision(await json(revisionResponse));
-      update({ csrf: auth.csrfToken, reviewRevision });
+      const waitsResponse = await request('/images/legacy-waits', { headers: { 'X-CSRF-Token': auth.csrfToken } });
+      if (!waitsResponse.ok) throw new Error();
+      const legacy = decodeLegacyWaits(await json(waitsResponse));
+      update({ csrf: auth.csrfToken, reviewRevision, legacyWaits: legacy.waits, hasMoreLegacyWaits: legacy.hasMore });
     } catch { update('unavailable'); }
   }
   async function refreshEntries() {
@@ -311,6 +329,23 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       .catch((reason: unknown) => { if (active) { setSources([]); setError(reason instanceof Error ? reason.message : 'Sources could not be checked.'); } });
     return () => { active = false; };
   }, [productVersion]);
+
+  async function reviewLegacyWait(id: string) {
+    if (running.current || typeof gateway !== 'object' || !legacyConfirmed[id] || !gateway.legacyWaits.some((item) => item.clientAttemptId === id)) return;
+    gatewayCheck.current++; running.current = true; onBusyChange(true); setBusy(true); setError(''); setNotice(''); clearQueueConsent();
+    try {
+      const response = await request(`/images/attempts/${id}/legacy-wait-review`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': gateway.csrf },
+        body: JSON.stringify({ reviewedProviderWait: true, reviewRevision: gateway.reviewRevision }),
+      });
+      if (!response.ok) throw new Error(response.status === 409 ? 'Review state changed. Check the gateway and confirm again.' : 'Legacy wait review could not be recorded. Check your session and try again.');
+      const receipt = record(await json(response));
+      if (receipt.clientAttemptId !== id || typeof receipt.retryNotBefore !== 'number' || !Number.isSafeInteger(receipt.retryNotBefore) || receipt.retryNotBefore < 0 || typeof receipt.reviewedAt !== 'string' || !Number.isFinite(Date.parse(receipt.reviewedAt))) throw new Error('Invalid review receipt. Check the gateway before continuing.');
+      setLegacyConfirmed((old) => ({ ...old, [id]: false }));
+      setNotice('Legacy wait review recorded. The saved deadline may still block generation; a new attempt requires separate authorization.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Legacy wait review failed.'); }
+    finally { await refreshGateway(); running.current = false; onBusyChange(false); setBusy(false); }
+  }
 
   async function review(attempt: StudioAttempt) {
     if (running.current || entries?.find((entry) => entry.attempt.attemptId === attempt.attemptId)?.importedUntrusted || !studioAttemptBlocks(attempt) || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || !((attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') || ((attempt.status === 'DEFINITIVE_SUCCESS' || attempt.status === 'DEFINITIVE_FAILURE') && attempt.cleanupPending === true))) return;
@@ -388,7 +423,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
 
   async function generate(event: FormEvent) {
     event.preventDefault();
-    if (running.current || unresolved || !ready || planError || entries === null || typeof gateway !== 'object' ||
+    if (running.current || unresolved || !ready || planError || entries === null || typeof gateway !== 'object' || gateway.legacyWaits.length > 0 ||
         !budgetSessionId || sessionTotal === null || reviewFingerprint === null || !navigator.locks) return;
     const gate = gateway, fingerprint = reviewFingerprint, initialTotal = sessionTotal;
     const chosen = plans.map((plan) => ({ ...plan, context: structuredClone(plan.context) }));
@@ -549,6 +584,14 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     {gateway === 'checking' ? <p role="status">Checking local gateway…</p> : gateway === 'unavailable' ? <p role="status">Offline or local gateway unavailable. Generation is disabled.</p> : gateway === 'signed-out' ? <p>Sign in to the local app in provider settings first.</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>Local app and provider session active.</p>}
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
     <button className="secondary-button" type="button" disabled={busy} onClick={() => void refreshGateway()}>Check gateway</button>
+    {typeof gateway === 'object' && gateway.legacyWaits.length > 0 && <section aria-labelledby="legacy-waits-heading">
+      <h3 id="legacy-waits-heading">Earlier provider waits need review</h3>
+      <p>These older records cannot prove how much time passed. Check the provider's current rate limits, the original wait and billing externally. Do not confirm until the provider's required wait has elapsed. This review does not send a request; a new attempt needs separate authorization.</p>
+      <ul>{gateway.legacyWaits.map((item) => <li key={item.clientAttemptId}><p>Attempt {item.clientAttemptId}. Its saved deadline is based on the previous system clock and is not proof of elapsed time.</p>
+        <label className="checkbox-label"><input type="checkbox" checked={Boolean(legacyConfirmed[item.clientAttemptId])} disabled={busy} onChange={(event) => { const checked = event.target.checked; setLegacyConfirmed((old) => ({ ...old, [item.clientAttemptId]: checked })); }} /><span>I checked provider billing and rate limits externally and confirmed this attempt's required wait has elapsed.</span></label>
+        <button type="button" className="secondary-button" disabled={busy || !legacyConfirmed[item.clientAttemptId]} onClick={() => void reviewLegacyWait(item.clientAttemptId)}>Record legacy wait review</button>
+      </li>)}</ul>{gateway.hasMoreLegacyWaits && <p>More earlier waits remain; review this page and check the gateway again.</p>}
+    </section>}
     <form onSubmit={generate}>
       {retry && <div><p><strong>Retry of attempt {retry.attemptId}</strong> · job {retry.jobId}. Previous outcome: {retry.status}; a previous charge may have occurred, including for a reviewed UNKNOWN. The current estimate is {planError || !plans.length ? 'unavailable' : `$${plans[0].estimate} USD`}; this is a separate potentially billable call. No automatic retry occurs.</p><p>Original source, mask, facts, style and prompt are locked. To change inputs or preset, start a new job.</p><button type="button" className="secondary-button" disabled={busy} onClick={() => { setRetry(null); clearQueueConsent(); }}>Start a new job instead</button></div>}
       <p>Session estimate so far: {sessionTotal === null ? 'unavailable' : `$${sessionTotal} USD`}. Includes prepared and failed attempts in this browser-tab session; it is not provider spend or a hard cap.</p>
@@ -563,7 +606,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
         {plan.perAttemptOverride && <label className="checkbox-label"><input type="checkbox" checked={Boolean(attemptOverrides[plan.styleId])} disabled={busy} onChange={(event) => { const checked = event.target.checked; setAttemptOverrides((old) => ({ ...old, [plan.styleId]: checked })); setStyleConsent({}); }} /><span>For {STYLE_LABELS[plan.styleId]} only, I approve exceeding the per-attempt soft estimate limit.</span></label>}
         {plan.sessionOverride && <label className="checkbox-label"><input type="checkbox" checked={Boolean(sessionOverrides[plan.styleId])} disabled={busy} onChange={(event) => { const checked = event.target.checked; setSessionOverrides((old) => ({ ...old, [plan.styleId]: checked })); setStyleConsent({}); }} /><span>For {STYLE_LABELS[plan.styleId]} only, I approve exceeding the session soft estimate limit.</span></label>}
         <label className="checkbox-label"><input type="checkbox" checked={Boolean(styleConsent[plan.styleId])} disabled={busy || entries === null || reviewFingerprint === null || sessionTotal === null || typeof gateway !== 'object'} onChange={(event) => { const checked = event.target.checked; setStyleConsent((old) => ({ ...old, [plan.styleId]: checked })); }} /><span>I authorize this single {STYLE_LABELS[plan.styleId]} attempt, including the displayed provider data and estimate, and understand a timeout may still incur a charge.</span></label></section>)}
-      <button className="primary-button" type="submit" disabled={busy || unresolved || !ready || Boolean(planError) || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || reviewFingerprint === null || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate selected scenes'}</button>
+      <button className="primary-button" type="submit" disabled={busy || unresolved || (typeof gateway === 'object' && gateway.legacyWaits.length > 0) || !ready || Boolean(planError) || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || reviewFingerprint === null || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate selected scenes'}</button>
     </form>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <section aria-labelledby="studio-comparison-heading">
