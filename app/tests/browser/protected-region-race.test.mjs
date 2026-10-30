@@ -554,6 +554,19 @@ test('guide describes current local workflow and supports keyboard navigation', 
     await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
     await until(()=>evaluate(client, `location.pathname==='/settings' && document.querySelector('.provider-session')?.innerText.includes('Remote mobile gateway access is not available yet.')`),'guide settings link');
+    assert.equal(await evaluate(client, `document.querySelector('h1').getBoundingClientRect().top >= 0`),true,'The destination heading is visible after navigating from the guide.');
+    for(const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      await evaluate(client, `document.querySelector('.navigation a[href="/help"]').click()`);
+      await until(()=>evaluate(client, `location.pathname==='/help' && !!document.querySelector('.guide-list')`),'return to guide');
+      await evaluate(client, `window.scrollTo(0,document.documentElement.scrollHeight)`);
+      assert.equal(await evaluate(client, `window.scrollY > 0`),true,'The test starts from a scrolled guide.');
+      await evaluate(client, `[...document.querySelectorAll('.guide-list a')].find(a=>a.textContent.includes('Open provider settings')).click()`);
+      await until(()=>evaluate(client, `location.pathname==='/settings' && !!document.querySelector('.provider-session')`),'settings after scrolled guide');
+      const position=await evaluate(client, `({scroll:window.scrollY,heading:document.querySelector('h1').getBoundingClientRect().top,overflow:document.documentElement.scrollWidth>innerWidth})`);
+      assert.equal(position.scroll,0,`A new page starts at the top at ${width}px.`);
+      assert.ok(position.heading>=0 && position.heading<800 && !position.overflow,`Settings is visible without overflow at ${width}px.`);
+    }
     assert.equal(await evaluate(client, `window.__apiRequests.length`),0);
   } finally {
     client?.close();

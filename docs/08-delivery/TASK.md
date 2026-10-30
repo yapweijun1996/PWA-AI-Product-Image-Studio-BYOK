@@ -1317,3 +1317,9 @@ Do not mark production deployed from CI green alone. Human permission required f
 
 - **Verification:** After the disk-space recovery, `npm test` passed all 282 synthetic tests. The suite includes protected-mask and approved-export rejection, backup restore and cancellation, human-review veto and attempt-state checks. This is complementary to the separately recorded six-test Chromium run.
 - **Limits and rollback:** This run does not prove physical-device usability, real SKU fidelity, production security or provider billing. T-052 remains IN_PROGRESS; T-060 and T-081 remain IMPLEMENTED_UNVERIFIED. This record changes no runtime behavior and may be corrected without changing saved data or acceptance gates.
+
+## T-010 / T-080 / BUG-051 navigation scroll position — 2026-10-31
+
+- **Finding and change:** Navigating from the scrolled Help page to Settings left the new page heading offscreen. Path-changing forward and replacement navigation without a fragment now starts at the top; POP and fragment navigation are not forced to the top. See [BUG-051](../../BUG.md).
+- **Verification:** The mobile heading assertion failed before the fix. The focused Chromium journey then passed at 320, 390 and 1280 px, including keyboard activation and no document overflow; mobile and desktop screenshots were inspected. The six-test browser suite and production build passed. One expanded test initially failed because it used a browser global in Node; the corrected test passed.
+- **Limits and rollback:** Physical devices, screen readers, all page transitions and complete history scroll restoration remain unverified. The change does not provide route focus management. T-010's existing scope is unchanged, T-080 and BUG-051 remain IMPLEMENTED_UNVERIFIED. Revert only with equivalent destination visibility; preserve fragment and history behavior.

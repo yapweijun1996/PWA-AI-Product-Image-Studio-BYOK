@@ -1,5 +1,5 @@
-import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
-import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Component, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, NavLink, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { useServiceWorker } from './useServiceWorker';
 import { NewProduct, Workspace } from './ProductPages';
 import { ProviderSessionPanel } from './ProviderSessionPanel';
@@ -108,6 +108,13 @@ function NotFound() {
 export function App() {
   const { theme, setTheme } = useAppearance();
   const location = useLocation();
+  const navigationType = useNavigationType();
+  const previousPath = useRef(location.pathname);
+  useLayoutEffect(() => {
+    const changedPage = previousPath.current !== location.pathname;
+    previousPath.current = location.pathname;
+    if (changedPage && navigationType !== 'POP' && !location.hash) window.scrollTo(0, 0);
+  }, [location.pathname, location.hash, navigationType]);
   const online = useNetworkStatus();
   const update = useServiceWorker();
   return <div className="app-shell">
