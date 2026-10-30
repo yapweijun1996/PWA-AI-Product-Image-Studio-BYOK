@@ -1,5 +1,7 @@
 import validateProduct from 'virtual:product-validator';
 import validateGenerationJob from 'virtual:generation-job-validator';
+import validateQaReport from 'virtual:qa-report-validator';
+import { evaluateVisualReview, type ReviewScores, type ReviewChecks, type ReviewVariant, type VisualReviewEvaluation } from './visualReviewRules';
 import { sha256, type PreparedSource } from './prepareSource';
 import { inspectImageHeader } from './imageHeader';
 import { STUDIO_MAX_PNG_BYTES } from '../studio-policy.mjs';
@@ -43,6 +45,14 @@ export type Product = {
 };
 
 const DB_NAME = 'product-image-studio';
+
+function notifyProductChanged(productId: string): void {
+  if (typeof BroadcastChannel === 'undefined') return;
+  try {
+    const channel = new BroadcastChannel('product-image-studio-changes');
+    try { channel.postMessage(productId); } finally { channel.close(); }
+  } catch { /* Notifications are advisory; the committed transaction remains authoritative. */ }
+}
 const DB_VERSION = 1;
 let connection: Promise<IDBDatabase> | null = null;
 
@@ -161,7 +171,7 @@ async function updateProduct(productId: string, change: (product: Product) => Pr
         tx.abort();
       }
     };
-    tx.oncomplete = () => resolve(result);
+    tx.oncomplete = () => { notifyProductChanged(productId); resolve(result); };
     tx.onabort = () => reject(failure ?? transactionError(tx));
   });
 }
@@ -206,7 +216,7 @@ export async function saveSource(productId: string, source: PreparedSource, came
         tx.abort();
       }
     };
-    tx.oncomplete = () => resolve(result);
+    tx.oncomplete = () => { notifyProductChanged(productId); resolve(result); };
     tx.onabort = () => reject(failure ?? (tx.error?.name === 'ConstraintError'
       ? new Error('The source could not be saved. No changes were made.')
       : transactionError(tx)));
@@ -502,7 +512,7 @@ export async function saveMask(productId: string, source: SourceMetadata, blob: 
         }
       })();
     };
-    tx.oncomplete = () => resolve(result);
+    tx.oncomplete = () => { notifyProductChanged(productId); resolve(result); };
     tx.onabort = () => reject(failure ?? transactionError(tx));
   });
 }
@@ -1068,24 +1078,130 @@ function verifyStrictMapping(mapping: StrictMapping, sourceWidth: number, source
   }
 }
 
+type VisualProvenance = {
+  assetSha256: string; sourceSha256: string; maskId: string; maskSha256: string;
+  sceneAssetId: string; sceneSha256: string; productSha256: string;
+};
+type VisualReport = {
+  schemaVersion: '1.0.0'; qaId: string; assetId: string; sourceSha256: string; lockMode: 'STRICT';
+  scores: VisualReviewEvaluation['scores']; weightingVariant: ReviewVariant;
+  weightedScore: number; status: VisualReviewEvaluation['status'];
+  hardVetoFindings: VisualReviewEvaluation['hardVetoFindings'];
+  humanDecision: 'PENDING'; reviewedAt: string; reviewerNote: string;
+};
+export type VisualReviewRecord = VisualProvenance & {
+  kind: 'visual-review'; qaId: string; assetId: string; productId: string; attemptId: string;
+  revision: number; report: VisualReport; scoresText: ReviewScores; checks: ReviewChecks;
+  variant: ReviewVariant; createdAt: string;
+};
+export type VisualDecisionRecord = VisualProvenance & {
+  kind: 'visual-decision'; qaId: string; assetId: string; productId: string; attemptId: string;
+  reportId: string; decision: 'APPROVED' | 'REJECTED'; createdAt: string; current: boolean;
+};
+type StoredVisualDecision = Omit<VisualDecisionRecord, 'current'>;
+type CheckedVisualHistory = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[] };
+type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string };
+type VisualOperation =
+  | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string }
+  | { kind: 'decision'; assetId: string; reportId: string; decision: 'APPROVED' | 'REJECTED' }
+  | { kind: 'list'; assetId: string };
+
+const provenanceKeys = ['assetSha256', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'productSha256'] as const;
+function sameProvenance(a: VisualProvenance, b: VisualProvenance): boolean {
+  return provenanceKeys.every((key) => a[key] === b[key]);
+}
+function exactKeys(value: object, keys: string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+function validVisualBase(row: VisualProvenance & { qaId: string; assetId: string; productId: string; attemptId: string; createdAt: string },
+  productId: string, attemptId: string, assetId: string): boolean {
+  return row.productId === productId && row.attemptId === attemptId && row.assetId === assetId &&
+    [row.qaId, row.assetId, row.productId, row.attemptId, row.maskId, row.sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id)) &&
+    [row.assetSha256, row.sourceSha256, row.maskSha256, row.sceneSha256, row.productSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash)) &&
+    typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt));
+}
+
+function validateVisualNote(note: unknown, checks: ReviewChecks): void {
+  if (typeof note !== 'string' || note.length > 2000) throw new Error('The review note is invalid.');
+  if (Object.values(checks).some((check) => check !== 'MATCH') && !note.trim()) {
+    throw new Error('Describe the finding and its source/output region or reason in the review note.');
+  }
+}
+
+function checkedVisualHistory(rows: unknown[], productId: string, attemptId: string, assetId: string, current: VisualProvenance): CheckedVisualHistory {
+  const reviews: VisualReviewRecord[] = [], decisions: StoredVisualDecision[] = [];
+  const common = ['kind', 'qaId', 'assetId', 'productId', 'attemptId', ...provenanceKeys, 'createdAt'];
+  for (const value of rows) {
+    if (!value || typeof value !== 'object') throw new Error('A visual review record is corrupt.');
+    const row = value as VisualReviewRecord | StoredVisualDecision;
+    if (!validVisualBase(row, productId, attemptId, assetId)) throw new Error('A visual review record has invalid identity or provenance.');
+    if (row.kind === 'visual-review') {
+      if (!exactKeys(row, [...common, 'revision', 'report', 'scoresText', 'checks', 'variant']) ||
+          !Number.isSafeInteger(row.revision) || row.revision < 1 || !validateQaReport(row.report) ||
+          row.report.qaId !== row.qaId || row.report.assetId !== assetId || row.report.sourceSha256 !== row.sourceSha256 ||
+          row.report.lockMode !== 'STRICT' || row.report.humanDecision !== 'PENDING' ||
+          row.report.reviewedAt !== row.createdAt || row.report.weightingVariant !== row.variant) {
+        throw new Error('A visual review report is invalid.');
+      }
+      const evaluated = evaluateVisualReview(row.scoresText, row.checks, row.variant);
+      validateVisualNote(row.report.reviewerNote, row.checks);
+      if (JSON.stringify(row.report.scores) !== JSON.stringify(evaluated.scores) ||
+          row.report.weightedScore !== evaluated.weightedScore || row.report.status !== evaluated.status ||
+          JSON.stringify(row.report.hardVetoFindings) !== JSON.stringify(evaluated.hardVetoFindings)) {
+        throw new Error('A visual review report does not match its recorded inputs.');
+      }
+      reviews.push(row);
+    } else if (row.kind === 'visual-decision') {
+      if (!exactKeys(row, [...common, 'reportId', 'decision']) || typeof row.reportId !== 'string' ||
+          !uuidPattern.test(row.reportId) || (row.decision !== 'APPROVED' && row.decision !== 'REJECTED')) {
+        throw new Error('A visual decision is invalid.');
+      }
+      decisions.push(row);
+    } else throw new Error('An unknown visual review record is present.');
+  }
+  reviews.sort((a, b) => a.revision - b.revision);
+  if (reviews.some((row, index) => row.revision !== index + 1)) throw new Error('Visual review revisions are missing or duplicated.');
+  const used = new Set<string>();
+  for (const decision of decisions) {
+    const review = reviews.find((row) => row.qaId === decision.reportId);
+    if (!review || used.has(decision.reportId) || !sameProvenance(review, decision) ||
+        (decision.decision === 'APPROVED' && (review.report.status !== 'PASS_CANDIDATE' ||
+          review.report.hardVetoFindings.length !== 0 || Object.values(review.checks).some((check) => check !== 'MATCH')))) {
+      throw new Error('A visual decision has invalid review lineage.');
+    }
+    used.add(decision.reportId);
+  }
+  const latest = reviews[reviews.length - 1];
+  return { reviews, decisions: decisions.map((decision) => ({ ...decision,
+    current: decision.reportId === latest?.qaId && sameProvenance(decision, current) })) };
+}
+
 // The readwrite transaction holds all input stores locked until both verification
 // and the append complete. The keep-alive request permits asynchronous Blob
 // hashing and image decoding without letting IndexedDB close the transaction.
 async function strictCompositeTransaction(
   productId: string, attemptId: string, sceneAssetId: string,
   save?: { inputs: StrictCompositeInputs; expected: StrictCompositeInputs; blob: Blob; mapping: StrictMapping },
-  signal?: AbortSignal,
-): Promise<StrictCompositeInputs | StrictComposite> {
+  signal?: AbortSignal, visual?: VisualOperation,
+): Promise<StrictCompositeInputs | StrictComposite | VisualReviewRecord | VisualDecisionRecord | VisualHistory> {
   if (![productId, attemptId, sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id))) {
     throw new Error('The composite input identity is invalid.');
   }
   const db = await openDatabase();
   if (signal?.aborted) throw new DOMException('Composite operation was cancelled.', 'AbortError');
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets'], save ? 'readwrite' : 'readonly');
+    const stores = ['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets'];
+    if (visual) stores.push('qaReports', 'userSettings');
+    const tx = db.transaction(stores, save || visual ? 'readwrite' : 'readonly');
     const products = tx.objectStore('products'), assets = tx.objectStore('generatedAssets');
     const productRequest = products.get(productId), attemptRequest = tx.objectStore('attempts').get(attemptId);
-    let failure: Error | undefined, result: StrictCompositeInputs | StrictComposite;
+    const compositeRequest = visual ? assets.get(visual.assetId) : undefined;
+    const reviewsRequest = visual ? tx.objectStore('qaReports').index('assetId').getAll(visual.assetId) : undefined;
+    const headKey = visual ? `visual-review-head:${visual.assetId}` : '';
+    const headRequest = visual ? tx.objectStore('userSettings').get(headKey) : undefined;
+    let failure: Error | undefined, result: StrictCompositeInputs | StrictComposite | VisualReviewRecord | VisualDecisionRecord | VisualHistory;
+    let appendReview: VisualReviewRecord | StoredVisualDecision | undefined;
+    let nextHead: { key: string; entries: string[] } | undefined;
     let verifying = true, ready = false;
     const abort = () => {
       // An add can already be queued; abort still rolls it back until commit.
@@ -1099,6 +1215,11 @@ async function strictCompositeTransaction(
       if (!verifying) return;
       if (ready) {
         if (save) assets.add(result as StrictComposite);
+        if (appendReview && nextHead) {
+          tx.objectStore('qaReports').add(appendReview);
+          if (headRequest!.result === undefined) tx.objectStore('userSettings').add(nextHead);
+          else tx.objectStore('userSettings').put(nextHead);
+        }
         verifying = false;
       } else {
         const request = products.get(productId);
@@ -1190,6 +1311,84 @@ async function strictCompositeTransaction(
                   sha256: hash, sourceAssetId: inputs.sourceAssetId, sourceSha256: inputs.sourceSha256,
                   maskId: inputs.maskId, maskSha256: inputs.maskSha256, sceneAssetId: inputs.sceneAssetId,
                   sceneSha256: inputs.sceneSha256, mapping: { ...save.mapping }, createdAt: new Date().toISOString() };
+              } else if (visual) {
+                if (product.brandLock.mode !== 'STRICT') throw new Error('A STRICT project is required for visual review.');
+                const composite = compositeRequest?.result as StrictComposite | undefined;
+                const compositeKeys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId',
+                  'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt'];
+                if (!composite || !exactKeys(composite, compositeKeys) || composite.kind !== 'strict-composite' ||
+                    composite.assetId !== visual.assetId || composite.productId !== productId || composite.attemptId !== attemptId ||
+                    composite.sourceAssetId !== inputs.sourceAssetId || composite.sourceSha256 !== inputs.sourceSha256 ||
+                    composite.maskId !== inputs.maskId || composite.maskSha256 !== inputs.maskSha256 ||
+                    composite.sceneAssetId !== inputs.sceneAssetId || composite.sceneSha256 !== inputs.sceneSha256 ||
+                    typeof composite.createdAt !== 'string' || !Number.isFinite(Date.parse(composite.createdAt)) ||
+                    typeof composite.sha256 !== 'string' || !hashPattern.test(composite.sha256)) {
+                  throw new Error('The saved composite or its input lineage is invalid.');
+                }
+                verifyStrictMapping(composite.mapping, source.width, source.height);
+                await verifyStrictPng(composite.blob, composite.sha256);
+                const cancellation = signal ?? new AbortController().signal;
+                const rendered = await renderStrictComposite({ source: inputs.source, mask: inputs.mask, scene: inputs.scene,
+                  sourceWidth: inputs.sourceWidth, sourceHeight: inputs.sourceHeight, signal: cancellation });
+                verifyStrictMapping(rendered.mapping, source.width, source.height);
+                await compareCompositePixels(rendered.blob, composite.blob, cancellation);
+                if (!verifying) return;
+                const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: inputs.sourceSha256,
+                  maskId: inputs.maskId, maskSha256: inputs.maskSha256, sceneAssetId: inputs.sceneAssetId,
+                  sceneSha256: inputs.sceneSha256, productSha256: await sha256(new TextEncoder().encode(JSON.stringify(product))) };
+                if (!verifying) return;
+                const history = checkedVisualHistory(reviewsRequest!.result, productId, attemptId, visual.assetId, provenance);
+                const entries = (await Promise.all((reviewsRequest!.result as Array<VisualReviewRecord | StoredVisualDecision>)
+                  .map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
+                if (!verifying) return;
+                const head = headRequest!.result as { key: string; entries: string[] } | undefined;
+                if (head === undefined ? entries.length !== 0 :
+                    !head || typeof head !== 'object' || !exactKeys(head, ['key', 'entries']) || head.key !== headKey ||
+                    !Array.isArray(head.entries) || JSON.stringify(head.entries) !== JSON.stringify(entries)) {
+                  throw new Error('Visual review history is incomplete or has an invalid history head.');
+                }
+                if (visual.kind === 'list') result = { ...history, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256 };
+                else if (visual.kind === 'review') {
+                  if (typeof visual.expectedProductSha256 !== 'string' || !hashPattern.test(visual.expectedProductSha256) ||
+                      visual.expectedProductSha256 !== provenance.productSha256) {
+                    throw new Error('The product changed since you reviewed it. Reload and review the current product before saving.');
+                  }
+                  if (typeof visual.expectedAssetSha256 !== 'string' || !hashPattern.test(visual.expectedAssetSha256) ||
+                      visual.expectedAssetSha256 !== provenance.assetSha256) {
+                    throw new Error('The composite changed since you reviewed it. Reload and review the current image before saving.');
+                  }
+                  validateVisualNote(visual.note, visual.checks);
+                  const evaluated = evaluateVisualReview(visual.scoresText, visual.checks, visual.variant);
+                  const qaId = crypto.randomUUID(), createdAt = new Date().toISOString();
+                  const report: VisualReport = { schemaVersion: '1.0.0', qaId, assetId: visual.assetId,
+                    sourceSha256: inputs.sourceSha256, lockMode: 'STRICT', ...evaluated, weightingVariant: visual.variant,
+                    humanDecision: 'PENDING', reviewedAt: createdAt, reviewerNote: visual.note };
+                  if (!validateQaReport(report)) throw new Error('The visual review report does not satisfy the QA schema.');
+                  const record: VisualReviewRecord = { kind: 'visual-review', qaId, assetId: visual.assetId,
+                    productId, attemptId, revision: history.reviews.length + 1, report,
+                    scoresText: visual.scoresText, checks: visual.checks, variant: visual.variant, ...provenance, createdAt };
+                  appendReview = record; result = record;
+                } else {
+                  const latest = history.reviews[history.reviews.length - 1];
+                  if (!latest || latest.qaId !== visual.reportId || !sameProvenance(latest, provenance)) {
+                    throw new Error('The review is no longer current. Review the current inputs again.');
+                  }
+                  if (history.decisions.some((decision) => decision.reportId === latest.qaId)) throw new Error('This review already has a decision.');
+                  if (visual.decision !== 'APPROVED' && visual.decision !== 'REJECTED') throw new Error('The visual decision is invalid.');
+                  if (visual.decision === 'APPROVED' && (latest.report.status !== 'PASS_CANDIDATE' ||
+                      latest.report.hardVetoFindings.length || Object.values(latest.checks).some((check) => check !== 'MATCH'))) {
+                    throw new Error('Only a fully verified pass candidate can be approved.');
+                  }
+                  const decision: StoredVisualDecision = { kind: 'visual-decision', qaId: crypto.randomUUID(),
+                    assetId: visual.assetId, productId, attemptId, reportId: latest.qaId,
+                    decision: visual.decision, ...provenance, createdAt: new Date().toISOString() };
+                  appendReview = decision; result = { ...decision, current: true };
+                }
+                if (appendReview) {
+                  const hash = await sha256(new TextEncoder().encode(JSON.stringify(appendReview)));
+                  if (!verifying) return;
+                  nextHead = { key: headKey, entries: [...entries, `${appendReview.qaId}:${hash}`].sort() };
+                }
               } else result = inputs;
               ready = true;
             } catch (error) {
@@ -1203,7 +1402,11 @@ async function strictCompositeTransaction(
         verifying = false; failure = error instanceof Error ? error : new Error('Could not load the attempt.'); tx.abort();
       }
     };
-    tx.oncomplete = () => { signal?.removeEventListener('abort', abort); resolve(result); };
+    tx.oncomplete = () => {
+      signal?.removeEventListener('abort', abort);
+      if (appendReview) notifyProductChanged(productId);
+      resolve(result);
+    };
     tx.onabort = () => { signal?.removeEventListener('abort', abort); reject(failure ?? transactionError(tx)); };
   });
 }
@@ -1306,4 +1509,54 @@ export async function listStrictComposites(productId: string, attemptId: string)
     composites.push(row);
   }
   return composites.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+async function visualReviewOperation(productId: string, attemptId: string, operation: VisualOperation, signal?: AbortSignal):
+  Promise<VisualReviewRecord | VisualDecisionRecord | VisualHistory> {
+  if (![productId, attemptId, operation.assetId].every((id) => typeof id === 'string' && uuidPattern.test(id))) {
+    throw new Error('The visual review identity is invalid.');
+  }
+  if (signal?.aborted) throw new DOMException('Visual review was cancelled.', 'AbortError');
+  const db = await openDatabase();
+  const sceneAssetId = await new Promise<string>((resolve, reject) => {
+    const tx = db.transaction('generatedAssets', 'readonly');
+    const request = tx.objectStore('generatedAssets').get(operation.assetId);
+    let cancelled = false;
+    const abort = () => {
+      cancelled = true;
+      try { tx.abort(); } catch { /* The transaction has already finished. */ }
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
+    tx.oncomplete = () => {
+      signal?.removeEventListener('abort', abort);
+      const row = request.result as StrictComposite | undefined;
+      if (!row || row.kind !== 'strict-composite' || typeof row.sceneAssetId !== 'string' || !uuidPattern.test(row.sceneAssetId)) {
+        reject(new Error('The saved composite is missing or invalid.'));
+      } else resolve(row.sceneAssetId);
+    };
+    tx.onabort = () => {
+      signal?.removeEventListener('abort', abort);
+      reject(cancelled ? new DOMException('Visual review was cancelled.', 'AbortError') : transactionError(tx));
+    };
+  });
+  return await strictCompositeTransaction(productId, attemptId, sceneAssetId, undefined, signal, operation) as
+    VisualReviewRecord | VisualDecisionRecord | VisualHistory;
+}
+
+export async function createVisualReview(productId: string, attemptId: string, assetId: string, scoresText: ReviewScores,
+  checks: ReviewChecks, variant: ReviewVariant, note: string, expectedProductSha256: string,
+  expectedAssetSha256: string, signal?: AbortSignal): Promise<VisualReviewRecord> {
+  const operation: VisualOperation = { kind: 'review', assetId, scoresText: structuredClone(scoresText),
+    checks: structuredClone(checks), variant, note, expectedProductSha256, expectedAssetSha256 };
+  return await visualReviewOperation(productId, attemptId, operation, signal) as VisualReviewRecord;
+}
+
+export async function recordVisualDecision(productId: string, attemptId: string, assetId: string, reportId: string,
+  decision: 'APPROVED' | 'REJECTED', signal?: AbortSignal): Promise<VisualDecisionRecord> {
+  return await visualReviewOperation(productId, attemptId, { kind: 'decision', assetId, reportId, decision }, signal) as VisualDecisionRecord;
+}
+
+export async function listVisualReviews(productId: string, attemptId: string, assetId: string, signal?: AbortSignal): Promise<VisualHistory> {
+  return await visualReviewOperation(productId, attemptId, { kind: 'list', assetId }, signal) as VisualHistory;
 }

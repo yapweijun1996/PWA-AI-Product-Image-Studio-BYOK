@@ -2,20 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { listStrictComposites, loadStrictCompositeInputs, saveStrictComposite, type StrictComposite, type StrictCompositeInputs, type StrictMapping, type StudioAsset } from './products';
 import { renderStrictComposite } from './strictComposite';
 import { useUnsavedChanges } from './useUnsavedChanges';
+import { LocalImage } from './LocalImage';
+import { VisualReviewPanel } from './VisualReviewPanel';
 
 type Draft = { inputs: StrictCompositeInputs; blob: Blob; mapping: StrictMapping };
-
-function LocalImage({ blob, alt, zoom = 100 }: { blob: Blob; alt: string; zoom?: number }) {
-  const [url, setUrl] = useState('');
-  useEffect(() => {
-    const next = URL.createObjectURL(blob);
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [blob]);
-  return url ? <img src={url} alt={alt} style={zoom === 100 ? undefined : { width: `${zoom}%`, maxWidth: 'none' }} /> : null;
+function ReviewDisclosure({ productId, productVersion, attemptId, composite, disabled }: { productId: string; productVersion: string; attemptId: string; composite: StrictComposite; disabled: boolean }) {
+  const [visited, setVisited] = useState(false);
+  return <details onToggle={(event) => { if (event.currentTarget.open) setVisited(true); }}><summary>Review this composite</summary>{visited && <VisualReviewPanel productId={productId} productVersion={productVersion} attemptId={attemptId} composite={composite} disabled={disabled} />}</details>;
 }
 
-export function StrictCompositePanel({ productId, attemptId, scene, disabled }: { productId: string; attemptId: string; scene: StudioAsset; disabled: boolean }) {
+
+export function StrictCompositePanel({ productId, productVersion, attemptId, scene, disabled }: { productId: string; productVersion: string; attemptId: string; scene: StudioAsset; disabled: boolean }) {
   const [saved, setSaved] = useState<StrictComposite[] | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [zoom, setZoom] = useState(100);
@@ -87,6 +84,6 @@ export function StrictCompositePanel({ productId, attemptId, scene, disabled }: 
       <p>Source {draft.mapping.sourceWidth} × {draft.mapping.sourceHeight}; uniformly mapped to {draft.mapping.width.toFixed(2)} × {draft.mapping.height.toFixed(2)} at ({draft.mapping.x.toFixed(2)}, {draft.mapping.y.toFixed(2)}) on a 1024 × 1024 background.</p>
       <div className="strict-actions"><button className="primary-button" type="button" disabled={disabled || busy} onClick={() => void save()}>Save unapproved composite</button><button className="secondary-button" type="button" disabled={busy} onClick={() => setDraft(null)}>Discard preview</button></div>
     </div>}
-    {saved === null ? <p role="status">Loading saved composites…</p> : saved.length > 0 && <div><h5>Saved unapproved composites</h5>{saved.map((item) => <figure key={item.assetId}><LocalImage blob={item.blob} alt="Saved unapproved source-layer composite" /><figcaption>{new Date(item.createdAt).toLocaleString()} · SHA-256 {item.sha256.slice(0, 12)}… · source {item.sourceSha256.slice(0, 12)}… · mask {item.maskSha256.slice(0, 12)}… · scene {item.sceneSha256.slice(0, 12)}…</figcaption></figure>)}</div>}
+    {saved === null ? <p role="status">Loading saved composites…</p> : saved.length > 0 && <div><h5>Saved composites</h5>{saved.map((item) => <div key={item.assetId}><figure><LocalImage blob={item.blob} alt="Saved source-layer composite" /><figcaption>{new Date(item.createdAt).toLocaleString()} · SHA-256 {item.sha256.slice(0, 12)}… · source {item.sourceSha256.slice(0, 12)}… · mask {item.maskSha256.slice(0, 12)}… · scene {item.sceneSha256.slice(0, 12)}…</figcaption></figure><ReviewDisclosure productId={productId} productVersion={productVersion} attemptId={attemptId} composite={item} disabled={disabled || busy} /></div>)}</div>}
   </div>;
 }

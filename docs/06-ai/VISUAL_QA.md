@@ -12,7 +12,7 @@
 | Photorealism and environmental integration | 15 | shadow direction, edges, contact, materials, reflections |
 | Requested style/composition match | 10 | correct studio/hero/lifestyle/etc mood and constraints |
 
-Score formula: `weighted_score = SUM(score_i / 5 * weight_i)`, on a 0–100 scale. The current canonical QA schema accepts fractional component and weighted scores; whether to round and how to allocate unbranded weights remain [OPEN-009](../00-governance/DECISION_REGISTER.md) before implementation. For genuinely unbranded/no-text products, record `weightingVariant=unbranded` and do not invent missing weights. **85/100 is a candidate threshold only**, never universal acceptance.
+Score formula: `weighted_score = SUM(score_i / 5 * weight_i)`, on a 0–100 scale. The canonical QA schema accepts fractional component and weighted scores. Rounding and unbranded weights remain [OPEN-009](../00-governance/DECISION_REGISTER.md); do not invent missing weights. **85/100 is a candidate threshold only**, never universal acceptance.
 
 ## Hard veto conditions (always block STRICT approval)
 
@@ -33,6 +33,12 @@ Score formula: `weighted_score = SUM(score_i / 5 * weight_i)`, on a 0–100 scal
 | `REJECTED` | one or more hard veto or explicit reviewer rejection | cannot export as approved |
 
 A human `APPROVED` decision is a separate event referencing exact `assetId`, source hashes and QA report. Changing any input/mask/output/claim invalidates approval; new QA required.
+
+### Current local implementation and limits
+
+The browser accepts branded/default component scores as decimal strings with up to six fractional digits and evaluates the threshold without rounding. It requires six explicit human checks, uses any mismatch as a hard veto and an unknown as `UNVERIFIABLE`, and records a separate human decision only for the exact current product, source, active mask, scene, output and review. A new review supersedes the earlier decision. A changed product snapshot makes the old review historical. Unbranded scored review and approval are unavailable until OPEN-009 is decided; this conservative behavior does not resolve the policy.
+
+The comparison offers native-pixel scrolling and asks for written regions and reasons when any check is uncertain or mismatched. Those notes are free text: structured severity and crop references, verified real-SKU fidelity, approved export and physical-device acceptance are not implemented or established by this local review. The reviewer must still inspect the actual product and claims; neither the score nor a recorded decision is an automated brand certificate.
 
 ## QA procedure
 

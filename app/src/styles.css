@@ -132,6 +132,13 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .strict-zoom { max-height: 420px; overflow: auto; }
 .strict-composite figcaption { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .strict-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.visual-review { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+.qa-product-context { overflow-wrap: anywhere; }
+.visual-review form { align-items: stretch; }
+.visual-review form > label:not(.checkbox-label) { display: flex; flex-direction: column; gap: 6px; }
+.visual-review select, .visual-review textarea { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink); }
+.visual-decision { margin-top: 16px; }
+.strict-composite summary { cursor: pointer; min-height: 44px; padding: 12px 0; }
 .guide-list { border-top: 1px solid var(--border); }.guide-list section { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 16px; padding: 26px 0; border-bottom: 1px solid var(--border); }.guide-list h2 { margin: 0 0 8px; font-size: 19px; }.guide-list p { max-width: 680px; margin: 0; }.guide-footnote { margin-top: 28px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 footer { display: flex; justify-content: space-between; gap: 16px; padding: 22px 48px calc(22px + env(safe-area-inset-bottom)); color: var(--muted); border-top: 1px solid var(--border); font-size: 10px; letter-spacing: .06em; }
 .update-notice { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 48px; color: var(--ink); background: var(--tint); border-bottom: 1px solid var(--border); }

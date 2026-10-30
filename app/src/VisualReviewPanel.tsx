@@ -1,0 +1,133 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { createVisualReview, listVisualReviews, loadStrictCompositeInputs, recordVisualDecision, type Product, type StrictComposite, type VisualReviewRecord, type VisualDecisionRecord } from './products';
+import { evaluateVisualReview, type ReviewChecks, type ReviewScores, type ReviewVariant, type VisualReviewEvaluation } from './visualReviewRules';
+import { LocalImage } from './LocalImage';
+import { useUnsavedChanges } from './useUnsavedChanges';
+
+const SCORE_FIELDS: Array<[keyof ReviewScores, string]> = [
+  ['design', 'Packaging, material and design'], ['typography', 'Logo and readable typography'],
+  ['geometry', 'Shape, proportion and perspective'], ['realism', 'Photorealism and scene integration'], ['style', 'Requested style and composition'],
+];
+const CHECK_FIELDS: Array<[keyof ReviewChecks, string]> = [
+  ['product', 'Correct product, SKU, variant, material and shape'], ['typography', 'Original logo and every readable label, including Chinese text'],
+  ['claims', 'No fabricated claims, ingredients, certifications or endorsements'], ['viewpoint', 'No invented unseen viewpoint or packaging face'],
+  ['source', 'Rights and original source are available and verifiable'], ['mask', 'Mask and composition preserve all critical product details'],
+];
+const EMPTY_SCORES: ReviewScores = { design: '', typography: '', geometry: '', realism: '', style: '' };
+const UNKNOWN_CHECKS: ReviewChecks = { product: 'UNKNOWN', typography: 'UNKNOWN', claims: 'UNKNOWN', viewpoint: 'UNKNOWN', source: 'UNKNOWN', mask: 'UNKNOWN' };
+
+type History = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[]; product: Product; productSha256: string; assetSha256: string };
+
+export function VisualReviewPanel({ productId, productVersion, attemptId, composite, disabled }: { productId: string; productVersion: string; attemptId: string; composite: StrictComposite; disabled: boolean }) {
+  const [source, setSource] = useState<{ blob: Blob; width: number; height: number } | null>(null);
+  const [historyState, setHistory] = useState<History | null>(null);
+  const [evidenceVersion, setEvidenceVersion] = useState<string | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const [scores, setScores] = useState<ReviewScores>(EMPTY_SCORES);
+  const [checks, setChecks] = useState<ReviewChecks>(UNKNOWN_CHECKS);
+  const [variant, setVariant] = useState<ReviewVariant | ''>('');
+  const [note, setNote] = useState('');
+  const [reviewed, setReviewed] = useState(false);
+  const [choice, setChoice] = useState<'APPROVED' | 'REJECTED' | ''>('');
+  const [decisionConfirmed, setDecisionConfirmed] = useState(false);
+  const [zoom, setZoom] = useState(100);
+  const [nativePixels, setNativePixels] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const running = useRef(false);
+  const controller = useRef<AbortController | null>(null);
+  const alive = useRef(true);
+  const pendingReload = useRef(false);
+  const history = evidenceVersion === productVersion ? historyState : null;
+  const hasDraft = Boolean(note) || Boolean(variant) || Object.values(scores).some(Boolean) || Object.values(checks).some((value) => value !== 'UNKNOWN');
+  const noteRequired = Object.values(checks).some((value) => value !== 'MATCH');
+  useUnsavedChanges(busy || reviewed || Boolean(choice) || hasDraft);
+
+  useEffect(() => {
+    const invalidate = () => {
+      setSource(null); setHistory(null); setEvidenceVersion(null); setReviewed(false); setChoice(''); setDecisionConfirmed(false);
+      if (running.current) pendingReload.current = true;
+      else setReloadVersion((value) => value + 1);
+    };
+    const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('product-image-studio-changes');
+    if (channel) channel.onmessage = (event: MessageEvent) => { if (event.data === productId) invalidate(); };
+    window.addEventListener('focus', invalidate);
+    return () => { channel?.close(); window.removeEventListener('focus', invalidate); };
+  }, [productId]);
+
+  useEffect(() => {
+    alive.current = true;
+    const abort = new AbortController(); controller.current = abort;
+    setSource(null); setHistory(null); setEvidenceVersion(null); setError(''); setReviewed(false); setChoice(''); setDecisionConfirmed(false);
+    void Promise.all([loadStrictCompositeInputs(productId, attemptId, composite.sceneAssetId, abort.signal), listVisualReviews(productId, attemptId, composite.assetId, abort.signal)]).then(([inputs, records]) => {
+      if (abort.signal.aborted || !alive.current) return;
+      if (inputs.sourceSha256 !== composite.sourceSha256 || inputs.maskSha256 !== composite.maskSha256 || inputs.sceneSha256 !== composite.sceneSha256 || inputs.maskId !== composite.maskId) throw new Error('The source, active mask or scene changed since this composite.');
+      if (records.assetSha256 !== composite.sha256) throw new Error('The saved composite changed since it was displayed. Reopen the workspace before reviewing it.');
+      setSource({ blob: inputs.source, width: inputs.sourceWidth, height: inputs.sourceHeight }); setHistory(records); setEvidenceVersion(productVersion);
+    }).catch((reason) => { if (!abort.signal.aborted && alive.current) setError(reason instanceof Error ? reason.message : 'The review evidence could not be loaded.'); });
+    return () => { alive.current = false; abort.abort(); controller.current?.abort(); };
+  }, [productId, productVersion, attemptId, composite.assetId, reloadVersion]);
+
+  let evaluation: VisualReviewEvaluation | null = null;
+  try { if (variant) evaluation = evaluateVisualReview(scores, checks, variant); } catch { /* incomplete score is not a review */ }
+  const latest = history?.reviews.reduce<VisualReviewRecord | null>((current, item) => !current || item.revision > current.revision ? item : current, null) ?? null;
+  const currentDecision = latest ? history?.decisions.find((item) => item.reportId === latest.qaId && item.current) : undefined;
+  const latestIsCurrent = Boolean(latest && latest.productSha256 === history?.productSha256);
+  function invalidateDecision() { setReviewed(false); setChoice(''); setDecisionConfirmed(false); }
+  function clearDraft() { setScores(EMPTY_SCORES); setChecks(UNKNOWN_CHECKS); setVariant(''); setNote(''); invalidateDecision(); }
+
+  async function submitReview(event: FormEvent) {
+    event.preventDefault();
+    if (running.current || disabled || !source || !history || !evaluation || !variant || !reviewed || (noteRequired && !note.trim())) return;
+    running.current = true; setBusy(true); setError(''); setNotice('');
+    const abort = new AbortController(); controller.current = abort;
+    try {
+      await createVisualReview(productId, attemptId, composite.assetId, scores, checks, variant, note, history.productSha256, composite.sha256, abort.signal);
+      if (alive.current) { setReviewed(false); setScores(EMPTY_SCORES); setChecks(UNKNOWN_CHECKS); setVariant(''); setNote(''); setChoice(''); setDecisionConfirmed(false); setNotice('Review recorded. A passing candidate still requires a separate explicit decision.'); }
+      try { const records = await listVisualReviews(productId, attemptId, composite.assetId, abort.signal); if (records.assetSha256 !== composite.sha256) throw new Error('Composite changed'); if (alive.current) setHistory(records); }
+      catch { if (alive.current) { setHistory(null); setError('The review was saved, but history could not be refreshed. Reload the workspace.'); } }
+    } catch (reason) { if (alive.current && !abort.signal.aborted) { setHistory(null); setSource(null); setReviewed(false); setError(reason instanceof Error ? reason.message : 'Review could not be saved.'); } }
+    finally { if (controller.current === abort) controller.current = null; running.current = false; if (alive.current) { setBusy(false); if (pendingReload.current) { pendingReload.current = false; setReloadVersion((value) => value + 1); } } }
+  }
+
+  async function submitDecision() {
+    if (running.current || disabled || !source || hasDraft || !latest || !latestIsCurrent || !choice || !decisionConfirmed || currentDecision) return;
+    running.current = true; setBusy(true); setError(''); setNotice('');
+    const abort = new AbortController(); controller.current = abort;
+    try {
+      await recordVisualDecision(productId, attemptId, composite.assetId, latest.qaId, choice, abort.signal);
+      if (alive.current) { setChoice(''); setDecisionConfirmed(false); setNotice('Your separate decision was recorded for this exact review and image.'); }
+      try { const records = await listVisualReviews(productId, attemptId, composite.assetId, abort.signal); if (records.assetSha256 !== composite.sha256) throw new Error('Composite changed'); if (alive.current) setHistory(records); }
+      catch { if (alive.current) { setHistory(null); setError('The decision was saved, but history could not be refreshed. Reload the workspace.'); } }
+    } catch (reason) { if (alive.current && !abort.signal.aborted) { setHistory(null); setSource(null); setChoice(''); setDecisionConfirmed(false); setError(reason instanceof Error ? reason.message : 'Decision could not be saved.'); } }
+    finally { if (controller.current === abort) controller.current = null; running.current = false; if (alive.current) { setBusy(false); if (pendingReload.current) { pendingReload.current = false; setReloadVersion((value) => value + 1); } } }
+  }
+
+  return <section className="visual-review" aria-labelledby={`review-heading-${composite.assetId}`}>
+    <h5 id={`review-heading-${composite.assetId}`}>Human visual review</h5>
+    <p>Compare the original and this composite. No OCR, model, or score verifies the brand for you. A mismatch blocks approval even with a high score; uncertain details must remain unverifiable.</p>
+    {error && <><p className="error-message" role="alert">{error}</p><button type="button" className="secondary-button" disabled={busy} onClick={() => setReloadVersion((value) => value + 1)}>Recheck review evidence</button></>}{notice && <p role="status">{notice}</p>}
+    {!history && !error && <p role="status">Checking review evidence…</p>}
+    {source && history && <><label className="checkbox-label"><input type="checkbox" checked={nativePixels} onChange={(event) => setNativePixels(event.target.checked)} /><span>View at native pixel size (one image pixel per CSS pixel)</span></label>{!nativePixels && <><label htmlFor={`qa-zoom-${composite.assetId}`}>Review zoom: {zoom}%</label><input id={`qa-zoom-${composite.assetId}`} type="range" min="100" max="400" step="25" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></>}<div className="strict-comparison"><figure><div className="strict-zoom" role="region" tabIndex={0} aria-label="Review original source zoom area"><LocalImage blob={source.blob} alt="Original source for human review" zoom={zoom} nativeWidth={nativePixels ? source.width : undefined} /></div><figcaption>Original source · {source.width} × {source.height}</figcaption></figure><figure><div className="strict-zoom" role="region" tabIndex={0} aria-label="Review composite zoom area"><LocalImage blob={composite.blob} alt="Composite for human review" zoom={zoom} nativeWidth={nativePixels ? 1024 : undefined} /></div><figcaption>Unapproved composite · 1024 × 1024</figcaption></figure></div></>}
+    {history && <><p>Last checked review: {latest ? `${latest.report.status} · score ${latest.report.weightedScore}/100${latestIsCurrent ? '' : ' · historical product snapshot'}` : 'none'}{currentDecision ? ` · decision ${currentDecision.decision}` : ' · no current human decision'}. A new review supersedes earlier decisions; evidence is checked again before any decision.</p>
+      <div className="qa-product-context"><h6>Product details in this review</h6><p>SKU: {history.product.sku} · Name: {history.product.name} · Category: {history.product.category}</p><p>Original view: {history.product.sourceAssets.find((item) => item.assetId === composite.sourceAssetId)?.cameraView ?? 'UNKNOWN'} · Source rights acknowledged: {history.product.rightsAcknowledged ? 'yes' : 'no'}</p><p>Protected text: {history.product.brandLock.protectedText.join(', ') || 'none recorded'} · Forbidden changes: {history.product.brandLock.forbiddenChanges.join(', ') || 'none recorded'} · Locked colors: {history.product.brandLock.lockedColors?.join(', ') || 'none recorded'}</p><p>Recorded facts:</p>{history.product.facts.length ? <ul>{history.product.facts.map((fact) => <li key={fact.factId}>{fact.name}: {fact.value} ({fact.confirmed ? 'confirmed' : 'unconfirmed'})</li>)}</ul> : <p>None recorded.</p>}<p>Product snapshot SHA-256: {history.productSha256}</p></div>
+      {history.reviews.length > 0 && <details><summary>Review history</summary><ol>{history.reviews.map((item) => <li key={item.qaId}><p>Review {item.revision} · {new Date(item.createdAt).toLocaleString()} · {item.report.status} · {item.report.weightedScore}/100</p><p>{SCORE_FIELDS.map(([key, label]) => `${label}: ${item.report.scores[key]}/5`).join(' · ')}</p><p>{CHECK_FIELDS.map(([key, label]) => `${label}: ${item.checks[key]}`).join(' · ')}</p>{item.report.reviewerNote && <p>Reviewer notes: {item.report.reviewerNote}</p>}{item.report.hardVetoFindings.map((finding) => <p className="error-message" key={finding.code}>{finding.description}</p>)}{history.decisions.filter((decision) => decision.reportId === item.qaId).map((decision) => <p key={decision.qaId}>{decision.current ? 'Current' : 'Historical'} decision: {decision.decision} · {new Date(decision.createdAt).toLocaleString()}</p>)}</li>)}</ol></details>}
+      <form onSubmit={submitReview}>
+        <label htmlFor={`qa-variant-${composite.assetId}`}>Product labeling</label><select id={`qa-variant-${composite.assetId}`} value={variant} disabled={busy || disabled} onChange={(event) => { setVariant(event.target.value as ReviewVariant | ''); invalidateDecision(); }}><option value="">Choose labeling</option><option value="default">Branded or readable label</option><option value="unbranded">Unbranded / no readable text</option></select>
+        {variant === 'unbranded' && <p>Unbranded weighting is not yet agreed. Scored review and approval are unavailable until that policy is decided.</p>}
+        <p>Enter each score from 0 to 5, with up to six decimal places. No score overrides a mismatch.</p>
+        {variant === 'default' && !evaluation && Object.values(scores).some(Boolean) && <p>Complete all five scores using decimal values from 0 to 5 with at most six fractional digits.</p>}
+        {SCORE_FIELDS.map(([key, label]) => <label key={key}>{label} <input type="number" min="0" max="5" step="any" inputMode="decimal" value={scores[key]} disabled={busy || disabled} onChange={(event) => { setScores((old) => ({ ...old, [key]: event.target.value })); invalidateDecision(); }} /></label>)}
+        {CHECK_FIELDS.map(([key, label]) => <label key={key}>{label}<select value={checks[key]} disabled={busy || disabled} onChange={(event) => { setChecks((old) => ({ ...old, [key]: event.target.value as ReviewChecks[typeof key] })); invalidateDecision(); }}><option value="UNKNOWN">Cannot verify</option><option value="MATCH">Verified / no issue</option><option value="MISMATCH">Mismatch / prohibited</option></select></label>)}
+        <label htmlFor={`qa-note-${composite.assetId}`}>Review notes {noteRequired ? '(required)' : '(optional)'} — describe each finding and its source/output region or why it cannot be verified</label><textarea id={`qa-note-${composite.assetId}`} maxLength={2000} value={note} disabled={busy || disabled} onChange={(event) => { setNote(event.target.value); invalidateDecision(); }} />
+        {evaluation && <p role="status">Proposed status: {evaluation.status}; weighted score {evaluation.weightedScore}/100. {evaluation.hardVetoFindings.length > 0 && 'A hard veto blocks approval.'}</p>}
+        <label className="checkbox-label"><input type="checkbox" checked={reviewed} disabled={busy || disabled || !source || !evaluation || (noteRequired && !note.trim())} onChange={(event) => setReviewed(event.target.checked)} /><span>I personally compared this original and composite and marked uncertain or mismatched details honestly.</span></label>
+        <button className="secondary-button" type="submit" disabled={busy || disabled || !source || !evaluation || !reviewed || (noteRequired && !note.trim())}>Save this human review</button>
+        {hasDraft && <button type="button" className="secondary-button" disabled={busy} onClick={clearDraft}>Discard unsaved review</button>}
+      </form>
+      {latest && !latestIsCurrent && <p>The latest review is for an older product snapshot. Record a new review before choosing a decision.</p>}
+      {latest && latestIsCurrent && !currentDecision && <div className="visual-decision"><p>A decision is separate from the review. Only a current PASS_CANDIDATE without a veto may be approved. Save or discard an unsaved review first.</p><div className="strict-actions"><button type="button" className="secondary-button" disabled={busy || disabled || hasDraft || latest.report.status !== 'PASS_CANDIDATE'} onClick={() => { setChoice('APPROVED'); setDecisionConfirmed(false); }}>Choose approval</button><button type="button" className="secondary-button" disabled={busy || disabled || hasDraft} onClick={() => { setChoice('REJECTED'); setDecisionConfirmed(false); }}>Choose rejection</button></div>{choice && <><label className="checkbox-label"><input type="checkbox" checked={decisionConfirmed} disabled={busy || disabled || hasDraft} onChange={(event) => setDecisionConfirmed(event.target.checked)} /><span>I explicitly {choice === 'APPROVED' ? 'approve' : 'reject'} this exact reviewed image.</span></label><button type="button" className="primary-button" disabled={busy || disabled || hasDraft || !decisionConfirmed} onClick={() => void submitDecision()}>Record {choice.toLowerCase()} decision</button></>}</div>}
+    </>}
+  </section>;
+}

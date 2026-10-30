@@ -6,6 +6,10 @@ declare module 'virtual:generation-job-validator' {
   const validate: (data: unknown) => boolean;
   export default validate;
 }
+declare module 'virtual:qa-report-validator' {
+  const validate: (data: unknown) => boolean;
+  export default validate;
+}
 
 
 declare module 'virtual:export-manifest-validator' {

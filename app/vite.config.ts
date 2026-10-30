@@ -10,6 +10,7 @@ function contractValidators(): Plugin {
   const schemas: Record<string, string> = {
     'virtual:product-validator': 'product.schema.json',
     'virtual:generation-job-validator': 'generation-job.schema.json',
+    'virtual:qa-report-validator': 'qa-report.schema.json',
     'virtual:export-manifest-validator': 'export-manifest.schema.json',
   };
   return {

@@ -42,8 +42,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 6829,
-      "sha256": "899c6685918297ff7810ed224a1ed3452fa7eab6faf7eb34cc1b18a9ca64665e"
+      "bytes": 7022,
+      "sha256": "675130ec41fa431cf66cfe6747f0c6916be018a3b0f602d54b6b4bb6dc86c0f3"
     },
     {
       "path": "ROADMAP.md",
@@ -207,8 +207,8 @@
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
-      "bytes": 5478,
-      "sha256": "bca1ff4055b41213174cbcde975d0d529a74e235f2bf36c2b5cd17c3df5912ab"
+      "bytes": 6027,
+      "sha256": "332cc08918fa9270faafac2af43066bbdb7d0518d3561f5b629879beb26a1fec"
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
@@ -242,8 +242,8 @@
     },
     {
       "path": "docs/06-ai/VISUAL_QA.md",
-      "bytes": 4102,
-      "sha256": "27dc083f02e318f05eef0fa954e75d8e2ec57cff88ee42678d64aa05d3ec4520"
+      "bytes": 5102,
+      "sha256": "0d038514e998b86deac8dc4f608f94916da25e7067f641e4d5923fd36c8061f2"
     },
     {
       "path": "docs/07-quality/E2E_ACCEPTANCE.md",
@@ -292,8 +292,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 55487,
-      "sha256": "a400fb1d718e0b49b8abc56a34b6a97f4a4d035b342df2d5359b930dcd256c76"
+      "bytes": 58456,
+      "sha256": "6c442f3b128edcbdd0423617b8be95a9201e65e5d9e2872a7e40f82befd2c517"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
