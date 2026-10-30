@@ -15,8 +15,10 @@ async function simulate(retryAfter) {
 
 test('a provider 429 is definitive and its bounded delay is safe to display', async () => {
   assert.deepEqual(await simulate('37'), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: 37 });
-  assert.deepEqual(await simulate('untrusted text'), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null });
-  assert.deepEqual(await simulate('86401'), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null });
+  assert.deepEqual(await simulate('untrusted text'), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null, retryAfterRequiresReview: true });
+  assert.deepEqual(await simulate('86401'), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null, retryAfterRequiresReview: true });
+  assert.deepEqual(await simulate('1000000000000000000000000'), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null, retryAfterRequiresReview: true });
+  assert.deepEqual(await simulate(''), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null, retryAfterRequiresReview: true });
   assert.deepEqual(await simulate(null), { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null });
 });
 

@@ -32,8 +32,8 @@
     },
     {
       "path": "BUG.md",
-      "bytes": 2657,
-      "sha256": "dc8a5a89d7f333468f190b8bbfda73f43b707c625ad29014ee4bf2d3c395aec0"
+      "bytes": 3058,
+      "sha256": "00c72684bc00e805a162108f7237def8d8ecd9ef92aad20994c7a686b4134f65"
     },
     {
       "path": "DESIGN.md",
@@ -72,8 +72,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 31334,
-      "sha256": "57f3432c34dc8f98507f947c78fc439a7a3d73b982696bcec7c254e610aeea8d"
+      "bytes": 31411,
+      "sha256": "61fb912de362823a7bc0f9d3a942506c00d4dfcf0083e072991ff9a847645b26"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -157,8 +157,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 22519,
-      "sha256": "6de8903da2400d976243dd51c24365f489789c0f16115ccaa41f997fc86653c2"
+      "bytes": 22951,
+      "sha256": "5eed5944d24829ca6c6b96783cbb48fc230e17307ba8c200e853490e9af337db"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -222,13 +222,13 @@
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
-      "bytes": 8758,
-      "sha256": "0d2bc1280697db051b0c9efd3cf9c6f66f6cb2e07feab1f3fed6f5fe0fa6aa49"
+      "bytes": 8846,
+      "sha256": "b4f995012465519ee1262dee4cc8e1c05774e605ba4704534c509b3fb18ccfea"
     },
     {
       "path": "docs/05-api/ERROR_RETRY_COST.md",
-      "bytes": 5291,
-      "sha256": "f3a18e346a1e066597072c3f442c768dd36f10f39dc0094c8848e6e6852d3e65"
+      "bytes": 5546,
+      "sha256": "3a6bd9c4aa0510f8df7d1921f317db84339ecffbc002859c2e3dbccb59732573"
     },
     {
       "path": "docs/05-api/OPENAI_ADAPTER.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 105589,
-      "sha256": "b2882246fa08b72d76d39d5b9952357cbc01b45509935d4b69a2d5a1045af06f"
+      "bytes": 106930,
+      "sha256": "c9e023930d55c61f7476763f097073f43cea4bf9378dba10116d3810368b9fd4"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

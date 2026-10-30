@@ -527,6 +527,25 @@ test('provider 429 returns safe quota-aware metadata without automatically retry
   assert.equal(count, 1);
 });
 
+test('unrepresentable provider retry delay retains a durable review gate', async (t) => {
+  let calls = 0;
+  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '86401' } }); } });
+  let session = await f.login(); const first = attempt();
+  const result = await f.generate(session, first, await approval(f, session, first));
+  assert.equal(result.status, 429);
+  assert.equal(result.headers.get('x-studio-cleanup-pending'), '1');
+  assert.equal((await result.json()).error.outcome, 'DEFINITIVE_FAILURE');
+  await f.stop(); await f.start(); session = await f.login();
+  const next = attempt();
+  const blocked = await f.generate(session, next, await approval(f, session, next));
+  assert.equal(blocked.status, 409);
+  assert.equal(calls, 1);
+  const receipt = await f.acknowledge(session, first.clientAttemptId);
+  assert.equal(receipt.status, 200);
+  assert.equal((await receipt.json()).recordedOutcome, 'DEFINITIVE_FAILURE');
+  assert.equal(calls, 1);
+});
+
 test('acknowledgement remains disabled without generation configuration', async (t) => {
   const f = await fixture(t, { disabled: true }), s = await f.login();
   assert.equal((await f.acknowledge(s, randomUUID())).status, 503);

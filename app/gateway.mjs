@@ -322,7 +322,7 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
           catch (reason) { return error(response, 503, reason.message.includes('manual recovery') ? 'RECOVERY_REQUIRED' : 'UNAVAILABLE', reason.message.includes('manual recovery') ? 'No request was sent; an in-flight marker may require manual recovery.' : 'The attempt journal is unavailable; no request was sent.'); }
           if (begun === 'duplicate') return error(response, 409, 'CONFLICT', 'This attempt was already started; its original outcome is not known from this response.', 'UNKNOWN');
           if (begun === 'busy') return error(response, 409, 'ATTEMPT_BUSY', 'Another attempt is active or requires owner review.');
-          let submitted = false, reserved = false, providerPromise, reply, retainInflight = false;
+          let submitted = false, reserved = false, providerPromise, reply, retainInflight = false, rateReview = false;
           try {
             const reservation = await journal.reserveAndDispatch(principal, body.clientAttemptId, bodyDigest, now(), imageConfig.maxAttemptsPerHour, approval.revision, () => active() && approval.expires > now(), () => {
               submitted = true;
@@ -345,7 +345,9 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
               if (retainInflight) reply = { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' };
               else if (result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT') {
                 const retryAfterSeconds = Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 0 && result.retryAfterSeconds <= 86400 ? result.retryAfterSeconds : null;
-                reply = { status: 429, code: 'PROVIDER_LIMIT', message: 'Provider returned 429; check rate limits, quota and billing.', retryAfterSeconds };
+                rateReview = result.retryAfterRequiresReview === true;
+                if (rateReview) response.setHeader('X-Studio-Cleanup-Pending', '1');
+                reply = { status: 429, code: 'PROVIDER_LIMIT', message: rateReview ? 'Provider delay requires external review before continuing.' : 'Provider returned 429; check rate limits, quota and billing.', retryAfterSeconds };
               }
               else if (result.outcome === 'DEFINITIVE_FAILURE') reply = { status: 502, code: 'PROVIDER_ERROR', message: 'The provider rejected the attempt.' };
               else {
@@ -364,7 +366,7 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
                 reply = { status: 503, code: 'RECOVERY_REQUIRED', message: 'No request was sent; journal evidence may require manual recovery.' };
               }
             }
-          } else if (!retainInflight) {
+          } else if (!retainInflight && !rateReview) {
             // The immutable result is durable even if marker cleanup meets a stale lock.
             try { await journal.end(principal, body.clientAttemptId); }
             catch {

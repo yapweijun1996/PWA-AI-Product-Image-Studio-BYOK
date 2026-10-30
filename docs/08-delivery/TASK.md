@@ -337,6 +337,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** No real key or paid call was used for this change, no provider usage or cost was measured, and no production deployment, independent security approval, OS-level Pi isolation, real-device acceptance, full E2E-007/008 or end-to-end brand fidelity is claimed. Backup refuses projects containing jobs or outputs; users must back up before generating. UNKNOWN and interrupted attempts require review but have no reconciliation workflow yet: preserve their records and do not bypass the block. T-041, T-042, T-051 and T-022 remain open.
 - **Rollback:** Disable the opt-in provider path and revert its gateway, UI, shared policy, tests and contract changes together. Preserve original sources, masks, jobs, attempts, generated scenes and journal records; older versions cannot safely back up the new records.
 
+## T-041 unsupported provider delay review mitigation — 2026-10-30
+
+- **Change:** A provider 429 with a present invalid or unsupported `Retry-After` retains its durable definitive result and active journal marker; the existing cleanup-pending signal requests explicit external review before acknowledgement. A missing header retains prior behavior. The UI describes the marker as requiring review rather than claiming cleanup necessarily failed.
+- **Evidence:** Synthetic adapter cases cover valid bounded, absent, malformed, empty, oversized and overflow delay values. Gateway regression confirms a 86401-second response remains definitive, blocks a new attempt after restart without another provider call, and permits only a separate authenticated acknowledgement. No real key or paid request was used.
+- **Limits:** This is a mitigation, not full BUG-001 resolution: the exact long delay is not persisted or enforced after an owner acknowledges review, so the owner must check provider guidance externally. Real provider, cross-profile policy, installed devices and independent security review remain open. T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert gateway, adapter, UI text, related tests and matching contract/docs together. Preserve attempt results and active journal markers; never delete them to bypass review.
+
 ## T-041 provider response stream cleanup — 2026-10-30
 
 - **Problem and change:** Synthetic 429 and oversized successful responses returned the correct outcomes but left their unread streams uncancelled; a stalled successful stream also remained open after timeout. The provider adapter now requests non-blocking cancellation for unused error, invalid content-type, oversized and aborted response bodies. Cancellation failure or delay does not replace the provider outcome or initiate a retry.

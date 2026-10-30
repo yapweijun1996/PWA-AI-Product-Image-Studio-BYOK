@@ -118,7 +118,11 @@ export async function generateStudioScene({ apiKey, transport, timeoutMs, prompt
       });
       if (!response.ok) {
         discardBody(response.body);
-        if (response.status === 429) return { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: retryAfterSeconds(response) };
+        if (response.status === 429) {
+          const retryAfter = retryAfterSeconds(response);
+          return { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: retryAfter,
+            ...(response.headers.has('retry-after') && retryAfter === null ? { retryAfterRequiresReview: true } : {}) };
+        }
         return { outcome: response.status >= 400 && response.status < 500 && response.status !== 408 ? 'DEFINITIVE_FAILURE' : 'UNKNOWN' };
       }
       if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) { discardBody(response.body); throw new Error('Invalid provider response'); }

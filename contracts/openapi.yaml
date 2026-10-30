@@ -479,7 +479,7 @@ paths:
 components:
   headers:
     StudioCleanupPending:
-      description: Present as 1 only when a definitive outcome was durably recorded but durable cleanup could not be established. Preserve the outcome and image; block further generation globally and require explicit acknowledgement before continuing.
+      description: Present as 1 when a definitive outcome was durably recorded but cleanup could not be established, or when a provider retry delay cannot be represented safely and requires external review. Preserve the outcome and image; block further generation globally and require explicit acknowledgement before continuing.
       schema:
         type: string
         enum: ['1']
