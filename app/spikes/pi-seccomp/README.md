@@ -1,0 +1,13 @@
+# Pi seccomp feasibility spike
+
+This is an opt-in synthetic experiment, not a production sandbox or a Pi integration. Do not use it to protect credentials, customer data or network endpoints. It tests Linux ARM64 only. Docker must support `linux/arm64` and the local daemon. The build downloads pinned npm packages and Alpine build packages; it uses `npm ci --ignore-scripts`, no project mounts, and no user credentials. Do not place secrets in this directory. The build context is allowlisted by `.dockerignore`.
+
+From the repository root:
+
+```sh
+app/spikes/pi-seccomp/run.sh
+```
+
+The script builds a temporary image and runs two disposable unprivileged containers with read-only roots, no external network, no capabilities and bounded resources. The control should initialize an in-memory Pi SDK session without tools and successfully start shell and Node subprocesses. The filtered run installs an ARM64 seccomp filter during startup and should return `EPERM` for both subprocesses and a worker-thread subprocess. Both runs deliberately show that loopback TCP works inside the container and a supplied **synthetic** environment marker is visible. The script exits nonzero when these expectations fail and removes its uniquely tagged image on exit. Docker may retain build-cache layers; use your normal Docker cache policy.
+
+The startup preload is part of the experiment, not an authenticated launcher. The direct Node entrypoint is essential: preloading the filter into a shell entrypoint blocks its initial `exec`. Results do not prove host file or descriptor isolation, peer authentication, safety against compromised runtime code, another architecture, or a real Pi model/tool workload. Never pass a real provider key, mount the repository, expose a port or use this image as a runtime. See [Pi Text-Model Boundary](../../../docs/02-architecture/PI_TEXT_BOUNDARY.md) for the design, evidence and open security requirements.
