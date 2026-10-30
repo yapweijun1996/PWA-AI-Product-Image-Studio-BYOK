@@ -213,3 +213,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Apply the same leading-whitespace-aware prefix check to typed input, clearing the field and showing the existing warning; a subsequent valid local token still works after leaving and returning to the field.
 - **Evidence and limits:** At 320 px a synthetic provider-like value is cleared, the warning appears and sign-in is disabled; a separate synthetic local token signs in and connects. The browser suite and build pass. Prefix detection is a convenience guard, not a guarantee that all secrets are recognized or never enter browser memory; no actual credential or screen reader was used.
 - **Rollback:** Revert the input guard and regression together; preserve server-side authentication, session and provider-key isolation.
+
+## BUG-026 — Backup import has no user cancellation during restore
+
+- **Status:** VERIFIED for the scoped synthetic Chromium and storage tests. **Priority:** P2. **Related tasks:** T-022 and T-080.
+- **Finding:** Archive inspection could be cancelled, and the storage restore already supported an abort signal and atomic rollback, but the import UI did not expose cancellation while verifying and saving a project. Restore failures were also reported in the earlier file-selection card, away from the import action.
+- **Fix:** Connect a cancel button to the existing restore abort signal, wrap import actions on narrow screens and show restore errors next to the preview. If the transaction has already committed, completion remains authoritative; cancellation does not claim to undo a committed import.
+- **Evidence and limits:** In a 320 px isolated Chromium context, a synthetic test triggers the cancel control after an IndexedDB product write succeeds but before transaction completion. No product, attempt or source remains, and a subsequent import succeeds with source hash and seven attempt IDs intact. The cancel control fits the viewport and is at least 44 px high. Ten storage tests, the browser suite and build pass. The click timing is instrumented, not a physical-device, natural quota or large-archive test; other stores were not independently counted in the browser check.
+- **Rollback:** Revert the import cancellation UI and its tests together; preserve transaction rollback and all existing project data.
