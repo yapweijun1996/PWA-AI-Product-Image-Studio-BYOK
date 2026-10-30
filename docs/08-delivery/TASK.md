@@ -422,6 +422,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Checks and limits:** The production build and TypeScript check passed; the existing large-chunk warning remains. A second Lighthouse snapshot after shortening severity/location labels scored 100 before the final placeholder-only wording adjustment. Screen-reader announcements, full tab order, contrast in all states, real touch input, light theme and installed-device acceptance remain unverified. This is not a complete accessibility audit or E2E-020 sign-off.
 - **Rollback:** Revert the review select labels and this record together; retain the underlying required selection, local records and other accessibility work.
 
+## T-081 dependency and documentation validation observation — 2026-10-30
+
+- **Evidence:** At `19028a1`, `npm audit --audit-level=high` in `app/` reported zero vulnerabilities. A disposable Python environment using `scripts/requirements-doc-validation.txt` (jsonschema 4.26.0, PyYAML 6.0.3) ran `scripts/validate_ssot.py`: all eight checks passed with no warnings. Its `scripts/test_validate_ssot.py -v` ran all six tests with no skips, including the review-contract CSRF/revision check.
+- **Limits:** Dependency audit is a point-in-time advisory check, not proof of secure dependencies or a production security assessment. Documentation validation is not provider, runtime, browser or release verification. T-081 remains IMPLEMENTED_UNVERIFIED; independent threat review, device performance and complete security gates remain open.
+- **Rollback:** Revert this observation and the matching documentation hashes; no application code, user data or provider state changed.
+
 ## T-081 scoped security and backup work limits — 2026-10-30
 
 - **Change:** Backup validation now bounds estimated decoded-pixel work across originals, masks and generated assets before mask/output decoding or rendering. Inspection checks original pixel work before source decoding and the combined budget before mask validation. Backup cancellation propagates through validation and yields between mask strips; an individual image decode may still finish before cancellation is observed. Oversized projects are rejected, never partially imported or silently omitted. See [export/import limits](../04-data/EXPORT_IMPORT.md).
