@@ -187,6 +187,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Offline page reload, service-worker updates, real-device iOS installation, screen-reader and comprehensive accessibility testing remain pending. The failed offline reload before T-011 confirms that offline launch is not yet available. Product creation, storage, upload, generation and export are not implemented.
 - **Rollback:** Revert the `app/` tree and corresponding documentation/validator boundary changes together; do not delete user-managed environment files or other local data.
 
+## T-011 failed active update and retry — 2026-10-30
+
+- **Evidence:** A built worker was active in two isolated desktop Chromium tabs; one held an unsaved synthetic SKU. A synthetic local server served a modified copy of that worker with a different cache ID and returned 404 for a required icon. The new worker went from installing to redundant, the active worker and its cache remained, both tabs displayed the update failure, and the exact draft remained. After the server returned the icon, a new update check installed the same modified worker into a waiting state; both caches and the draft remained. No user-selected activation was attempted.
+- **Limits:** The worker ID was modified from the same build, not two independent builds. This is an injected 404 rather than natural quota exhaustion or eviction, and does not prove all concurrent-tab races or physical-device behavior. No provider, key or seller data was used. T-011 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence record and matching documentation hashes; preserve product data and existing caches.
+
 ## T-011 failed-install cache recovery — 2026-10-30
 
 - **Change and evidence:** [BUG-005](../../BUG.md) records the repeated failed-install cache-slot exhaustion and the scoped cleanup fix. The worker removes a newly created failed cache only when cooperative Web Locks are available; existing caches remain untouched. Nine simulated-worker tests cover failure, preservation and subsequent successful installation. An isolated Chromium first-install probe returned a synthetic 404 for a required icon, observed the worker become redundant and found no remaining shell cache. The production build passed with its existing chunk-size warning.
