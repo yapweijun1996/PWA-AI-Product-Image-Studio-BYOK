@@ -1,6 +1,6 @@
 {
   "name": "PWA-AI-Product-Image-Studio-BYOK-SSOT",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "date": "2026-10-30",
   "status": "DOCUMENTATION_ONLY_NOT_IMPLEMENTED",
   "source": "user-confirmed repo name + KB-MCP skills + official reference documentation",
@@ -43,7 +43,7 @@
     {
       "path": "README.md",
       "bytes": 7372,
-      "sha256": "7ee0b4db3efc1461882e9f4db1b733b978456c4017f860702bb247ead8a55918"
+      "sha256": "2d4bae070334bcd813f733a5d7bdac0eedbcc341cfba50f339c830290e99f68c"
     },
     {
       "path": "ROADMAP.md",
@@ -67,8 +67,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 31336,
-      "sha256": "95c9b6d40ede01f7522712e1f29ca625ff94c759577cefd88bb85bd0528e5b96"
+      "bytes": 31334,
+      "sha256": "57f3432c34dc8f98507f947c78fc439a7a3d73b982696bcec7c254e610aeea8d"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -87,8 +87,8 @@
     },
     {
       "path": "contracts/schemas/qa-report.schema.json",
-      "bytes": 2828,
-      "sha256": "41402f4202694f881be131411ec4e51397014412a477b3f6891eccb4589526ff"
+      "bytes": 4762,
+      "sha256": "83e64325243e27ede1a61099197f4c2ac38691b574bb23942ae1d407e8fe459d"
     },
     {
       "path": "contracts/style-presets.json",
@@ -117,8 +117,8 @@
     },
     {
       "path": "docs/00-governance/SSOT_POLICY.md",
-      "bytes": 4628,
-      "sha256": "0158cec72fd968bcaeda1c11de785ad4b14a17fa385ecf8201a0799ea9c21095"
+      "bytes": 4695,
+      "sha256": "9280a46bca5f5c7f98b0ee027a5d464fd9820d39973d80953d21912876c29cb2"
     },
     {
       "path": "docs/01-product/FEATURE_PRIORITY.md",
@@ -152,8 +152,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 21211,
-      "sha256": "855ee3e72026e4ce18be95478738d1ead11cae414f9d3b301d5f35abe27f6b50"
+      "bytes": 22303,
+      "sha256": "b2acdc78f237ce1bb834f7cc335da639314d036822331cbca76b6bdcd5ec5ecf"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -202,8 +202,8 @@
     },
     {
       "path": "docs/04-data/EXPORT_IMPORT.md",
-      "bytes": 7685,
-      "sha256": "d337bf7484bd3e0160c1a83c195891c71564839912dc1d0d4a07cfe3b3c5cd12"
+      "bytes": 8243,
+      "sha256": "e9b433b0683d0a198cee65addf4c2b71dabef84c80c750d3c99af5157067941f"
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
@@ -242,8 +242,8 @@
     },
     {
       "path": "docs/06-ai/VISUAL_QA.md",
-      "bytes": 5187,
-      "sha256": "dec00487709013a7e0203f67e2caed0f7f99d3fb33fc5adfe16592e74be90fd9"
+      "bytes": 5653,
+      "sha256": "4bef6e385e82850ff4d8c03cc747823cba72f8f99235b4bb2853172900bed4bf"
     },
     {
       "path": "docs/07-quality/E2E_ACCEPTANCE.md",
@@ -292,8 +292,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 78780,
-      "sha256": "6e37cc37202c0aaa1925a61897fc900f6a791d812e6f3c2e401f2c20af50caf0"
+      "bytes": 81075,
+      "sha256": "48f09514480191fee7322cdaa8f6a589e47d8acca32d488d67a1ad79b1ae0da3"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

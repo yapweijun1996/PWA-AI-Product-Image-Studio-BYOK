@@ -19,6 +19,14 @@ export type ReviewChecks = {
 };
 export type ReviewVariant = 'default' | 'unbranded';
 export type StyleReviewChecks = Record<string, ReviewCheck>;
+export type ReviewRegion = { x: number; y: number; width: number; height: number };
+export type ReviewFinding = {
+  severity: 'BLOCKER' | 'WARN' | 'INFO';
+  description: string;
+  unlocalized: boolean;
+  sourceRegion?: ReviewRegion;
+  outputRegion?: ReviewRegion;
+};
 export const STYLE_REVIEW_FIELDS: Record<StudioStyleId, ReadonlyArray<readonly [string, string]>> = {
   studio: [['scene', 'The scene contains no invented product, text, logo or claim']],
   hero: [['support', 'Support, reflections and lighting do not alter the protected product']],
@@ -49,6 +57,33 @@ function requireExactKeys(value: unknown, keys: readonly string[], name: string)
   }
 }
 
+export function validateReviewFindings(findings: unknown, sourceSize?: { width: number; height: number }): asserts findings is ReviewFinding[] {
+  if (!Array.isArray(findings) || findings.length > 20 ||
+      Reflect.ownKeys(findings).length !== findings.length + 1) throw new TypeError('Invalid review findings');
+  for (const finding of findings) {
+    if (!finding || typeof finding !== 'object' || Array.isArray(finding)) throw new TypeError('Invalid review finding');
+    const keys = ['severity', 'description', 'unlocalized',
+      ...(Object.hasOwn(finding, 'sourceRegion') ? ['sourceRegion'] : []),
+      ...(Object.hasOwn(finding, 'outputRegion') ? ['outputRegion'] : [])];
+    requireExactKeys(finding, keys, 'finding');
+    if (!['BLOCKER', 'WARN', 'INFO'].includes(finding.severity as string) ||
+        typeof finding.description !== 'string' || !finding.description || finding.description !== finding.description.trim() ||
+        finding.description.length > 500 || typeof finding.unlocalized !== 'boolean' ||
+        (finding.unlocalized ? keys.length !== 3 : keys.length === 3)) throw new TypeError('Invalid review finding');
+    for (const [key, size] of [['sourceRegion', sourceSize], ['outputRegion', { width: 1024, height: 1024 }]] as const) {
+      if (!Object.hasOwn(finding, key)) continue;
+      const region = finding[key];
+      requireExactKeys(region, ['x', 'y', 'width', 'height'], 'region');
+      const { x, y, width, height } = region;
+      if (![x, y, width, height].every((value) => typeof value === 'number' && Number.isSafeInteger(value)) ||
+          (x as number) < 0 || (y as number) < 0 || (width as number) < 1 || (height as number) < 1 ||
+          (size && ((x as number) + (width as number) > size.width || (y as number) + (height as number) > size.height))) {
+        throw new TypeError('Invalid or out-of-bounds review region');
+      }
+    }
+  }
+}
+
 // Six decimal places are an input limit, not a decision about score rounding.
 function scoreMicros(value: unknown): number {
   if (typeof value !== 'string') throw new TypeError('Scores must be decimal strings from 0 to 5 with at most six fractional digits');
@@ -68,7 +103,7 @@ export type VisualReviewEvaluation = {
 };
 
 export function evaluateVisualReview(scores: ReviewScores, checks: ReviewChecks, variant: ReviewVariant,
-  styleId?: StudioStyleId, styleChecks?: StyleReviewChecks): VisualReviewEvaluation {
+  styleId?: StudioStyleId, styleChecks?: StyleReviewChecks, findings?: ReviewFinding[]): VisualReviewEvaluation {
   requireExactKeys(scores, scoreKeys, 'score');
   requireExactKeys(checks, checkKeys, 'check');
   if (variant !== 'default' && variant !== 'unbranded') throw new TypeError('Invalid weighting variant');
@@ -94,6 +129,22 @@ export function evaluateVisualReview(scores: ReviewScores, checks: ReviewChecks,
   }));
   for (const [key, label] of styleFields) if (styleChecks?.[key] === 'MISMATCH') {
     hardVetoFindings.push({ code: `HUMAN_${styleId!.toUpperCase()}_${key.toUpperCase()}_MISMATCH`, description: `Reviewer selected a mismatch: ${label}.`, severity: 'BLOCKER' });
+  }
+  if (findings !== undefined) {
+    validateReviewFindings(findings);
+    const checksAll = [...Object.values(checks), ...Object.values(styleChecks ?? {})];
+    if (checksAll.includes('MISMATCH') && !findings.some((finding) => finding.severity === 'BLOCKER')) {
+      throw new Error('A mismatch requires a BLOCKER finding.');
+    }
+    if (!checksAll.includes('MISMATCH') && checksAll.includes('UNKNOWN') &&
+        !findings.some((finding) => finding.severity === 'WARN' || finding.severity === 'BLOCKER')) {
+      throw new Error('An unknown check requires a WARN or BLOCKER finding.');
+    }
+    findings.forEach((finding, index) => {
+      if (finding.severity === 'BLOCKER') hardVetoFindings.push({
+        code: `HUMAN_FINDING_${index + 1}`, description: finding.description, severity: 'BLOCKER',
+      });
+    });
   }
   const numerator = micros.reduce((sum, value, index) => sum + value * weights[index], 0);
   const status = hardVetoFindings.length ? 'REJECTED'

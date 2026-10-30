@@ -227,6 +227,40 @@ test('history corruption and unsupported attempt provenance fail closed', async 
   await assert.rejects(loadApprovedExportBatch(usage.f.productId, [usage.selection]), /usage/);
 });
 
+test('approved export rejects resealed v2 findings with invalid pixel regions', async () => {
+  const { f, selection } = await approved();
+  let changed;
+  await mutate(f.db, 'qaReports', selection.reviewId, (row) => {
+    changed = { ...row, report: { ...row.report, findings: [{
+      severity: 'INFO', description: 'Invalid region', unlocalized: false,
+      outputRegion: { x: 1024, y: 0, width: 1, height: 1 },
+    }] } };
+    return changed;
+  });
+  await mutate(f.db, 'userSettings', `visual-review-head:${selection.assetId}`, (head) => ({
+    ...head, entries: head.entries.map((entry) => entry.startsWith(`${selection.reviewId}:`)
+      ? `${selection.reviewId}:${hash(Buffer.from(JSON.stringify(changed)))}` : entry).sort(),
+  }));
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /region/);
+  await assert.rejects(listApprovedExportCandidates(f.productId), /region/);
+});
+
+test('the import barrier makes an existing v2 approval untrusted until a fresh independent decision', async () => {
+  const { f, selection } = await approved();
+  await add(f.db, 'userSettings', { key: `backup-import-review:${selection.assetId}`, revision: 1 });
+  const imported = await history(f);
+  assert.equal(imported.importedReviewRequired, true);
+  assert.equal(imported.decisions[0].current, false);
+  assert.deepEqual(await listApprovedExportCandidates(f.productId), []);
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]));
+  const fresh = await review(f);
+  assert.equal(fresh.report.schemaVersion, '2.0.0');
+  assert.deepEqual(await listApprovedExportCandidates(f.productId), []);
+  const receipt = await decision(f, fresh);
+  const next = { ...selection, reviewId: fresh.qaId, decisionId: receipt.qaId };
+  assert.deepEqual(await listApprovedExportCandidates(f.productId), [next]);
+});
+
 test('discovery surfaces decoder failures instead of reporting no approved outputs', async () => {
   const { f } = await approved();
   const originalDecode = globalThis.createImageBitmap;

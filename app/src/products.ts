@@ -1,7 +1,7 @@
 import validateProduct from 'virtual:product-validator';
 import validateGenerationJob from 'virtual:generation-job-validator';
 import validateQaReport from 'virtual:qa-report-validator';
-import { evaluateVisualReview, type ReviewScores, type ReviewChecks, type ReviewVariant, type VisualReviewEvaluation, type StyleReviewChecks } from './visualReviewRules';
+import { evaluateVisualReview, validateReviewFindings, type ReviewScores, type ReviewChecks, type ReviewVariant, type VisualReviewEvaluation, type StyleReviewChecks, type ReviewFinding } from './visualReviewRules';
 import { sha256, type PreparedSource } from './prepareSource';
 import { inspectImageHeader } from './imageHeader';
 import { STUDIO_MAX_PNG_BYTES, STUDIO_PROMPT, STUDIO_MODEL, STUDIO_PROMPT_VERSION, STUDIO_QUALITY,
@@ -1545,12 +1545,12 @@ type VisualProvenance = {
   recipeSha256?: string; adSha256?: string;
 };
 type VisualReport = {
-  schemaVersion: '1.0.0'; qaId: string; assetId: string; sourceSha256: string; lockMode: 'STRICT';
+  qaId: string; assetId: string; sourceSha256: string; lockMode: 'STRICT';
   scores: VisualReviewEvaluation['scores']; weightingVariant: ReviewVariant;
   weightedScore: number; status: VisualReviewEvaluation['status'];
   hardVetoFindings: VisualReviewEvaluation['hardVetoFindings'];
   humanDecision: 'PENDING'; reviewedAt: string; reviewerNote: string;
-};
+} & ({ schemaVersion: '1.0.0' } | { schemaVersion: '2.0.0'; findings: ReviewFinding[] });
 export type VisualReviewRecord = VisualProvenance & {
   kind: 'visual-review'; qaId: string; assetId: string; productId: string; attemptId: string;
   revision: number; report: VisualReport; scoresText: ReviewScores; checks: ReviewChecks;
@@ -1565,7 +1565,7 @@ export type StoredVisualDecision = Omit<VisualDecisionRecord, 'current'>;
 type CheckedVisualHistory = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[] };
 type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string; importedReviewRequired: boolean; recipeSha256?: string; adSha256?: string };
 type VisualOperation =
-  | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string; expectedRecipeSha256?: string; expectedAdSha256?: string; styleChecks?: StyleReviewChecks }
+  | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string; expectedRecipeSha256?: string; expectedAdSha256?: string; styleChecks?: StyleReviewChecks; findings: ReviewFinding[] }
   | { kind: 'decision'; assetId: string; reportId: string; decision: 'APPROVED' | 'REJECTED' }
   | { kind: 'list'; assetId: string };
 
@@ -1600,7 +1600,7 @@ function validateVisualNote(note: unknown, checks: ReviewChecks, styleChecks?: S
   }
 }
 
-function checkedVisualHistory(rows: unknown[], productId: string, attemptId: string, assetId: string, current: VisualProvenance, currentStyle?: StudioStyleId): CheckedVisualHistory {
+function checkedVisualHistory(rows: unknown[], productId: string, attemptId: string, assetId: string, current: VisualProvenance, sourceSize: { width: number; height: number }, currentStyle?: StudioStyleId): CheckedVisualHistory {
   const reviews: VisualReviewRecord[] = [], decisions: StoredVisualDecision[] = [];
   const base = ['kind', 'qaId', 'assetId', 'productId', 'attemptId', ...provenanceKeys, 'createdAt'];
   for (const value of rows) {
@@ -1617,9 +1617,11 @@ function checkedVisualHistory(rows: unknown[], productId: string, attemptId: str
         throw new Error('A visual review report is invalid.');
       }
       if (row.recipeSha256 && (!row.styleId || !row.styleChecks || (row.recipeSha256 === current.recipeSha256 && row.styleId !== currentStyle))) throw new Error('The review style does not match its recipe.');
+      const findings = row.report.schemaVersion === '2.0.0' ? row.report.findings : undefined;
+      if (findings !== undefined) validateReviewFindings(findings, sourceSize);
       const evaluated = row.recipeSha256
-        ? evaluateVisualReview(row.scoresText, row.checks, row.variant, row.styleId, row.styleChecks)
-        : evaluateVisualReview(row.scoresText, row.checks, row.variant);
+        ? evaluateVisualReview(row.scoresText, row.checks, row.variant, row.styleId, row.styleChecks, findings)
+        : evaluateVisualReview(row.scoresText, row.checks, row.variant, undefined, undefined, findings);
       validateVisualNote(row.report.reviewerNote, row.checks, row.styleChecks);
       if (JSON.stringify(row.report.scores) !== JSON.stringify(evaluated.scores) ||
           row.report.weightedScore !== evaluated.weightedScore || row.report.status !== evaluated.status ||
@@ -1759,7 +1761,9 @@ export async function validateBackupHistory(product: Product, sources: BackupSou
     const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: composite.sourceSha256, maskId: composite.maskId,
       maskSha256: composite.maskSha256, sceneAssetId: composite.sceneAssetId, sceneSha256: composite.sceneSha256,
       productSha256: rows[0]?.productSha256 ?? '0'.repeat(64), ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
-    checkedVisualHistory(rows, product.productId, composite.attemptId, composite.assetId, provenance, composite.recipe?.styleId);
+    const source = sources.find((item) => item.metadata.assetId === composite.sourceAssetId);
+    if (!source) throw new Error('The review source is missing.');
+    checkedVisualHistory(rows, product.productId, composite.attemptId, composite.assetId, provenance, source.metadata, composite.recipe?.styleId);
     const entries = (await Promise.all(rows.map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
     const head = history.heads.find((item) => item.key === `visual-review-head:${asset.assetId}`);
     if (head ? JSON.stringify(head.entries) !== JSON.stringify(entries) : entries.length !== 0) throw new Error('A review history head is missing or inconsistent.');
@@ -1950,7 +1954,7 @@ async function strictCompositeTransaction(
                   sceneSha256: inputs.sceneSha256, productSha256: attempt.styleId ? await productSnapshotFingerprint(product) : await sha256(new TextEncoder().encode(JSON.stringify(product))),
                   ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
                 if (!verifying) return;
-                const history = checkedVisualHistory(reviewsRequest!.result, productId, attemptId, visual.assetId, provenance, composite.recipe?.styleId);
+                const history = checkedVisualHistory(reviewsRequest!.result, productId, attemptId, visual.assetId, provenance, source, composite.recipe?.styleId);
                 const entries = (await Promise.all((reviewsRequest!.result as Array<VisualReviewRecord | StoredVisualDecision>)
                   .map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
                 if (!verifying) return;
@@ -1981,14 +1985,15 @@ async function strictCompositeTransaction(
                   }
                   if (visual.expectedRecipeSha256 !== provenance.recipeSha256 || visual.expectedAdSha256 !== provenance.adSha256) throw new Error('The recipe or advertisement changed since it was reviewed.');
                   validateVisualNote(visual.note, visual.checks, visual.styleChecks);
+                  validateReviewFindings(visual.findings, source);
                   const evaluated = composite.recipe
-                    ? evaluateVisualReview(visual.scoresText, visual.checks, visual.variant, composite.recipe.styleId, visual.styleChecks)
-                    : evaluateVisualReview(visual.scoresText, visual.checks, visual.variant);
+                    ? evaluateVisualReview(visual.scoresText, visual.checks, visual.variant, composite.recipe.styleId, visual.styleChecks, visual.findings)
+                    : evaluateVisualReview(visual.scoresText, visual.checks, visual.variant, undefined, undefined, visual.findings);
                   if (!composite.recipe && visual.styleChecks !== undefined) throw new Error('Legacy reviews do not use style checks.');
                   const qaId = crypto.randomUUID(), createdAt = new Date().toISOString();
-                  const report: VisualReport = { schemaVersion: '1.0.0', qaId, assetId: visual.assetId,
+                  const report: VisualReport = { schemaVersion: '2.0.0', qaId, assetId: visual.assetId,
                     sourceSha256: inputs.sourceSha256, lockMode: 'STRICT', ...evaluated, weightingVariant: visual.variant,
-                    humanDecision: 'PENDING', reviewedAt: createdAt, reviewerNote: visual.note };
+                    humanDecision: 'PENDING', reviewedAt: createdAt, reviewerNote: visual.note, findings: visual.findings };
                   if (!validateQaReport(report)) throw new Error('The visual review report does not satisfy the QA schema.');
                   const record: VisualReviewRecord = { kind: 'visual-review', qaId, assetId: visual.assetId,
                     productId, attemptId, revision: history.reviews.length + 1, report,
@@ -2180,10 +2185,11 @@ async function visualReviewOperation(productId: string, attemptId: string, opera
 
 export async function createVisualReview(productId: string, attemptId: string, assetId: string, scoresText: ReviewScores,
   checks: ReviewChecks, variant: ReviewVariant, note: string, expectedProductSha256: string,
-  expectedAssetSha256: string, signal?: AbortSignal, expectedRecipeSha256?: string, expectedAdSha256?: string, styleChecks?: StyleReviewChecks): Promise<VisualReviewRecord> {
+  expectedAssetSha256: string, signal?: AbortSignal, expectedRecipeSha256?: string, expectedAdSha256?: string, styleChecks?: StyleReviewChecks, findings: ReviewFinding[] = []): Promise<VisualReviewRecord> {
+  validateReviewFindings(findings);
   const operation: VisualOperation = { kind: 'review', assetId, scoresText: structuredClone(scoresText),
     checks: structuredClone(checks), variant, note, expectedProductSha256, expectedAssetSha256, expectedRecipeSha256, expectedAdSha256,
-    ...(styleChecks === undefined ? {} : { styleChecks: structuredClone(styleChecks) }) };
+    findings: structuredClone(findings), ...(styleChecks === undefined ? {} : { styleChecks: structuredClone(styleChecks) }) };
   return await visualReviewOperation(productId, attemptId, operation, signal) as VisualReviewRecord;
 }
 
@@ -2425,7 +2431,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
             maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId,
             sceneSha256: scene.sha256, productSha256,
             ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
-          const history = checkedVisualHistory(reviews, productId, attempt.attemptId, selection.assetId, provenance, composite.recipe?.styleId);
+          const history = checkedVisualHistory(reviews, productId, attempt.attemptId, selection.assetId, provenance, source, composite.recipe?.styleId);
           const entries = (await Promise.all((reviews as Array<VisualReviewRecord | StoredVisualDecision>)
             .map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
           const headKey = `visual-review-head:${selection.assetId}`;

@@ -8,7 +8,7 @@ const result = await build({
 });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { evaluateVisualReview } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { evaluateVisualReview, validateReviewFindings } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const scores = { design: '4.25', typography: '4.25', geometry: '4.25', realism: '4.25', style: '4.25' };
 const checks = { product: 'MATCH', typography: 'MATCH', claims: 'MATCH', viewpoint: 'MATCH', source: 'MATCH', mask: 'MATCH' };
@@ -88,4 +88,35 @@ test('style-specific unresolved or mismatched evidence cannot be approved even a
     assert.throws(() => evaluateVisualReview(max, checks, 'default', styleId, {}));
     assert.throws(() => evaluateVisualReview(max, checks, 'default', styleId, { ...all, extra: 'MATCH' }));
   }
+});
+
+test('new findings enforce evidence and independently veto at full score', () => {
+  const max = Object.fromEntries(Object.keys(scores).map((key) => [key, '5']));
+  const blocker = { severity: 'BLOCKER', description: 'Wrong label', unlocalized: true };
+  const warn = { severity: 'WARN', description: 'Label unclear', unlocalized: true };
+  const run = (c, findings, styleId, styleChecks) => evaluateVisualReview(max, c, 'default', styleId, styleChecks, findings);
+  assert.equal(run(checks, [blocker]).status, 'REJECTED');
+  assert.deepEqual(run(checks, [blocker]).hardVetoFindings, [{ code: 'HUMAN_FINDING_1', description: 'Wrong label', severity: 'BLOCKER' }]);
+  assert.throws(() => run({ ...checks, source: 'MISMATCH' }, [warn]), /BLOCKER/);
+  assert.throws(() => run({ ...checks, source: 'UNKNOWN' }, []), /WARN/);
+  assert.equal(run({ ...checks, source: 'UNKNOWN' }, [warn]).status, 'UNVERIFIABLE');
+  assert.throws(() => run(checks, [], 'studio', { scene: 'MISMATCH' }), /BLOCKER/);
+  assert.throws(() => run(checks, [], 'studio', { scene: 'UNKNOWN' }), /WARN/);
+  assert.equal(evaluateVisualReview(max, { ...checks, source: 'MISMATCH' }, 'default').hardVetoFindings.length, 1);
+});
+
+test('finding shape, localization and pixel boundaries are strict', () => {
+  const valid = { severity: 'INFO', description: 'Edge', unlocalized: false,
+    sourceRegion: { x: 1, y: 0, width: 1, height: 1 }, outputRegion: { x: 1023, y: 1023, width: 1, height: 1 } };
+  validateReviewFindings([valid], { width: 2, height: 1 });
+  for (const invalid of [
+    { ...valid, sourceRegion: { ...valid.sourceRegion, x: 2 } },
+    { ...valid, outputRegion: { ...valid.outputRegion, width: 2 } },
+    { ...valid, sourceRegion: { ...valid.sourceRegion, width: 0 } },
+    { ...valid, sourceRegion: { ...valid.sourceRegion, x: 0.5 } },
+    { ...valid, sourceRegion: { ...valid.sourceRegion, extra: 1 } },
+    { ...valid, unlocalized: true }, { severity: 'INFO', description: 'Edge', unlocalized: false },
+    { ...valid, description: ' Edge' }, { ...valid, description: 'x'.repeat(501) }, { ...valid, extra: true },
+  ]) assert.throws(() => validateReviewFindings([invalid], { width: 2, height: 1 }));
+  assert.throws(() => validateReviewFindings(Array(21).fill(valid), { width: 2, height: 1 }));
 });

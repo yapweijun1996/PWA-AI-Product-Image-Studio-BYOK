@@ -117,6 +117,13 @@ The owner selected a **self-hosted gateway with server-configured provider key**
 - **Compatibility:** Some otherwise valid v1 or v2 backups and large local projects previously accepted by the application now exceed the safety limit and are rejected. This incompatible restriction advances the SSOT baseline to 5.0.0; archive schema versions and gateway request fields are unchanged. No automatic migration, deletion or splitting is performed.
 - **Rollback:** Disable backup import/export or replace the limit with an equivalently reviewed bounded implementation; preserve all source records and archives.
 
+## ADR-014 — Versioned structured human findings
+
+- **State:** Local development implementation only; actual-product, installed-device and independent security acceptance remain open.
+- **Decision:** New QA reports record bounded human findings with severity and source/output pixel rectangles, or an explicitly unlocalized scope when no truthful region can be given. A human `BLOCKER` is a hard veto even at a perfect score. Findings do not create an approval; the decision remains separate and evidence-bound.
+- **Compatibility:** Historical v1 reports remain readable without modification; new structured reports use v2. Older clients cannot safely validate the new report semantics, so the SSOT baseline advances to 6.0.0. The gateway API route and archive format versions do not change. Imported review history remains untrusted and requires a new local review.
+- **Rollback:** Preserve all QA records, history heads, originals and outputs. Disable new review creation or implement a reviewed migration before returning to an older client; never discard a blocker to enable approval.
+
 ## ADR amendment template
 
 `ADR-ID | Title | Author | Date | State | Scope | Options | Decision + user approval evidence | Security/Data impact | Migration | Test evidence | Rollback | Supersedes`.

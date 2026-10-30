@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/ssot/qa-report.schema.json",
-  "title": "Visual QA Report v1",
+  "title": "Visual QA Report",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,9 +17,50 @@
     "humanDecision",
     "reviewedAt"
   ],
+  "allOf": [
+    {
+      "if": { "type": "object", "properties": { "schemaVersion": { "const": "2.0.0" } }, "required": ["schemaVersion"] },
+      "then": { "type": "object", "properties": { "findings": {} }, "required": ["findings"] },
+      "else": { "not": { "type": "object", "properties": { "findings": {} }, "required": ["findings"] } }
+    }
+  ],
+  "$defs": {
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
   "properties": {
     "schemaVersion": {
-      "const": "1.0.0"
+      "enum": ["1.0.0", "2.0.0"]
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "description", "unlocalized"],
+        "properties": {
+          "severity": { "enum": ["BLOCKER", "WARN", "INFO"] },
+          "description": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^\\S(?:[\\s\\S]*\\S)?$" },
+          "unlocalized": { "type": "boolean" },
+          "sourceRegion": { "$ref": "#/$defs/region" },
+          "outputRegion": { "$ref": "#/$defs/region" }
+        },
+        "allOf": [{
+          "if": { "type": "object", "properties": { "unlocalized": { "const": true } }, "required": ["unlocalized"] },
+          "then": { "not": { "anyOf": [{ "type": "object", "properties": { "sourceRegion": {} }, "required": ["sourceRegion"] }, { "type": "object", "properties": { "outputRegion": {} }, "required": ["outputRegion"] }] } },
+          "else": { "anyOf": [{ "type": "object", "properties": { "sourceRegion": {} }, "required": ["sourceRegion"] }, { "type": "object", "properties": { "outputRegion": {} }, "required": ["outputRegion"] }] }
+        }]
+      }
     },
     "qaId": {
       "type": "string",

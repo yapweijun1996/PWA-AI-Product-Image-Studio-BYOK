@@ -91,7 +91,7 @@ const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
 const { createProduct, saveSource, saveMask, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint,
   loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts,
-  createVisualReview, recordVisualDecision, listVisualReviews } =
+  createVisualReview, recordVisualDecision, listVisualReviews, getBackupSnapshot, validateBackupHistory } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 async function fixture() {
@@ -155,6 +155,7 @@ function remove(db, store, key) {
 
 const scores = { design: '5', typography: '5', geometry: '5', realism: '5', style: '5' };
 const matches = { product: 'MATCH', typography: 'MATCH', claims: 'MATCH', viewpoint: 'MATCH', source: 'MATCH', mask: 'MATCH' };
+const finding = (severity) => ({ severity, description: 'Visible issue', unlocalized: true });
 async function ready() {
   const f = await fixture();
   f.composite = await save(f, await load(f));
@@ -162,7 +163,8 @@ async function ready() {
 }
 const review = async (f, checks = matches, variant = 'default', values = scores) =>
   createVisualReview(f.productId, f.attemptId, f.composite.assetId, values, checks, variant, 'Upper label text is blurred.',
-    (await history(f)).productSha256, f.composite.sha256);
+    (await history(f)).productSha256, f.composite.sha256, undefined, undefined, undefined, undefined,
+    Object.values(checks).includes('MISMATCH') ? [finding('BLOCKER')] : Object.values(checks).includes('UNKNOWN') ? [finding('WARN')] : []);
 const decision = (f, report, choice = 'APPROVED', signal) =>
   recordVisualDecision(f.productId, f.attemptId, f.composite.assetId, report.qaId, choice, signal);
 const history = (f) => listVisualReviews(f.productId, f.attemptId, f.composite.assetId);
@@ -178,15 +180,78 @@ test('uncertain or mismatched checks require a nonempty human note, preserved ve
   assert.equal((await history(f)).reviews.length, 0);
   const note = '  Original upper label is too blurry to read.  ';
   const report = await createVisualReview(f.productId, f.attemptId, f.composite.assetId, scores,
-    { ...matches, source: 'UNKNOWN' }, 'default', note, fingerprint, f.composite.sha256);
+    { ...matches, source: 'UNKNOWN' }, 'default', note, fingerprint, f.composite.sha256, undefined, undefined, undefined, undefined, [finding('WARN')]);
   assert.equal(report.report.reviewerNote, note);
   assert.equal((await history(f)).reviews[0].report.reviewerNote, note);
   const chinese = await createVisualReview(f.productId, f.attemptId, f.composite.assetId, scores,
-    { ...matches, typography: 'MISMATCH' }, 'default', '标签错字', fingerprint, f.composite.sha256);
+    { ...matches, typography: 'MISMATCH' }, 'default', '标签错字', fingerprint, f.composite.sha256, undefined, undefined, undefined, undefined, [finding('BLOCKER')]);
   assert.equal(chinese.report.reviewerNote, '标签错字');
   assert.equal((await history(f)).reviews[1].report.reviewerNote, '标签错字');
   const allMatch = await createVisualReview(f.productId, f.attemptId, f.composite.assetId, scores, matches, 'default', '', fingerprint, f.composite.sha256);
   assert.equal(allMatch.report.reviewerNote, '');
+});
+
+test('v2 writes require evidence and enforce verified source and output boundaries', async () => {
+  const f = await ready(), fingerprint = (await history(f)).productSha256;
+  const saveReview = (checks, findings) => createVisualReview(f.productId, f.attemptId, f.composite.assetId, scores,
+    checks, 'default', 'Issue', fingerprint, f.composite.sha256, undefined, undefined, undefined, undefined, findings);
+  await assert.rejects(saveReview({ ...matches, source: 'MISMATCH' }, [finding('WARN')]), /BLOCKER/);
+  await assert.rejects(saveReview({ ...matches, source: 'UNKNOWN' }, []), /WARN/);
+  const regionFinding = { severity: 'BLOCKER', description: 'Issue at edge', unlocalized: false,
+    sourceRegion: { x: 1, y: 0, width: 1, height: 1 }, outputRegion: { x: 1023, y: 1023, width: 1, height: 1 } };
+  await assert.rejects(saveReview(matches, [{ ...regionFinding, sourceRegion: { x: 2, y: 0, width: 1, height: 1 } }]), /region/);
+  await assert.rejects(saveReview(matches, [{ ...regionFinding, outputRegion: { x: 1023, y: 1023, width: 2, height: 1 } }]), /region/);
+  const report = await saveReview(matches, [regionFinding]);
+  assert.equal(report.report.schemaVersion, '2.0.0');
+  assert.equal(report.report.status, 'REJECTED');
+  await assert.rejects(decision(f, report));
+  assert.deepEqual((await history(f)).reviews[0].report.findings, [regionFinding]);
+});
+
+test('mixed legacy and v2 histories preserve their heads and validate in full backups', async () => {
+  const f = await ready(), original = await review(f, { ...matches, source: 'UNKNOWN' });
+  const { findings, ...legacyReport } = original.report;
+  const legacy = { ...original, report: { ...legacyReport, schemaVersion: '1.0.0' } };
+  await mutate(f.db, 'qaReports', legacy.qaId, () => legacy);
+  const entry = `${legacy.qaId}:${hash(Buffer.from(JSON.stringify(legacy)))}`;
+  await mutate(f.db, 'userSettings', `visual-review-head:${f.composite.assetId}`, (head) => ({ ...head, entries: [entry] }));
+  const restored = await history(f);
+  assert.deepEqual(restored.reviews[0], legacy);
+  const next = await review(f);
+  assert.equal(next.report.schemaVersion, '2.0.0');
+  const backup = await getBackupSnapshot(f.productId);
+  assert.deepEqual(backup.history.reviews.find((row) => row.qaId === legacy.qaId), legacy);
+  assert.ok(backup.history.heads[0].entries.includes(entry));
+  await validateBackupHistory(backup.product, backup.sources, backup.masks, backup.history);
+  const damaged = structuredClone(backup.history);
+  const current = damaged.reviews.find((row) => row.qaId === next.qaId);
+  current.report.findings = [{ severity: 'INFO', description: 'Bad region', unlocalized: false, sourceRegion: { x: 2, y: 0, width: 1, height: 1 } }];
+  damaged.heads[0].entries = damaged.heads[0].entries.map((item) => item.startsWith(`${next.qaId}:`) ? `${next.qaId}:${hash(Buffer.from(JSON.stringify(current)))}` : item).sort();
+  await assert.rejects(validateBackupHistory(backup.product, backup.sources, backup.masks, damaged), /region/);
+  for (const alter of [
+    (report) => { report.schemaVersion = '3.0.0'; },
+    (report) => { report.schemaVersion = '1.0.0'; },
+    (report) => { delete report.findings; },
+    (report) => { report.findings = [{ ...finding('INFO'), extra: true }]; },
+  ]) {
+    const forged = structuredClone(backup.history);
+    alter(forged.reviews.find((row) => row.qaId === next.qaId).report);
+    await assert.rejects(validateBackupHistory(backup.product, backup.sources, backup.masks, forged));
+  }
+});
+
+test('legacy mismatches keep their original single veto without structured evidence', async () => {
+  const f = await ready(), original = await review(f, { ...matches, source: 'MISMATCH' });
+  const { findings, ...report } = original.report;
+  const legacy = { ...original, report: { ...report, schemaVersion: '1.0.0',
+    hardVetoFindings: report.hardVetoFindings.filter((item) => item.code !== 'HUMAN_FINDING_1') } };
+  await mutate(f.db, 'qaReports', legacy.qaId, () => legacy);
+  await mutate(f.db, 'userSettings', `visual-review-head:${f.composite.assetId}`, (head) => ({
+    ...head, entries: [`${legacy.qaId}:${hash(Buffer.from(JSON.stringify(legacy)))}`],
+  }));
+  assert.deepEqual((await history(f)).reviews[0], legacy);
+  await assert.rejects(decision(f, legacy));
+  await getBackupSnapshot(f.productId);
 });
 
 test('review rejects the previously displayed product snapshot after another tab adds a fact', async () => {
@@ -251,7 +316,7 @@ test('hard veto and uncertainty override 100, and unbranded cannot be approved',
     const report = await review(f, { ...matches, [check]: 'MISMATCH' });
     assert.equal(report.report.weightedScore, 100);
     assert.equal(report.report.status, 'REJECTED');
-    assert.equal(report.report.hardVetoFindings.length, 1);
+    assert.equal(report.report.hardVetoFindings.length, 2);
     await assert.rejects(decision(f, report));
   }
   for (const check of Object.keys(matches)) {

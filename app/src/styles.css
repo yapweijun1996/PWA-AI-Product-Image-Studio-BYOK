@@ -143,8 +143,7 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .strict-selection-outline { position: absolute; box-sizing: border-box; border: 2px solid var(--accent); outline: 1px solid var(--surface); pointer-events: none; }
 .strict-composite figcaption { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .strict-actions { display: flex; flex-wrap: wrap; gap: 12px; }
-.visual-review { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
-.qa-product-context { overflow-wrap: anywhere; }
+.visual-review { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
 .visual-review form { align-items: stretch; }
 .visual-review form > label:not(.checkbox-label) { display: flex; flex-direction: column; gap: 6px; }
 .visual-review fieldset { min-width: 0; width: 100%; border: 1px solid var(--border); padding: 12px; }
