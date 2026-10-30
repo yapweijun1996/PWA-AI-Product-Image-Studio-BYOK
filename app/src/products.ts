@@ -4,7 +4,8 @@ import validateQaReport from 'virtual:qa-report-validator';
 import { evaluateVisualReview, type ReviewScores, type ReviewChecks, type ReviewVariant, type VisualReviewEvaluation } from './visualReviewRules';
 import { sha256, type PreparedSource } from './prepareSource';
 import { inspectImageHeader } from './imageHeader';
-import { STUDIO_MAX_PNG_BYTES } from '../studio-policy.mjs';
+import { STUDIO_MAX_PNG_BYTES, STUDIO_PROMPT, STUDIO_MODEL, STUDIO_PROMPT_VERSION, STUDIO_QUALITY,
+  STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
 import { renderStrictComposite } from './strictComposite';
 
 export type Fact = {
@@ -1559,4 +1560,302 @@ export async function recordVisualDecision(productId: string, attemptId: string,
 
 export async function listVisualReviews(productId: string, attemptId: string, assetId: string, signal?: AbortSignal): Promise<VisualHistory> {
   return await visualReviewOperation(productId, attemptId, { kind: 'list', assetId }, signal) as VisualHistory;
+}
+
+export type ApprovedExportSelection = {
+  attemptId: string; assetId: string; productSha256: string; assetSha256: string; reviewId: string; decisionId: string;
+};
+export type ApprovedExportProvenance = {
+  attemptId: string; jobId: string; model: string; promptVersion: string; prompt: string; promptSha256: string;
+  styleId: 'studio'; quality: string; size: string;
+  usage: Record<string, unknown> | null; estimatedUSD: string; observedUSD: string | null; pricingSnapshot: string | null;
+  createdAt: string; submittedAt: string; reviewId: string; reviewedAt: string; decisionId: string; decidedAt: string;
+  sourceAssetId: string; sourceSha256: string; maskId: string; maskSha256: string;
+  sceneAssetId: string; sceneSha256: string; assetSha256: string; productSha256: string;
+};
+export type ApprovedExportEntry = { selection: ApprovedExportSelection; blob: Blob; provenance: ApprovedExportProvenance };
+
+function checkedExportUsage(value: unknown): Record<string, unknown> | null {
+  if (value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The saved usage is unsupported.');
+  const usage = value as Record<string, unknown>;
+  const keys = ['input_tokens', 'output_tokens', 'total_tokens', 'input_tokens_details', 'output_tokens_details'];
+  const token = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
+  if (Object.keys(usage).some((key) => !keys.includes(key)) ||
+      !token(usage.input_tokens) || !token(usage.output_tokens) || !token(usage.total_tokens) ||
+      usage.input_tokens > usage.total_tokens || usage.output_tokens !== usage.total_tokens - usage.input_tokens) {
+    throw new Error('The saved usage is unsupported.');
+  }
+  const result: Record<string, unknown> = {
+    input_tokens: usage.input_tokens, output_tokens: usage.output_tokens, total_tokens: usage.total_tokens,
+  };
+  for (const [key, limit] of [['input_tokens_details', usage.input_tokens], ['output_tokens_details', usage.output_tokens]] as const) {
+    if (!Object.hasOwn(usage, key)) continue;
+    const value = usage[key];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The saved usage details are unsupported.');
+    const details = value as Record<string, unknown>;
+    if (!Object.keys(details).length || Object.keys(details).some((field) => field !== 'text_tokens' && field !== 'image_tokens')) {
+      throw new Error('The saved usage details are unsupported.');
+    }
+    let remaining = limit;
+    const copy: Record<string, number> = {};
+    for (const field of ['image_tokens', 'text_tokens']) {
+      if (!Object.hasOwn(details, field)) continue;
+      const amount = details[field];
+      if (!token(amount) || amount > remaining) throw new Error('The saved usage details are invalid.');
+      copy[field] = amount; remaining -= amount;
+    }
+    result[key] = copy;
+  }
+  return result;
+}
+
+function checkedExportAttempt(attempt: StudioAttempt): Record<string, unknown> | null {
+  const allowed = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256',
+    'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride',
+    'submittedAt', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'status',
+    'usage', 'observedUSD', 'pricingSnapshot', 'acknowledgedAt', 'recordedOutcome', 'cleanupPending', 'recoveryLockVersion'];
+  if (Object.keys(attempt).some((key) => !allowed.includes(key)) ||
+      attempt.prompt !== STUDIO_PROMPT || attempt.promptVersion !== STUDIO_PROMPT_VERSION ||
+      attempt.model !== STUDIO_MODEL || attempt.quality !== STUDIO_QUALITY || attempt.size !== STUDIO_SIZE ||
+      attempt.estimatedUSD !== studioEstimateUSD()) throw new Error('The attempt provenance is unsupported.');
+  const usage = checkedExportUsage(attempt.usage);
+  if (attempt.observedUSD === null ? attempt.pricingSnapshot !== undefined :
+      attempt.pricingSnapshot !== STUDIO_PRICING_SNAPSHOT || studioObservedUSD(usage) !== attempt.observedUSD) {
+    throw new Error('The saved cost snapshot is invalid.');
+  }
+  return usage;
+}
+
+function exportRequest<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Could not read export data.'));
+  });
+}
+
+// All reads and asynchronous image verification remain inside one locked snapshot.
+// IndexedDB normally commits while hashing/decoding, so a harmless request keeps it alive.
+async function approvedExportTransaction(productId: string, selections: ApprovedExportSelection[],
+  signal?: AbortSignal, onVerified?: (entries: ApprovedExportEntry[]) => void): Promise<ApprovedExportEntry[]> {
+  const cancellation = signal ?? new AbortController().signal;
+  checkCompositeCancellation(cancellation);
+  if (typeof productId !== 'string' || !uuidPattern.test(productId) || !Array.isArray(selections) || selections.length === 0 || selections.length > 100) {
+    throw new Error('Select between one and 100 approved outputs.');
+  }
+  const selected = selections.map((selection) => {
+    const keys = ['attemptId', 'assetId', 'productSha256', 'assetSha256', 'reviewId', 'decisionId'];
+    if (!selection || typeof selection !== 'object' || !exactKeys(selection, keys) ||
+        ![selection.attemptId, selection.assetId, selection.reviewId, selection.decisionId].every((id) => typeof id === 'string' && uuidPattern.test(id)) ||
+        ![selection.productSha256, selection.assetSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash))) {
+      throw new Error('An export selection is invalid.');
+    }
+    return { ...selection };
+  });
+  if (new Set(selected.map((item) => item.assetId)).size !== selected.length) throw new Error('Duplicate outputs cannot be exported.');
+  const db = await openDatabase();
+  checkCompositeCancellation(cancellation);
+  return await new Promise<ApprovedExportEntry[]>((resolve, reject) => {
+    const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets', 'qaReports', 'userSettings'], 'readonly');
+    const products = tx.objectStore('products'), assets = tx.objectStore('generatedAssets');
+    let active = true, ready = false, failure: Error | undefined, result: ApprovedExportEntry[] = [];
+    const abort = () => {
+      failure = new DOMException('Export was cancelled.', 'AbortError'); active = false;
+      try { tx.abort(); } catch { /* Already completed. */ }
+    };
+    cancellation.addEventListener('abort', abort, { once: true });
+    if (cancellation.aborted) abort();
+    const keepAlive = () => {
+      if (!active) return;
+      if (ready) {
+        try {
+          checkCompositeCancellation(cancellation);
+          const returned = (onVerified as ((entries: ApprovedExportEntry[]) => unknown) | undefined)?.(result);
+          if (returned && (typeof returned === 'object' || typeof returned === 'function') &&
+              'then' in returned && typeof returned.then === 'function') {
+            throw new Error('The verified export callback must be synchronous.');
+          }
+          active = false;
+        } catch (error) {
+          active = false; failure = error instanceof Error ? error : new Error('The verified export callback failed.');
+          try { tx.abort(); } catch { /* Already aborted. */ }
+        }
+      } else {
+        const request = products.get(productId);
+        request.onsuccess = keepAlive;
+      }
+    };
+    keepAlive();
+    void (async () => {
+      try {
+        const product = checkedProduct(await exportRequest(products.get(productId)));
+        validateBackupReferences(product);
+        if (product.productId !== productId || !product.rightsAcknowledged || product.brandLock.mode !== 'STRICT') {
+          throw new Error('The project is not eligible for approved export.');
+        }
+        const productSha256 = await sha256(new TextEncoder().encode(JSON.stringify(product)));
+        for (const selection of selected) {
+          checkCompositeCancellation(cancellation);
+          if (selection.productSha256 !== productSha256) throw new Error('The selected approval is stale.');
+          const attempt = await exportRequest(tx.objectStore('attempts').get(selection.attemptId)) as StudioAttempt | undefined;
+          if (!attempt || attempt.attemptId !== selection.attemptId || attempt.productId !== productId ||
+              attempt.status !== 'DEFINITIVE_SUCCESS' ||
+              ![attempt.jobId, attempt.sourceAssetId, attempt.maskId].every((id) => typeof id === 'string' && uuidPattern.test(id)) ||
+              ![attempt.sourceSha256, attempt.maskSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash))) {
+            throw new Error('The successful attempt is missing or invalid.');
+          }
+          const usage = checkedExportAttempt(attempt);
+          if (product.brandLock.maskAssetId !== attempt.maskId) throw new Error('The active mask changed.');
+          const source = product.sourceAssets.find((item) => item.assetId === attempt.sourceAssetId);
+          if (!source || source.sha256 !== attempt.sourceSha256) throw new Error('The attempt source changed.');
+          ownedSource(product, source);
+          const [sourceRow, maskRow, versions, job, rows, composite, reviews, head] = await Promise.all([
+            exportRequest(tx.objectStore('sourceAssets').get(attempt.sourceAssetId)),
+            exportRequest(tx.objectStore('masks').get(attempt.maskId)),
+            exportRequest(tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId)),
+            exportRequest(tx.objectStore('jobs').get(attempt.jobId)) as Promise<StudioJob | undefined>,
+            exportRequest(assets.index('attemptId').getAll(attempt.attemptId)) as Promise<unknown[]>,
+            exportRequest(assets.get(selection.assetId)) as Promise<StrictComposite | undefined>,
+            exportRequest(tx.objectStore('qaReports').index('assetId').getAll(selection.assetId)) as Promise<unknown[]>,
+            exportRequest(tx.objectStore('userSettings').get(`visual-review-head:${selection.assetId}`)),
+          ]);
+          if (!job || !validateGenerationJob(job) || job.productId !== productId || job.jobId !== attempt.jobId ||
+              !job.attempts[0] || JSON.stringify(job) !== JSON.stringify(studioJob(attempt,
+                await sha256(new TextEncoder().encode(attempt.prompt)), job.attempts[0].submittedAt, job.attempts[0].completedAt))) {
+            throw new Error('The successful job does not match its attempt.');
+          }
+          const submittedAt = job.attempts[0].submittedAt;
+          if (typeof submittedAt !== 'string' || !Number.isFinite(Date.parse(submittedAt))) {
+            throw new Error('The successful job has no valid submission time.');
+          }
+          const scenes = rows.filter(isStudioScene), scene = scenes[0];
+          if (scenes.length !== 1 || !scene || scene.productId !== productId || scene.attemptId !== attempt.attemptId ||
+              typeof scene.sha256 !== 'string' || !hashPattern.test(scene.sha256)) throw new Error('The original scene is invalid.');
+          const original = await verifyStoredSource(productId, source, sourceRow);
+          const mask = await verifyMask(product, maskRow);
+          if (mask.metadata.maskId !== attempt.maskId || mask.metadata.sha256 !== attempt.maskSha256 ||
+              mask.metadata.sourceAssetId !== attempt.sourceAssetId || mask.metadata.sourceSha256 !== attempt.sourceSha256) {
+            throw new Error('The active mask does not match the attempt.');
+          }
+          const verifiedVersions: BackupMask[] = [];
+          for (const row of versions) {
+            const version = await verifyMask(product, row);
+            await verifyMaskAlpha(original, version);
+            verifiedVersions.push(version);
+            checkCompositeCancellation(cancellation);
+          }
+          validateMaskReferences(product, verifiedVersions);
+          await verifyStrictPng(scene.blob, scene.sha256);
+          const compositeKeys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId',
+            'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt'];
+          if (!composite || !exactKeys(composite, compositeKeys) || composite.kind !== 'strict-composite' ||
+              composite.assetId !== selection.assetId || composite.productId !== productId || composite.attemptId !== attempt.attemptId ||
+              composite.sourceAssetId !== source.assetId || composite.sourceSha256 !== source.sha256 ||
+              composite.maskId !== mask.metadata.maskId || composite.maskSha256 !== mask.metadata.sha256 ||
+              composite.sceneAssetId !== scene.assetId || composite.sceneSha256 !== scene.sha256 ||
+              composite.sha256 !== selection.assetSha256 || typeof composite.createdAt !== 'string' ||
+              !Number.isFinite(Date.parse(composite.createdAt))) throw new Error('The selected composite lineage is invalid.');
+          verifyStrictMapping(composite.mapping, source.width, source.height);
+          await verifyStrictPng(composite.blob, selection.assetSha256);
+          const rendered = await renderStrictComposite({ source: original.blob, mask: mask.blob, scene: scene.blob,
+            sourceWidth: source.width, sourceHeight: source.height, signal: cancellation });
+          verifyStrictMapping(rendered.mapping, source.width, source.height);
+          await compareCompositePixels(rendered.blob, composite.blob, cancellation);
+          const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: source.sha256,
+            maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId,
+            sceneSha256: scene.sha256, productSha256 };
+          const history = checkedVisualHistory(reviews, productId, attempt.attemptId, selection.assetId, provenance);
+          const entries = (await Promise.all((reviews as Array<VisualReviewRecord | StoredVisualDecision>)
+            .map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
+          const headKey = `visual-review-head:${selection.assetId}`;
+          const storedHead = head as { key: string; entries: string[] } | undefined;
+          if (!storedHead || typeof storedHead !== 'object' || !exactKeys(storedHead, ['key', 'entries']) ||
+              storedHead.key !== headKey || !Array.isArray(storedHead.entries) ||
+              JSON.stringify(storedHead.entries) !== JSON.stringify(entries)) throw new Error('The visual review history head is invalid.');
+          const review = history.reviews[history.reviews.length - 1];
+          const decision = history.decisions.find((item) => item.qaId === selection.decisionId);
+          if (!review || review.qaId !== selection.reviewId || !sameProvenance(review, provenance) ||
+              review.report.status !== 'PASS_CANDIDATE' || review.report.hardVetoFindings.length !== 0 ||
+              Object.values(review.checks).some((check) => check !== 'MATCH') ||
+              !decision || !decision.current || decision.decision !== 'APPROVED' || decision.reportId !== review.qaId) {
+            throw new Error('The selected output is not currently approved.');
+          }
+          result.push({ selection, blob: composite.blob, provenance: {
+            attemptId: attempt.attemptId, jobId: attempt.jobId, model: attempt.model, promptVersion: attempt.promptVersion,
+            prompt: attempt.prompt, promptSha256: job.promptSha256, styleId: job.styleId, quality: job.quality, size: job.size,
+            usage, estimatedUSD: attempt.estimatedUSD, observedUSD: attempt.observedUSD,
+            pricingSnapshot: attempt.pricingSnapshot ?? null, createdAt: composite.createdAt, submittedAt,
+            reviewId: review.qaId, reviewedAt: review.createdAt, decisionId: decision.qaId, decidedAt: decision.createdAt,
+            sourceAssetId: source.assetId, ...provenance,
+          } });
+        }
+        checkCompositeCancellation(cancellation);
+        ready = true;
+      } catch (error) {
+        if (!active) return;
+        active = false; failure = error instanceof Error ? error : new Error('Could not verify approved outputs.');
+        try { tx.abort(); } catch { /* Already aborted. */ }
+      }
+    })();
+    tx.oncomplete = () => { cancellation.removeEventListener('abort', abort); resolve(result); };
+    tx.onabort = () => { cancellation.removeEventListener('abort', abort); reject(failure ?? transactionError(tx)); };
+  });
+}
+
+export function loadApprovedExportBatch(productId: string, selections: ApprovedExportSelection[],
+  signal?: AbortSignal): Promise<ApprovedExportEntry[]> {
+  return approvedExportTransaction(productId, selections, signal);
+}
+
+export function commitApprovedExportBatch(productId: string, selections: ApprovedExportSelection[],
+  signal: AbortSignal | undefined, onVerified: (entries: ApprovedExportEntry[]) => void): Promise<ApprovedExportEntry[]> {
+  if (typeof onVerified !== 'function') return Promise.reject(new Error('A synchronous export callback is required.'));
+  return approvedExportTransaction(productId, selections, signal, onVerified);
+}
+
+export async function listApprovedExportCandidates(productId: string, signal?: AbortSignal): Promise<ApprovedExportSelection[]> {
+  const cancellation = signal ?? new AbortController().signal;
+  checkCompositeCancellation(cancellation);
+  if (typeof productId !== 'string' || !uuidPattern.test(productId)) throw new Error('The project identity is invalid.');
+  const db = await openDatabase();
+  checkCompositeCancellation(cancellation);
+  const snapshot = await new Promise<{ candidates: ApprovedExportSelection[]; product: unknown }>((resolve, reject) => {
+    const tx = db.transaction(['products', 'generatedAssets', 'qaReports'], 'readonly');
+    const productRequest = tx.objectStore('products').get(productId);
+    const request = tx.objectStore('generatedAssets').index('productId').getAll(productId);
+    const found: ApprovedExportSelection[] = [];
+    const abort = () => { try { tx.abort(); } catch { /* Already completed. */ } };
+    cancellation.addEventListener('abort', abort, { once: true });
+    if (cancellation.aborted) abort();
+    request.onsuccess = () => {
+      for (const value of request.result as StrictComposite[]) {
+        if (!value || value.kind !== 'strict-composite' || typeof value.assetId !== 'string') continue;
+        const reviews = tx.objectStore('qaReports').index('assetId').getAll(value.assetId);
+        reviews.onsuccess = () => {
+          const rows = reviews.result as Array<VisualReviewRecord | StoredVisualDecision>;
+          const latest = rows.filter((row): row is VisualReviewRecord => row?.kind === 'visual-review')
+            .sort((a, b) => b.revision - a.revision)[0];
+          const decision = rows.find((row): row is StoredVisualDecision =>
+            row?.kind === 'visual-decision' && row.reportId === latest?.qaId && row.decision === 'APPROVED');
+          if (latest && decision) found.push({ attemptId: value.attemptId, assetId: value.assetId,
+            productSha256: latest.productSha256, assetSha256: latest.assetSha256, reviewId: latest.qaId, decisionId: decision.qaId });
+        };
+      }
+    };
+    tx.oncomplete = () => { cancellation.removeEventListener('abort', abort); resolve({ candidates: found, product: productRequest.result }); };
+    tx.onabort = () => { cancellation.removeEventListener('abort', abort); reject(cancellation.aborted
+      ? new DOMException('Export was cancelled.', 'AbortError') : transactionError(tx)); };
+  });
+  const product = checkedProduct(snapshot.product);
+  validateBackupReferences(product);
+  const productSha256 = await sha256(new TextEncoder().encode(JSON.stringify(product)));
+  const approved: ApprovedExportSelection[] = [];
+  for (const selection of snapshot.candidates) {
+    checkCompositeCancellation(cancellation);
+    if (typeof selection.productSha256 === 'string' && hashPattern.test(selection.productSha256) &&
+        selection.productSha256 !== productSha256) continue;
+    await loadApprovedExportBatch(productId, [selection], cancellation);
+    approved.push(selection);
+  }
+  return approved;
 }

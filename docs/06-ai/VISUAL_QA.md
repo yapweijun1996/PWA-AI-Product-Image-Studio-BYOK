@@ -38,7 +38,7 @@ A human `APPROVED` decision is a separate event referencing exact `assetId`, sou
 
 The browser accepts branded/default component scores as decimal strings with up to six fractional digits and evaluates the threshold without rounding. It requires six explicit human checks, uses any mismatch as a hard veto and an unknown as `UNVERIFIABLE`, and records a separate human decision only for the exact current product, source, active mask, scene, output and review. A new review supersedes the earlier decision. A changed product snapshot makes the old review historical. Unbranded scored review and approval are unavailable until OPEN-009 is decided; this conservative behavior does not resolve the policy.
 
-The comparison offers native-pixel scrolling and asks for written regions and reasons when any check is uncertain or mismatched. Those notes are free text: structured severity and crop references, verified real-SKU fidelity, approved export and physical-device acceptance are not implemented or established by this local review. The reviewer must still inspect the actual product and claims; neither the score nor a recorded decision is an automated brand certificate.
+The comparison offers native-pixel scrolling and asks for written regions and reasons when any check is uncertain or mismatched. Those notes are free text: structured severity and crop references, verified real-SKU fidelity and physical-device acceptance are not established by this local review. The reviewer must still inspect the actual product and claims; neither the score nor a recorded decision is an automated brand certificate. Approved-output conversion requires a further visual inspection because resizing and lossy formats can alter labels.
 
 ## QA procedure
 

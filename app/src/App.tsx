@@ -82,7 +82,7 @@ function Help() {
       <section><span className="guide-index">02</span><div><h2>Know the limits</h2><p>STRICT is intended to preserve the original product foreground while allowing a generated background. It cannot prove an unseen angle or unreadable label.</p></div></section>
       <section><span className="guide-index">03</span><div><h2>Review charges and results</h2><p>Each generation attempt can incur a provider charge. Review the cost and inspect the image before approving it for use.</p></div></section>
     </div>
-    <p className="guide-footnote">Mask editing is local. The opt-in Studio operation creates an empty background only; product composition and approved-output export are not available in this build.</p>
+    <p className="guide-footnote">Masking, composition, human review and output conversion are local. The opt-in Studio operation creates an empty background only. Output bundles are not complete project backups.</p>
   </>;
 }
 

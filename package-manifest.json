@@ -42,8 +42,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 7022,
-      "sha256": "675130ec41fa431cf66cfe6747f0c6916be018a3b0f602d54b6b4bb6dc86c0f3"
+      "bytes": 7150,
+      "sha256": "5b3da6402f5978af4190a52b3e91c7429a4ec86a015b8ee38b2c76f01bc0c47a"
     },
     {
       "path": "ROADMAP.md",
@@ -202,13 +202,13 @@
     },
     {
       "path": "docs/04-data/EXPORT_IMPORT.md",
-      "bytes": 4608,
-      "sha256": "b39421a84a87a87470fefda4e7ead20cf99a8bfc397d997eac9da91437f47fb9"
+      "bytes": 6418,
+      "sha256": "657364b55ab323b523eca019ceab60e9d30485ca58e7dfa4648510d986e4de93"
     },
     {
       "path": "docs/04-data/INDEXEDDB_AND_MIGRATION.md",
-      "bytes": 6027,
-      "sha256": "332cc08918fa9270faafac2af43066bbdb7d0518d3561f5b629879beb26a1fec"
+      "bytes": 6076,
+      "sha256": "4c3b9687b8b88218501e94f0405990811126c321cc2af2b5f0aca664c5bd82e9"
     },
     {
       "path": "docs/05-api/API_CONTRACT.md",
@@ -242,8 +242,8 @@
     },
     {
       "path": "docs/06-ai/VISUAL_QA.md",
-      "bytes": 5102,
-      "sha256": "0d038514e998b86deac8dc4f608f94916da25e7067f641e4d5923fd36c8061f2"
+      "bytes": 5187,
+      "sha256": "dec00487709013a7e0203f67e2caed0f7f99d3fb33fc5adfe16592e74be90fd9"
     },
     {
       "path": "docs/07-quality/E2E_ACCEPTANCE.md",
@@ -292,8 +292,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 58456,
-      "sha256": "6c442f3b128edcbdd0423617b8be95a9201e65e5d9e2872a7e40f82befd2c517"
+      "bytes": 61676,
+      "sha256": "e510ad8290bcc9549fe69453a7a5abed9ad157d698d5e4fb8f270259cb49c119"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

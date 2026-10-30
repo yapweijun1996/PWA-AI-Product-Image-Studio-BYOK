@@ -6,6 +6,7 @@ import { BackupExport } from './BackupPages';
 import { useUnsavedChanges } from './useUnsavedChanges';
 import { MaskEditor } from './MaskEditor';
 import { StudioPanel } from './StudioPanel';
+import { ApprovedExportPanel } from './ApprovedExportPanel';
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Local storage is unavailable. Please try again.';
@@ -134,7 +135,7 @@ export function ProductDetails() {
       <form className="form-card" onSubmit={submitFact}><h2>Add a fact</h2><label htmlFor="fact-name">Fact name</label><input id="fact-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} autoComplete="off" /><label htmlFor="fact-value">Fact value</label><textarea id="fact-value" value={value} onChange={(event) => setValue(event.target.value)} required maxLength={1000} rows={3} /><label className="checkbox-label"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} required /><span>I confirm this fact is accurate.</span></label>{error && <p className="error-message" role="alert">{error}</p>}<button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add confirmed fact'}</button></form>
     </div>
     </fieldset>
+    <ApprovedExportPanel productId={product.productId} productVersion={JSON.stringify(product)} disabled={studioBusy} />
     <BackupExport productId={product.productId} />
-    <p className="workspace-note">Composite decisions require human visual review. Approved-output export is not available.</p>
   </>;
 }

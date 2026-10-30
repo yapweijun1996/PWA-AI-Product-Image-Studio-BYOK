@@ -14,6 +14,14 @@ Backups are unencrypted and may contain sensitive project details, original imag
 
 The current limits are 340 MiB compressed archive, 1,042 entries, 1 MiB per JSON file, 20 MiB per original or mask, 338 MiB total expanded bytes, 512 mask versions and a 200:1 expansion ratio. Export rejects projects exceeding these limits rather than omitting data. Import rejects encrypted, executable, linked, duplicate, unsupported or unsafe entries, verifies ZIP integrity and hashes, and checks image headers, dimensions and mask alpha against the oriented source. These controls do not replace independent security review or real-device storage testing.
 
+### Approved output bundle (not a project backup)
+
+The current browser can create a separate local ZIP for selected current, human-approved STRICT Studio composites. It verifies product, source, active mask, scene, output, review and decision lineage, re-renders and compares the composite, then rechecks the selected batch in one IndexedDB snapshot immediately before initiating download. Rejected, stale and unverifiable images are not eligible; a corrupt candidate surfaces an error rather than being silently treated as approved. Approval applies to the original composite; conversion requires a separate human inspection and confirmation of every displayed converted output.
+
+Ratios are 1024×1024 (1:1), 1024×1280 (4:5) and 900×1600 (9:16). The entire square composite is uniformly fitted without cropping; PNG/WebP margins are transparent and JPEG margins are white. Downscaling and lossy encoders can change labels or colors, so the preview must be inspected at native pixels. Encoder fallback to a different MIME type is rejected. These are generic sizes, not marketplace compliance claims.
+
+The output ZIP contains UUID-named outputs, per-output allowlisted provenance and a schema-validated `export-manifest.json` with file hashes. Provenance records the source/mask/scene/composite and product hashes, exact attempt/job/review/decision IDs and times, fixed Studio prompt/model/quality/version, conversion metadata and available sanitized usage/cost snapshot. It omits product facts, reviewer notes, original images and EXIF. It is unencrypted, may contain sensitive imagery, and is **not importable as a project backup**. Limits: 100 outputs, 20 MiB per output and 320 MiB expanded data. Unsupported provenance fails closed; full backup/import of jobs, outputs, QA and receipts remains pending.
+
 
 ## ZIP structure (target)
 
