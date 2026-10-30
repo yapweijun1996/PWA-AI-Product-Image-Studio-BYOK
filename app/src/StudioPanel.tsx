@@ -273,7 +273,8 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useUnsavedChanges(busy || topConfirmed || Object.values(styleConsent).some(Boolean) || Object.values(attemptOverrides).some(Boolean) || Object.values(sessionOverrides).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
-  const unresolved = otherBlockers === null || otherBlockers.length > 0 || (entries?.some((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? false);
+  const localBlockers = entries?.filter((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? [];
+  const unresolved = otherBlockers === null || otherBlockers.length > 0 || localBlockers.length > 0;
   const validMoney = (value: string) => !value || /^\d{1,9}\.\d{1,6}$/.test(value);
   let plans: PlannedStyle[] = [];
   let planError = '';
@@ -622,6 +623,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     <p>Planned calls: <strong>{selectedStyles.length}</strong>; estimated total: <strong>{planError || !sources || sessionTotal === null ? 'unavailable' : `$${plannedTotal} USD`}</strong>. One call per selected scene; no automatic retry. Estimate only, not a cap or invoice. Model {STUDIO_MODEL}, {STUDIO_QUALITY}, {STUDIO_SIZE}, PNG; pricing snapshot 2026-10-29. <a href="https://developers.openai.com/api/docs/guides/image-generation" target="_blank" rel="noreferrer">Pricing evidence</a>.</p>
     {gateway === 'checking' ? <p role="status">Checking local gateway…</p> : gateway === 'unavailable' ? <p role="status">Offline or local gateway unavailable. Generation is disabled.</p> : gateway === 'signed-out' ? <p>Sign in to the local app in provider settings first.</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>Local app and provider session active.</p>}
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
+    {localBlockers.length > 0 && <p role="status">{localBlockers.length} {localBlockers.length === 1 ? 'attempt in this project needs' : 'attempts in this project need'} attention before generation. <Link to={{ pathname: location.pathname, hash: '#studio-history-heading' }}>Open local attempt history</Link>.</p>}
     {otherBlockers && otherBlockers.length > 0 && <section aria-labelledby="other-blockers-heading">
       <h3 id="other-blockers-heading">Attempts in other projects need attention</h3>
       <p>Generation is blocked across this browser workspace until these attempts are reviewed. Open each project and check its local attempt history; a gateway may also have its own separate restrictions. After reviewing in another tab, refresh this list.</p>

@@ -402,6 +402,15 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(await evaluate(untrustedClient, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.querySelector('strong')?.innerText.includes('Reported not sent; unverified')&&li.innerText.includes('this has not been verified')})`),true,'Imported unsent claims remain explicitly unverified.');
     const importedMarkers=await evaluate(untrustedClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('userSettings'),s=tx.objectStore('userSettings'),requests=${JSON.stringify(untouched)}.map(id=>s.get('backup-import-unresolved:'+id));tx.oncomplete=()=>resolve(requests.map(q=>q.result?.reviewed));tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
     assert.deepEqual(importedMarkers,[false,false,false,false],'Imported pre-send claims require fresh external billing review.');
+    assert.equal(await evaluate(untrustedClient, `document.querySelector('.studio-panel [role=status] a')?.innerText`),'Open local attempt history','Local blockers have a recovery link.');
+    for (const width of [320,390,1280]) {
+      await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      assert.equal(await evaluate(untrustedClient, `document.documentElement.scrollWidth<=innerWidth`),true,`Local blocker notice fits at ${width}px.`);
+    }
+    await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(untrustedClient, `document.querySelector('.studio-panel [role=status] a').click()`);
+    await until(()=>evaluate(untrustedClient, `(() => {const h=document.querySelector('#studio-history-heading'),r=h.getBoundingClientRect();return document.activeElement===h && r.top>=0 && r.bottom<=innerHeight})()`),'local blocker history link');
+    assert.equal(await evaluate(untrustedClient, `document.documentElement.scrollWidth<=innerWidth`),true,'Local blocker notice fits the mobile viewport.');
     assert.equal(await evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[0])}));return li.innerText.includes('Review provider billing') && !!li.querySelector('input[type=checkbox]')})()`),true, 'The imported pre-send claim offers an explicit review.');
     await until(()=>evaluate(untrustedClient, `!!navigator.serviceWorker.controller`),'restored profile service worker');
     await untrustedClient.call('Network.enable');
