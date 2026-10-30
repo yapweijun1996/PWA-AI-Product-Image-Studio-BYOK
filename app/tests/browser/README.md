@@ -11,3 +11,5 @@ A second test builds the app into a temporary directory and serves it directly f
 The direct-gateway test also checks synthetic credential markers against the final DOM, local/session storage, populated IndexedDB and caches, downloaded ZIP entries, and captured console/exception events. This is a scoped plaintext-marker check, not a complete secret or security audit.
 
 The direct-gateway journey also injects a synthetic transport failure, checks that UNKNOWN persists without a resend, and verifies separately acknowledged and authorized retry lineage after reload. Billing review is simulated.
+
+The direct-gateway test also checks first use of the cached product route while offline and simulates a blocked backup route to verify the explicit error and reload flow. This does not replace installed-device or two-build update testing.

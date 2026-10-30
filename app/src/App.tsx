@@ -1,9 +1,20 @@
-import { useEffect, useState } from 'react';
-import { Link, NavLink, Route, Routes } from 'react-router-dom';
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useServiceWorker } from './useServiceWorker';
-import { NewProduct, ProductDetails, Workspace } from './ProductPages';
-import { BackupImport } from './BackupPages';
+import { NewProduct, Workspace } from './ProductPages';
 import { ProviderSessionPanel } from './ProviderSessionPanel';
+
+const ProductDetails = lazy(() => import('./ProductDetails').then((module) => ({ default: module.ProductDetails })));
+const BackupImport = lazy(() => import('./BackupPages').then((module) => ({ default: module.BackupImport })));
+
+class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) return <section role="alert"><h1>Page unavailable</h1><p>The page could not be loaded. Check your connection and reload when ready. Unsaved changes may be lost.</p><button type="button" className="secondary-button" onClick={() => window.location.reload()}>Reload page</button><p><Link className="text-link" to="/">Return to workspace</Link></p></section>;
+    return this.props.children;
+  }
+}
 
 type Theme = 'system' | 'light' | 'dark';
 const themeKey = 'image-studio.theme';
@@ -92,6 +103,7 @@ function NotFound() {
 
 export function App() {
   const { theme, setTheme } = useAppearance();
+  const location = useLocation();
   const online = useNetworkStatus();
   const update = useServiceWorker();
   return <div className="app-shell">
@@ -118,7 +130,7 @@ export function App() {
             : <button type="button" onClick={update.updateNow}>Update now</button>)}
       </section>}
       <main id="main-content" tabIndex={-1}>
-        <Routes><Route path="/" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes>
+        <RouteErrorBoundary key={location.pathname}><Suspense fallback={<p role="status">Loading page…</p>}><Routes><Route path="/" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes></Suspense></RouteErrorBoundary>
       </main>
       <footer><span>PRODUCT IMAGE STUDIO</span><span>Local-first by design</span></footer>
     </div>

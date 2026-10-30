@@ -76,6 +76,12 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client, `console.info('studio-log-capture-probe')`);
     await until(()=>client.events.some(e=>e.method==='Runtime.consoleAPICalled'&&JSON.stringify(e).includes('studio-log-capture-probe')),'console capture');
     providerImage=await evaluate(client,`(() => {const c=document.createElement('canvas');c.width=1024;c.height=1024;const x=c.getContext('2d');x.fillStyle='#225588';x.fillRect(0,0,1024,1024);return c.toDataURL('image/png').split(',')[1]})()`);
+    await until(()=>evaluate(client, `!!navigator.serviceWorker.controller`),'active service worker');
+    const cachedRoutes=await evaluate(client, `(async()=>{const out=[];for(const name of await caches.keys())for(const request of await (await caches.open(name)).keys())out.push(new URL(request.url).pathname);return out;})()`);
+    assert.ok(cachedRoutes.some(path=>/\/assets\/ProductDetails-.*\.js$/.test(path)),'The lazy product page is cached before offline use.');
+    assert.equal(await evaluate(client, `performance.getEntriesByType('resource').some(e=>e.name.includes('/assets/ProductDetails-'))`),false,'The workspace has not loaded the product page module.');
+    await client.call('Network.enable');await client.call('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});
+    await until(()=>evaluate(client, `!navigator.onLine`),'offline state');
     await until(()=>evaluate(client,`[...document.querySelectorAll('a')].some(a=>a.textContent==='Create product')`),'product creation link');
     await evaluate(client,`[...document.querySelectorAll('a')].find(a=>a.textContent==='Create product').click()`);
     await until(()=>evaluate(client,`!!document.querySelector('#product-sku')`),'product form');
@@ -94,6 +100,8 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`[...document.querySelectorAll('.mask-editor button')].some(b=>b.textContent==='Save mask')`),'mask review');
     await evaluate(client,`[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask').click()`);
     await until(()=>evaluate(client,`document.querySelector('.mask-editor')?.innerText.includes('Mask saved')`),'saved mask');
+    await client.call('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
+    await until(()=>evaluate(client, `navigator.onLine`),'online state');
     await client.call('Page.navigate',{url:`${origin}/settings`});
     await until(()=>evaluate(client,`!!document.querySelector('#local-access-token')`),'local sign-in');
     await evaluate(client,`(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(token)});e.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.provider-login button').click()})()`);
@@ -184,6 +192,41 @@ test('production gateway serves a synthetic creation-to-export journey without o
     const logText=JSON.stringify(client.events);assert.equal(logText.includes(token)||logText.includes('synthetic-provider-fixture'),false,'Console and exception events contain no synthetic credentials.');
     assert.equal(client.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0,'No uncaught page exceptions occurred.');
 
+    assert.equal(await evaluate(client,'document.documentElement.scrollWidth===innerWidth'),true);
+  } finally {
+    client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
+    await rm(root,{recursive:true,force:true});
+  }
+});
+
+test('an unavailable lazy page offers explicit reload and workspace recovery', {timeout: 60000}, async () => {
+  assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable.');
+  const root=await mkdtemp(join(tmpdir(),'studio-route-error-')),web=join(root,'web'),profile=join(root,'profile');
+  await mkdir(profile);let gateway,browser,client;
+  try {
+    await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
+    gateway=await createGateway({authTokenHash:createHash('sha256').update(randomBytes(32)).digest('hex'),providerConfigured:false,staticDirectory:web});
+    await new Promise((resolve,reject)=>{gateway.once('error',reject);gateway.listen(0,'127.0.0.1',resolve)});
+    const origin=`http://127.0.0.1:${gateway.address().port}`;
+    browser=spawn(chrome,['--headless=new','--remote-debugging-port=0',`--user-data-dir=${profile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{stdio:'ignore'});
+    const port=await until(async()=>{try{return Number((await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0]);}catch{return null}},'isolated Chromium');
+    const target=(await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.type==='page');
+    client=await connect(target.webSocketDebuggerUrl);await client.call('Page.enable');await client.call('Page.bringToFront');await client.call('Network.enable');
+    await client.call('Network.setBypassServiceWorker',{bypass:true});await client.call('Network.setBlockedURLs',{urls:['*BackupPages-*.js']});
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await client.call('Page.navigate',{url:origin});await until(()=>evaluate(client,`[...document.querySelectorAll('a')].some(a=>a.textContent==='Import backup')`),'workspace');
+    await evaluate(client,`[...document.querySelectorAll('a')].find(a=>a.textContent==='Import backup').click()`);
+    await until(()=>evaluate(client,`document.querySelector('[role="alert"]')?.innerText.includes('Page unavailable')`),'page failure message');
+    assert.equal(await evaluate(client,`location.pathname`),'/import');
+    assert.equal(await evaluate(client,`document.querySelector('[role="alert"]')?.innerText.includes('Unsaved changes may be lost')`),true);
+    await evaluate(client,`[...document.querySelectorAll('[role="alert"] a')].find(a=>a.textContent.includes('Return to workspace')).click()`);
+    await until(()=>evaluate(client,`location.pathname==='/' && document.body.innerText.includes('Your products')`),'return to workspace');
+    await evaluate(client,`[...document.querySelectorAll('a')].find(a=>a.textContent==='Import backup').click()`);
+    await until(()=>evaluate(client,`document.querySelector('[role="alert"]')?.innerText.includes('Page unavailable')`),'repeated page failure');
+    await client.call('Network.setBlockedURLs',{urls:[]});
+    await evaluate(client,`[...document.querySelectorAll('[role="alert"] button')].find(b=>b.textContent==='Reload page').click()`);
+    await until(()=>evaluate(client,`location.pathname==='/import' && !!document.querySelector('#backup-file') && !document.querySelector('[role="alert"]')`),'explicit reload recovery');
     assert.equal(await evaluate(client,'document.documentElement.scrollWidth===innerWidth'),true);
   } finally {
     client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
