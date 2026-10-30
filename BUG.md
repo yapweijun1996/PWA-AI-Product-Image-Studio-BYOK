@@ -261,3 +261,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Present descriptive status text, including “Scene generated; unapproved” and “Outcome unknown.” A successful scene offers “Prepare another attempt”; failed or reviewed-unknown attempts retain “Prepare retry.” The accessible action name includes the original attempt ID, which remains visible in the card. No stored status, retry authorization or billing rule changes.
 - **Evidence and limits:** Synthetic 320 px Chromium exercised the unapproved success and unknown/reviewed/retry paths, fresh authorization and seven-style queue; the shorter Billboard action retains a 44 px minimum height and an accessible name containing its attempt ID. Browser suite, focused rerun and build passed. No seller comprehension study, physical device, screen reader, real billing or full failure matrix was tested.
 - **Rollback:** Restore the prior labels and matching browser assertions only if equivalent status and billing clarity is retained; preserve attempt records and authorization gates.
+
+## BUG-032 — Long source filenames overflow the mobile upload preview
+
+- **Status:** VERIFIED for the scoped synthetic Chromium flow. **Priority:** P2. **Related tasks:** T-021, T-050 and T-080.
+- **Reproduction:** A valid 184-character unbroken synthetic filename expanded the 320 px document beyond the viewport in the source preview. Applying unrestricted wrapping to the entire preview also split the action button text into individual letters.
+- **Fix:** Wrap long text within preview paragraphs and allow source actions to wrap as separate buttons, without truncating the filename or changing source data.
+- **Evidence and limits:** Synthetic Chromium checks preview and buttons at 320, 390 and 1280 px, checks the saved filename workspace at 320 px, preserves the original source hash and continues through mask, review and export. The 320 px after screenshot was inspected; the four-test browser suite and build pass. A later export-test reload wait was corrected after an initial stale-document race. Physical devices, screen readers and other unusual filenames remain open.
+- **Rollback:** Revert the preview text and action rules with their regression checks only if equivalent narrow-screen usability is retained; preserve source files and metadata.
