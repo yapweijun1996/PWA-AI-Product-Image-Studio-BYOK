@@ -396,6 +396,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The clocks and provider outcome are synthetic. This checks separate OS processes and termination before proof, not power loss during fsync, suspension on supported devices, actual provider behavior or independent security review. The simulated elapsed time is not a real one-minute wait. BUG-001 remains IN_PROGRESS.
 - **Rollback:** Revert the test and this record; preserve all production journal results and proofs.
 
+## T-041 format 4 browser retry observation — 2026-10-30
+
+- **Evidence:** In isolated desktop Chromium, the built app used a loopback gateway with synthetic credentials and a fake transport returning HTTP 429 and `Retry-After: 86401`. Through the UI a synthetic product, source and mask were saved and one Studio attempt was authorized. The response showed the full minimum wait, the server journal recorded a definitive failure in format 4 with 86401 seconds, and the fake transport recorded one call. After reload, history retained the wait; preparing and authorizing a retry before expiry displayed a local wait error. The preserved network trace showed one generation POST, and the fake transport still had one call.
+- **Limits:** This early retry was blocked by browser-local state, so it does not independently test direct-client enforcement, actual elapsed time, cross-profile concurrency, installed devices, real provider billing or independent security acceptance. The gateway's simulated-clock and separate-process tests are separate evidence. No real key or seller data was used. BUG-001 remains IN_PROGRESS.
+- **Rollback:** Revert this evidence and matching documentation hashes; preserve product data and journal records.
+
 ## T-041 legacy review authorization race — 2026-10-30
 
 - **Evidence:** In synthetic loopback gateway tests, a format 3 wait-review request was held behind the journal lock. Logging out or disconnecting the provider session before releasing the lock caused the pending request to return 401, left no wait-review receipt and made no provider call. The targeted test passed for both cases.
