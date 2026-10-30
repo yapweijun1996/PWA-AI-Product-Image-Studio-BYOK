@@ -1,3 +1,4 @@
+import { regionFromDrag } from './protectedRegion';
 import { pixelFieldMax } from './pixelCoordinates';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { getProduct, loadSourceMask, loadOriginalSource, saveMask, type Product } from './products';
@@ -18,7 +19,8 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [review, setReview] = useState(false);
-  const [tool, setTool] = useState<'draw' | 'erase'>('draw');
+  const [tool, setTool] = useState<'draw' | 'erase' | 'region'>('draw');
+  const [regionPreview, setRegionPreview] = useState<StrictRect | null>(null);
   const [size, setSize] = useState(5);
   const [zoom, setZoom] = useState(100);
   const [showMask, setShowMask] = useState(true);
@@ -32,6 +34,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const previewSource = useRef<ImageData | null>(null);
   const strokes = useRef<MaskStroke[]>([]);
   const active = useRef<MaskStroke | null>(null);
+  const regionDrag = useRef<{ pointerId: number; start: MaskPoint } | null>(null);
   const points = useRef(0);
   const controller = useRef<AbortController | null>(null);
   useUnsavedChanges(dirty || saving);
@@ -41,7 +44,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     let alive = true;
     let url = '';
     setLoading(true); setLoaded(null); setError(''); setStatus(''); setReview(false); setRegions([]);
-    strokes.current = []; points.current = 0; active.current = null; setDirty(false);
+    strokes.current = []; points.current = 0; active.current = null; regionDrag.current = null; setRegionPreview(null); setDirty(false);
     void (async () => {
       try {
         const current = await getProduct(product.productId);
@@ -160,7 +163,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     display.putImageData(pixels, left, top);
   }
   function start(point: MaskPoint) {
-    if (!loaded || !previewReady || saving || review || error || points.current >= MAX_POINTS) return;
+    if (!loaded || !previewReady || saving || review || error || tool === 'region' || points.current >= MAX_POINTS) return;
     const stroke: MaskStroke = { tool, size: Math.max(1, Math.min(loaded.source.width, loaded.source.height) * size / 100), points: [point] };
     strokes.current.push(stroke); active.current = stroke; points.current++;
     paint(stroke); setDirty(true); setStatus('');
@@ -178,8 +181,35 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     return { x: Math.max(0, Math.min(loaded!.source.width, (event.clientX - rect.left) / rect.width * loaded!.source.width)), y: Math.max(0, Math.min(loaded!.source.height, (event.clientY - rect.top) / rect.height * loaded!.source.height)) };
   }
   function pointerDown(event: PointerEvent<HTMLCanvasElement>) {
-    if (event.button !== 0 || !loaded || !previewReady || saving || review || error) return;
-    event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); start(position(event));
+    if (event.button !== 0 || !event.isPrimary || regionDrag.current || active.current || !loaded || !previewReady || saving || review || error) return;
+    if (tool === 'region' && regions.length >= 32) { setStatus('A maximum of 32 protected areas is allowed.'); return; }
+    event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
+    if (tool === 'region') { regionDrag.current = { pointerId: event.pointerId, start: position(event) }; setRegionPreview(null); }
+    else start(position(event));
+  }
+  function pointerMove(event: PointerEvent<HTMLCanvasElement>) {
+    if (!event.isPrimary) return;
+    const drag = regionDrag.current;
+    if (drag && drag.pointerId === event.pointerId && loaded) {
+      event.preventDefault(); setRegionPreview(regionFromDrag(drag.start, position(event), loaded.source.width, loaded.source.height));
+    } else if (active.current) { event.preventDefault(); move(position(event)); }
+  }
+  function pointerUp(event: PointerEvent<HTMLCanvasElement>) {
+    const drag = regionDrag.current;
+    if (drag && drag.pointerId === event.pointerId && loaded) {
+      const region = regionFromDrag(drag.start, position(event), loaded.source.width, loaded.source.height);
+      regionDrag.current = null; setRegionPreview(null);
+      if (region) {
+        setRegions((current) => current.length >= 32 ? current : [...current, { id: crypto.randomUUID(), x: String(region.x), y: String(region.y), width: String(region.width), height: String(region.height) }]);
+        setDirty(true); setStatus('Protected area added. Check the outline and coordinates before saving.');
+      } else setStatus('Drag across an area at least one source pixel wide and high, or enter coordinates below.');
+    }
+    active.current = null;
+  }
+  function cancelPointer() { active.current = null; regionDrag.current = null; setRegionPreview(null); }
+  function pointerCancel(event: PointerEvent<HTMLCanvasElement>) {
+    if (regionDrag.current && regionDrag.current.pointerId !== event.pointerId) return;
+    cancelPointer();
   }
   function parsedRegions(): StrictRect[] {
     return regions.map((region) => {
@@ -217,19 +247,19 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     {error && !review && <p className="error-message" role="alert">{error}</p>}
     {status && <p role="status">{status}</p>}
     {loaded && <>
-      <div className="mask-controls"><label htmlFor="mask-tool">Tool</label><select id="mask-tool" value={tool} disabled={saving || review} onChange={(event) => setTool(event.target.value as 'draw' | 'erase')}><option value="draw">Draw selection</option><option value="erase">Erase selection</option></select><label htmlFor="mask-size">Brush size: {size}%</label><input id="mask-size" type="range" min="1" max="30" value={size} disabled={saving || review} onChange={(event) => setSize(Number(event.target.value))} /><label htmlFor="mask-zoom">Zoom: {zoom}%</label><input id="mask-zoom" type="range" min="50" max="300" step="25" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /><label className="checkbox-label"><input type="checkbox" checked={showMask} onChange={(event) => setShowMask(event.target.checked)} /> Show mask overlay</label></div>
-      <p className="muted">Drag on the image with a mouse, pen or finger. White overlay indicates selected pixels. Zoom and scroll to inspect edges. Focus the mask viewport and use arrow keys to scroll.</p>
-      <div className="mask-viewport" role="region" aria-label="Mask viewport" tabIndex={0}><div className="mask-surface" style={{ width: `${zoom}%`, aspectRatio: `${loaded.source.width} / ${loaded.source.height}` }}><img src={loaded.sourceUrl} alt={`Verified source: ${loaded.source.filename}`} draggable={false} /><canvas ref={canvas} className={showMask ? '' : 'mask-hidden'} aria-label="Mask drawing surface" onPointerDown={pointerDown} onPointerMove={(event) => { if (active.current) { event.preventDefault(); move(position(event)); } }} onPointerUp={() => { active.current = null; }} onPointerCancel={() => { active.current = null; }} onLostPointerCapture={() => { active.current = null; }} />{regions.map((region, index) => {
+      <div className="mask-controls"><label htmlFor="mask-tool">Tool</label><select id="mask-tool" value={tool} disabled={saving || review} onChange={(event) => { cancelPointer(); setTool(event.target.value as 'draw' | 'erase' | 'region'); }}><option value="draw">Draw selection</option><option value="erase">Erase selection</option><option value="region">Select protected area</option></select><label htmlFor="mask-size">Brush size: {size}%</label><input id="mask-size" type="range" min="1" max="30" value={size} disabled={saving || review || tool === 'region'} onChange={(event) => setSize(Number(event.target.value))} /><label htmlFor="mask-zoom">Zoom: {zoom}%</label><input id="mask-zoom" type="range" min="50" max="300" step="25" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /><label className="checkbox-label"><input type="checkbox" checked={showMask} onChange={(event) => setShowMask(event.target.checked)} /> Show mask overlay</label></div>
+      <p className="muted">Choose a tool, then drag on the image with a mouse, pen or finger. White overlay indicates selected pixels; the protected-area tool adds a rectangle without changing the mask. Zoom and scroll to inspect edges. Focus the mask viewport and use arrow keys to scroll.</p>
+      <div className="mask-viewport" role="region" aria-label="Mask viewport" tabIndex={0}><div className="mask-surface" style={{ width: `${zoom}%`, aspectRatio: `${loaded.source.width} / ${loaded.source.height}` }}><img src={loaded.sourceUrl} alt={`Verified source: ${loaded.source.filename}`} draggable={false} /><canvas ref={canvas} className={showMask ? '' : 'mask-hidden'} aria-label="Mask drawing surface" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel} onLostPointerCapture={pointerCancel} />{regionPreview && <div className="mask-region-outline mask-region-preview" aria-hidden="true" style={{ left: `${regionPreview.x / loaded.source.width * 100}%`, top: `${regionPreview.y / loaded.source.height * 100}%`, width: `${regionPreview.width / loaded.source.width * 100}%`, height: `${regionPreview.height / loaded.source.height * 100}%` }} />}{regions.map((region, index) => {
         const values = [region.x, region.y, region.width, region.height];
         if (values.some((value) => !/^\d+$/.test(value))) return null;
         const [rx, ry, rw, rh] = values.map(Number);
         if (![rx, ry, rw, rh].every(Number.isSafeInteger) || rw < 1 || rh < 1 || rx + rw > loaded.source.width || ry + rh > loaded.source.height) return null;
         return <div key={region.id} className="mask-region-outline" aria-hidden="true" style={{ left: `${rx / loaded.source.width * 100}%`, top: `${ry / loaded.source.height * 100}%`, width: `${rw / loaded.source.width * 100}%`, height: `${rh / loaded.source.height * 100}%` }}><span>{index + 1}</span></div>;
       })}</div></div>
-      <fieldset className="mask-stamp" disabled={saving || review || !previewReady}><legend>Place a brush mark without dragging</legend><label htmlFor="mask-x">Horizontal position (%)</label><input id="mask-x" type="number" min="0" max="100" value={x} onChange={(event) => setX(Number(event.target.value))} /><label htmlFor="mask-y">Vertical position (%)</label><input id="mask-y" type="number" min="0" max="100" value={y} onChange={(event) => setY(Number(event.target.value))} /><button className="secondary-button" type="button" onClick={() => { start({ x: Math.max(0, Math.min(100, x)) * loaded.source.width / 100, y: Math.max(0, Math.min(100, y)) * loaded.source.height / 100 }); active.current = null; }}>Apply brush mark</button></fieldset>
+      <fieldset className="mask-stamp" disabled={saving || review || !previewReady || tool === 'region'}><legend>Place a brush mark without dragging</legend><label htmlFor="mask-x">Horizontal position (%)</label><input id="mask-x" type="number" min="0" max="100" value={x} onChange={(event) => setX(Number(event.target.value))} /><label htmlFor="mask-y">Vertical position (%)</label><input id="mask-y" type="number" min="0" max="100" value={y} onChange={(event) => setY(Number(event.target.value))} /><button className="secondary-button" type="button" onClick={() => { start({ x: Math.max(0, Math.min(100, x)) * loaded.source.width / 100, y: Math.max(0, Math.min(100, y)) * loaded.source.height / 100 }); active.current = null; }}>Apply brush mark</button></fieldset>
       <fieldset className="mask-regions" disabled={saving || review || !previewReady}>
         <legend>Protected areas (optional)</legend>
-        <p>Mark every visible label or other required detail using source-pixel coordinates. The mask must fully cover each area. Areas are saved with this mask version and required for approval and export. Selecting areas cannot guarantee you found every detail.</p>
+        <p>Select the protected-area tool and drag a rectangle, or enter source-pixel coordinates below to avoid dragging. Mark every visible label or other required detail. The mask must fully cover each area. Areas are saved with this mask version and required for approval and export. Selecting areas cannot guarantee you found every detail.</p>
         <p>Source: {loaded.source.width} × {loaded.source.height} pixels. Coordinates start at the top-left. Outlines show valid areas on the image above.</p>
         {regions.map((region, index) => <fieldset className="mask-region" key={region.id}>
           <legend>Area {index + 1}</legend>
