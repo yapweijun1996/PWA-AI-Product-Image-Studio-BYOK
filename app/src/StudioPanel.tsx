@@ -277,6 +277,8 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const mounted = useRef(false);
   const retryHeading = useRef<HTMLHeadingElement>(null);
   const retryFocusOrigin = useRef<Element | null>(null);
+  const retryError = useRef<HTMLParagraphElement>(null);
+  const retryErrorFocusOrigin = useRef<Element | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     const origin = retryFocusOrigin.current;
@@ -286,6 +288,14 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       retryHeading.current?.focus({ preventScroll: true });
     }
   }, [retry]);
+  useEffect(() => {
+    const origin = retryErrorFocusOrigin.current;
+    retryErrorFocusOrigin.current = null;
+    if (error && origin && (document.activeElement === origin || document.activeElement === document.body)) {
+      retryError.current?.scrollIntoView({ block: 'start' });
+      retryError.current?.focus({ preventScroll: true });
+    }
+  }, [error]);
   useUnsavedChanges(busy || topConfirmed || Object.values(styleConsent).some(Boolean) || Object.values(attemptOverrides).some(Boolean) || Object.values(sessionOverrides).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
   const localBlockers = entries?.filter((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? [];
   const unresolved = otherBlockers === null || otherBlockers.length > 0 || localBlockers.length > 0;
@@ -489,6 +499,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       setSelectedFacts([...current.selectedFactIds]); retryFocusOrigin.current = focusOrigin; setRetry(current);
       setNotice('Retry loaded for review only. No request has been sent; fresh consent and gateway approval are required.');
     } catch {
+      retryErrorFocusOrigin.current = focusOrigin;
       setError('This retry is no longer eligible or its original inputs are unavailable or changed. Start a new job instead.');
       try { await refreshEntries(); } catch { setEntries(null); }
     } finally { running.current = false; setBusy(false); onBusyChange(false); }
@@ -656,7 +667,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     <p>Planned calls: <strong>{selectedStyles.length}</strong>; estimated total: <strong>{planError || !sources || sessionTotal === null ? 'unavailable' : `$${plannedTotal} USD`}</strong>. One call per selected scene; no automatic retry. Estimate only, not a cap or invoice. Model {STUDIO_MODEL}, {STUDIO_QUALITY}, {STUDIO_SIZE}, PNG; pricing snapshot 2026-10-29. <a href="https://developers.openai.com/api/docs/guides/image-generation" target="_blank" rel="noreferrer">Pricing evidence</a>.</p>
     {gateway === 'checking' ? <p role="status">Checking local gateway…</p> : gateway === 'unavailable' ? <p role="status">Offline or local gateway unavailable. Generation is disabled.</p> : gateway === 'unsupported-origin' ? <p role="status">{unsupportedGatewayMessage} Generation is disabled.</p> : gateway === 'signed-out' ? <p>Sign in to the local app in provider settings first.</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>Local app and provider session active.</p>}
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
-    {entries === null && error && <p className="error-message" role="alert">{error}</p>}
+    {entries === null && error && <p id="studio-error" ref={retryError} tabIndex={-1} className="error-message" role="alert">{error}</p>}
     {localBlockers.length > 0 && <p role="status">{localBlockers.length} {localBlockers.length === 1 ? 'attempt in this project needs' : 'attempts in this project need'} attention before generation. <Link to={{ pathname: location.pathname, hash: '#studio-history-heading' }}>Open local attempt history</Link>.</p>}
     {otherBlockers && otherBlockers.length > 0 && <section aria-labelledby="other-blockers-heading">
       <h3 id="other-blockers-heading">Attempts in other projects need attention</h3>
@@ -690,7 +701,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       {plans.length > 0 && !busy && <p className="queue-consent-progress" role="status">Style authorizations: {plans.length - missingStyleConsent.length} of {plans.length}.{missingStyleConsent.length > 0 ? ` Still needed: ${missingStyleConsent.map((plan) => STYLE_LABELS[plan.styleId]).join(', ')}.` : ' Other required confirmations and gateway checks still apply.'}</p>}
       <button className="primary-button" type="submit" disabled={busy || unresolved || (typeof gateway === 'object' && gateway.legacyWaits.length > 0) || !ready || Boolean(planError) || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || reviewFingerprint === null || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate selected scenes'}</button>
     </form>
-    {entries !== null && error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
+    {entries !== null && error && <p id="studio-error" ref={retryError} tabIndex={-1} className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <section className="studio-scene-comparison" aria-labelledby="studio-comparison-heading">
       <h3 id="studio-comparison-heading">Compare generated scenes</h3>
       <p>Choose two attempts of the same style. These are unapproved empty backgrounds, not product photographs; inspect the original and the locally composed product separately.</p>

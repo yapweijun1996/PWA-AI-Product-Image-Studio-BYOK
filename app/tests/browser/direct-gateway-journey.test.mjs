@@ -214,6 +214,22 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').click()})()`);
     await until(()=>evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));return li.innerText.includes('Reviewed at')&&[...li.querySelectorAll('button')].some(b=>b.textContent.startsWith('Prepare retry for Studio')&&!b.disabled)})()`),'unknown reviewed');
     assert.equal(providerCalls,2,'Reviewing an unknown attempt does not send a request.');
+    await evaluate(client,`(() => {const name=document.querySelector('#fact-name'),value=document.querySelector('#fact-value');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(name,'Synthetic changed fact');name.dispatchEvent(new Event('input',{bubbles:true}));Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(value,'Temporary value');value.dispatchEvent(new Event('input',{bubbles:true}));const f=name.form;f.querySelector('input[type=checkbox]').click();f.requestSubmit()})()`);
+    await until(()=>evaluate(client,`document.querySelector('.facts-list')?.innerText.includes('Synthetic changed fact')`),'synthetic changed fact saved');
+    await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));const button=[...li.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prepare retry for Studio'));button.scrollIntoView({block:'center'});button.focus();button.click()})()`);
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-panel [role=alert]')].some(e=>e.innerText.includes('This retry is no longer eligible'))`),'stale retry error');
+    const staleError=await evaluate(client,`(() => {const el=[...document.querySelectorAll('.studio-panel [role=alert]')].find(e=>e.innerText.includes('This retry is no longer eligible'));const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight,focused:document.activeElement===el}})()`);
+    assert.ok(staleError.top>=0 && staleError.top<staleError.height && staleError.focused,`The stale retry explanation is visible and focused: ${JSON.stringify(staleError)}`);
+    for (const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      await evaluate(client,`document.querySelector('#studio-error').scrollIntoView({block:'start'})`);
+      const layout=await evaluate(client,`(() => {const r=document.querySelector('#studio-error').getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,overflow:document.documentElement.scrollWidth>innerWidth,focused:document.activeElement?.id}})()`);
+      assert.ok(layout.left>=0 && layout.right<=width && layout.top>=8 && layout.top<800 && !layout.overflow && layout.focused==='studio-error',`Retry error fits and keeps focus at ${width}px.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    assert.equal(providerCalls,2,'An ineligible retry does not send a request.');
+    await evaluate(client,`(() => {window.confirm=()=>true;document.querySelector('[aria-label="Remove fact Synthetic changed fact"]').click()})()`);
+    await until(()=>evaluate(client,`!document.querySelector('.facts-list')?.innerText.includes('Synthetic changed fact')`),'temporary fact removed');
     await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));const button=[...li.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prepare retry for Studio'));button.scrollIntoView({block:'center'});button.focus()})()`);
     await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:' ',code:'Space',windowsVirtualKeyCode:32});
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:' ',code:'Space',windowsVirtualKeyCode:32});

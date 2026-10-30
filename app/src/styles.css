@@ -129,7 +129,7 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .provider-session .error-message { color: #a32323; }
 :root[data-theme="dark"] .provider-session .error-message { color: #ffc0b9; }
 .studio-panel { margin-top: 24px; }
-#studio-history-heading, #retry-review-heading { scroll-margin-top: 16px; }
+#studio-history-heading, #retry-review-heading, #studio-error { scroll-margin-top: 16px; }
 #retry-review-heading { overflow-wrap: anywhere; }
 .studio-panel p { line-height: 1.5; overflow-wrap: anywhere; }
 .studio-scene-comparison { margin-top: 24px; }
