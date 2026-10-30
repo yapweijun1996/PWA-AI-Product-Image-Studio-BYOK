@@ -208,6 +208,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is one Chromium localhost scenario, not real installed iOS or proof of every transaction, crash or cross-tab race. The previously observed older cached-asset mismatch remains unexplained; no reproduction or fix is claimed here. The screenshot operation timed out. No application code or provider request was changed or used.
 - **Rollback:** Revert this evidence record and matching documentation checksums only; preserve all browser product data and existing caches.
 
+## T-011 two-build Chromium observation — 2026-10-30
+
+- **Setup:** Two actual production builds from a disposable source copy used distinct generated worker IDs and hashed JS/CSS assets; build B added only a synthetic CSS rule. An isolated Chromium context opened two tabs against a local server switched from build A to B. No real key or seller data was used.
+- **Observation:** Build B was reported as waiting with a visible update notice. After the update-button interaction, B became active and the first tab loaded B; the other tab remained on A and displayed the explicit reload notice. Both shell caches remained. A `cache: no-store` fetch of the old tab's A script returned HTTP 200 and 804,698 bytes even though the test server was serving only B. The automation click returned an element-stale error despite the subsequent activation; this observation does not independently prove the exact activation trigger or loader display.
+- **Limits:** This is one desktop Chromium scenario, not proof of all cross-tab races, suspended tabs, storage eviction, manual cleanup, in-flight transactions, offline behavior or installed iOS. The earlier cached-asset incident is not conclusively explained. T-011 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence record and matching documentation hashes; preserve application data and browser caches.
+
 ## T-011 retained shell cache follow-up — 2026-10-30
 
 - **Change:** Retain older static shell caches across activation so open tabs can retrieve their hashed assets. At the bounded cache limit, the worker pauses updates and exposes explicit cleanup guarded by active-build verification, other-window and update checks, and Web Locks. Where safe cleanup is unavailable, it fails closed; product IndexedDB data is not deliberately removed.
