@@ -57,11 +57,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client;let providerCalls=0,providerImage='';
+  let gateway,browser,client;let providerCalls=0,providerImage='', failNext=false;
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
-    gateway=await createGateway({authTokenHash:createHash('sha256').update(token).digest('hex'),providerConfigured:true,staticDirectory:web,imageGeneration:{enabled:true,apiKey:'synthetic-provider-fixture',journalDirectory:journal,transport:async()=>{providerCalls++;return new Response(JSON.stringify({data:[{b64_json:providerImage}]}),{status:200,headers:{'content-type':'application/json'}});}}});
+    gateway=await createGateway({authTokenHash:createHash('sha256').update(token).digest('hex'),providerConfigured:true,staticDirectory:web,imageGeneration:{enabled:true,apiKey:'synthetic-provider-fixture',journalDirectory:journal,transport:async()=>{providerCalls++;if(failNext){failNext=false;throw new Error('synthetic-provider-fixture');}return new Response(JSON.stringify({data:[{b64_json:providerImage}]}),{status:200,headers:{'content-type':'application/json'}});}}});
     await new Promise((resolve,reject)=>{gateway.once('error',reject);gateway.listen(0,'127.0.0.1',resolve)});
     const origin=`http://127.0.0.1:${gateway.address().port}`;
     const crossOrigin=await fetch(`${origin}/api/v2/auth/login`,{method:'POST',headers:{'content-type':'application/json',origin:'http://untrusted.invalid'},body:JSON.stringify({token})});
@@ -135,6 +135,39 @@ test('production gateway serves a synthetic creation-to-export journey without o
     try {const entries=await zip.getEntries(),proof=entries.find(e=>e.filename.startsWith('provenance/')&&e.filename.endsWith('.json')),output=entries.find(e=>e.filename.startsWith('outputs/')&&e.filename.endsWith('.png'));assert.ok(proof&&output);const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter()))),bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.sourceSha256,sourceHash);assert.equal(receipt.sceneSha256,createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex'));assert.equal(receipt.outputSha256,createHash('sha256').update(bytes).digest('hex'));assert.ok(receipt.reviewId&&receipt.decisionId);
       for(const entry of entries) {if(entry.directory) continue;const content=await entry.getData(new Uint8ArrayWriter());const text=new TextDecoder().decode(content);assert.equal(text.includes(token)||text.includes('synthetic-provider-fixture'),false,'Downloaded ZIP entries must not contain the synthetic credentials.');}}finally{await zip.close()}
     assert.equal(providerCalls,1,'No automatic resend during review or download.');
+    failNext=true;
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.style-plan label')].some(l=>l.innerText.includes('I authorize this single Studio attempt')&&!l.querySelector('input').disabled)`),'new attempt consent');
+    await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
+    await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'new attempt ready');
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-history')?.innerText.includes('Studio · UNKNOWN')`),'unknown outcome');
+    assert.equal(providerCalls,2,'An ambiguous response causes no automatic resend.');
+    const unknownId=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes('Studio · UNKNOWN')).innerText.match(/[0-9a-f-]{36}/i)[0]`);
+    await client.call('Page.reload');
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('UNKNOWN'))`),'persisted unknown');
+    assert.equal(providerCalls,2,'Reload does not resend an unknown attempt.');
+    const unknownSelector=`.studio-history li`;
+    assert.equal(await evaluate(client,`[...[...document.querySelectorAll(${JSON.stringify(unknownSelector)})].find(li=>li.innerText.includes(${JSON.stringify(unknownId)})).querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').disabled`),true,'Unreviewed uncertainty cannot be acknowledged.');
+    await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('label')].find(l=>l.innerText.includes('I have reviewed provider billing')).querySelector('input').click()})()`);
+    await until(()=>evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));return [...li.querySelectorAll('button')].some(b=>b.textContent==='Record review of this attempt'&&!b.disabled)})()`),'unknown review ready');
+    await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').click()})()`);
+    await until(()=>evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));return li.innerText.includes('Reviewed at')&&[...li.querySelectorAll('button')].some(b=>b.textContent.startsWith('Prepare retry for Studio')&&!b.disabled)})()`),'unknown reviewed');
+    assert.equal(providerCalls,2,'Reviewing an unknown attempt does not send a request.');
+    await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prepare retry for Studio')).click()})()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Retry of attempt ${unknownId}')`),'prepared retry');
+    assert.equal(providerCalls,2,'Preparing a retry does not send a request.');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Retry needs fresh consent.');
+    await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
+    await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'retry consent');
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes('Studio · DEFINITIVE_SUCCESS')&&li.innerText.includes('Retry of attempt ${unknownId}'))`),'successful separately authorized retry');
+    const retryId=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes('Studio · DEFINITIVE_SUCCESS')&&li.innerText.includes('Retry of attempt ${unknownId}')).innerText.match(/[0-9a-f-]{36}/i)[0]`);
+    assert.notEqual(retryId,unknownId);assert.equal(providerCalls,3,'A separately authorized retry makes exactly one new synthetic request.');
+    await client.call('Page.reload');
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('UNKNOWN')&&li.innerText.includes('Reviewed at'))&&[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(retryId)})&&li.innerText.includes('DEFINITIVE_SUCCESS'))`),'reloaded retry lineage');
+    assert.equal(providerCalls,3,'Reload preserves both outcomes without another request.');
+
+
     await until(()=>evaluate(client, `(async()=> (await caches.keys()).length>0)()`),'installed shell cache');
     const browserExposure=await evaluate(client, `(async()=>{
       const needles=[${JSON.stringify(token)},'synthetic-provider-fixture'];

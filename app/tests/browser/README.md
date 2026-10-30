@@ -9,3 +9,5 @@ The same test generates a synthetic scene through the UI, composes and approves 
 A second test builds the app into a temporary directory and serves it directly from the local gateway, with no proxy or Origin rewriting. It exercises the synthetic creation-to-export journey and a cross-origin login rejection. Both tests use independent temporary browser profiles and journals.
 
 The direct-gateway test also checks synthetic credential markers against the final DOM, local/session storage, populated IndexedDB and caches, downloaded ZIP entries, and captured console/exception events. This is a scoped plaintext-marker check, not a complete secret or security audit.
+
+The direct-gateway journey also injects a synthetic transport failure, checks that UNKNOWN persists without a resend, and verifies separately acknowledged and authorized retry lineage after reload. Billing review is simulated.
