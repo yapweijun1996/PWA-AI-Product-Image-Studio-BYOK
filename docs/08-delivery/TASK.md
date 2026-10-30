@@ -724,6 +724,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This exercises one empty-project transaction in an in-memory IndexedDB implementation; it does not establish multi-record rollback, natural quota failure, browser or physical-device behavior. T-022 remains IMPLEMENTED_UNVERIFIED.
 - **Rollback:** Remove the regression and this record together; do not delete any user data or backups.
 
+## T-080 mobile long-content and navigation journey — 2026-10-30
+
+- **Evidence and fixes:** In isolated Chromium at 320 px, a synthetic product was created through the UI using a keyboard-entered long unbroken SKU. Before the fix, its detail page expanded to approximately 942 px. [BUG-008](../../BUG.md) records the heading/lead wrapping fix; the saved SKU and a separate synthetic long name/SKU/category fitted 320, 390, 768 and 1280 px, and the workspace list fitted 320 px. [BUG-009](../../BUG.md) records the mobile brand-link target increase from 38 to 44 px; the link returned to the workspace and measured 44 px through 768 px. Desktop and 320 px screenshots were visually inspected, the console had no errors or warnings, and the production build passed.
+- **Usability follow-up:** A deliberately extreme 198-character unbroken name wraps into many lines and pushes primary work below the fold. Evaluate a clearly accessible expand/collapse or other treatment with the owner during T-084; preserve the full name and avoid unlabelled truncation. This is a proposed improvement, not a tested fix or a claim about typical seller data.
+- **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
+- **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
+
 ## T-080 scoped offline and accessibility observations — 2026-10-30
 
 - **Environment:** Localhost, synthetic project and Chromium 150 on the development workstation; offline state was browser-emulated after the shell had been cached. This is not an installed iPhone, real network-loss or cross-browser test.
