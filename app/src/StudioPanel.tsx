@@ -126,7 +126,7 @@ export function retryableStudioAttempt(attempt: StudioAttempt, attempts: StudioA
   return leaves.length === 1 && leaves[0].attemptId === attempt.attemptId;
 }
 
-function failureText(attempt: StudioAttempt): string {
+function failureText(attempt: StudioAttempt, importedUntrusted: boolean): string {
   if (attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') {
     const seconds = attempt.failure?.retryAfterSeconds;
     const delay = typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? ` A recorded minimum wait of ${seconds} seconds applies after completion.` : '';
@@ -134,6 +134,7 @@ function failureText(attempt: StudioAttempt): string {
   }
   const failure = attempt.failure;
   if (!failure) return 'No categorized reason was recorded for this historical attempt.';
+  if (importedUntrusted && failure.category === 'pre_send') return 'This imported record reports that the image request was not sent; this has not been verified. No automatic retry.';
   const labels = { pre_send: 'The image request was not sent.', rejected: 'The image request failed definitively.', rate_limited: 'Local rate limit reached.', provider_limit: 'Provider limit reached; check provider quota and billing.', unknown: 'Outcome unknown; a charge may have occurred.' };
   const text = Object.hasOwn(labels, failure.category) ? labels[failure.category] : 'The failure reason is unavailable.';
   return `${text}${(failure.category === 'rate_limited' || failure.category === 'provider_limit') && Number.isInteger(failure.retryAfterSeconds) && failure.retryAfterSeconds! >= 1 && failure.retryAfterSeconds! <= STUDIO_MAX_RETRY_AFTER_SECONDS ? ` Minimum wait after completion: ${failure.retryAfterSeconds} seconds; waiting does not guarantee success.` : ''} No automatic retry.`;
@@ -143,7 +144,7 @@ function attemptStatusText(attempt: StudioAttempt, importedUntrusted: boolean): 
     case 'PREPARED': return importedUntrusted ? 'Imported preparation; sending not verified' : 'Prepared; no image sent';
     case 'SUBMITTED': return 'Outcome unknown (interrupted or in progress)';
     case 'UNKNOWN': return 'Outcome unknown';
-    case 'DEFINITIVE_FAILURE': return 'Generation failed';
+    case 'DEFINITIVE_FAILURE': return attempt.failure?.category === 'pre_send' ? (importedUntrusted ? 'Reported not sent; unverified' : 'Not sent') : 'Generation failed';
     case 'DEFINITIVE_SUCCESS': return 'Scene generated; unapproved';
   }
 }
@@ -645,7 +646,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     </section>
     <h3>Local attempt history</h3>{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset, importedUntrusted, importedUnresolved }) => <li key={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attemptStatusText(attempt, importedUntrusted)}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
       {attempt.retryOf && <p>Retry of attempt {attempt.retryOf} · job {attempt.jobId}.</p>}
-      {(attempt.status === 'DEFINITIVE_FAILURE' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') && <p>{failureText(attempt)}</p>}
+      {(attempt.status === 'DEFINITIVE_FAILURE' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') && <p>{failureText(attempt, importedUntrusted)}</p>}
       {(!attempt.styleId || !attempt.sceneContext || !attempt.selectedFactIds || !attempt.productSnapshotFingerprint || attempt.presetVersion !== STUDIO_PRESET_VERSION || attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION) && <p>This historical attempt cannot be retried with the current preset. Start a new job and give separate fresh consent instead; the original record remains unchanged.</p>}
       {!importedUntrusted && retryableStudioAttempt(attempt, entries.map((entry) => entry.attempt)) && <button className="secondary-button" type="button" aria-label={`Prepare ${attempt.status === 'DEFINITIVE_SUCCESS' ? 'another attempt' : 'retry'} for ${attempt.styleId && STYLE_LABELS[attempt.styleId]}, attempt ${attempt.attemptId}`} disabled={busy || unresolved} onClick={() => void prepareRetry(attempt)}>Prepare {attempt.status === 'DEFINITIVE_SUCCESS' ? 'another attempt' : 'retry'} for {attempt.styleId && STYLE_LABELS[attempt.styleId]}</button>}
       {!importedUntrusted && attempt.status === 'PREPARED' && <button className="secondary-button" type="button" disabled={busy || !navigator.locks} onClick={() => void closePrepared(attempt)}>Close unsent prepared attempt</button>}

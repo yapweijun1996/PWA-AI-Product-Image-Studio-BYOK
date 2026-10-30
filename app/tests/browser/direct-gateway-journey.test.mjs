@@ -57,7 +57,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client,browserClient,restoreClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
+  let gateway,browser,client,browserClient,restoreClient,untrustedClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
@@ -384,7 +384,25 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.ok(existing.every(e=>afterFailure.some(a=>a.id===e.id&&a.status===e.status)),'Earlier attempt outcomes remain unchanged.');
     const untouched=newAttempts.filter(x=>x.failure==='pre_send').map(x=>x.id);
     assert.equal(await evaluate(client, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.innerText.includes('The image request was not sent.')})`),true,'Each unsent style explains its pre-send outcome.');
+    assert.equal(await evaluate(client, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.querySelector('strong')?.innerText.includes('Not sent')})`),true,'Unsent styles are not described as attempted generation failures.');
     assert.equal(await evaluate(client, `document.documentElement.scrollWidth===innerWidth`),true,'Interrupted queue remains within the mobile viewport.');
+    await evaluate(client, `(() => {window.confirm=()=>true;const create=URL.createObjectURL;URL.createObjectURL=function(blob){window.__interruptedBackup=blob;return create.call(this,blob)};const click=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download.startsWith('product-backup-')){window.__interruptedBackupReady=true;return}return click.call(this)};[...document.querySelectorAll('button')].find(b=>b.textContent==='Download full backup').click()})()`);
+    await until(()=>evaluate(client, `!!window.__interruptedBackupReady`),'interrupted queue backup');
+    const interruptedBackup=await evaluate(client, `new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(window.__interruptedBackup)})`);
+    const {browserContextId:importContext}=await browserClient.call('Target.createBrowserContext');
+    const {targetId:importTargetId}=await browserClient.call('Target.createTarget',{url:'about:blank',browserContextId:importContext});
+    const importTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===importTargetId),'interrupted import tab');
+    untrustedClient=await connect(importTarget.webSocketDebuggerUrl);await untrustedClient.call('Runtime.enable');await untrustedClient.call('Page.enable');
+    await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});await untrustedClient.call('Page.navigate',{url:`${origin}/import`});
+    await until(()=>evaluate(untrustedClient, `!!document.querySelector('#backup-file')`),'interrupted backup import');
+    await evaluate(untrustedClient, `(() => {const bytes=Uint8Array.from(atob(${JSON.stringify(interruptedBackup)}),c=>c.charCodeAt(0));const d=new DataTransfer();d.items.add(new File([bytes],'interrupted-synthetic.zip',{type:'application/zip'}));const input=document.querySelector('#backup-file');input.files=d.files;input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await until(()=>evaluate(untrustedClient, `!!document.querySelector('.import-preview')`),'interrupted backup preview');
+    await evaluate(untrustedClient, `document.querySelector('.import-preview button').click()`);
+    await until(()=>evaluate(untrustedClient, `location.pathname===${JSON.stringify('/products/'+productId)} && document.querySelectorAll('.studio-history > li').length>=17`),'restored interrupted history');
+    assert.equal(await evaluate(untrustedClient, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.querySelector('strong')?.innerText.includes('Reported not sent; unverified')&&li.innerText.includes('this has not been verified')})`),true,'Imported unsent claims remain explicitly unverified.');
+    const importedMarkers=await evaluate(untrustedClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('userSettings'),s=tx.objectStore('userSettings'),requests=${JSON.stringify(untouched)}.map(id=>s.get('backup-import-unresolved:'+id));tx.oncomplete=()=>resolve(requests.map(q=>q.result?.reviewed));tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
+    assert.deepEqual(importedMarkers,[true,true,true,true],'Current import classifies claimed pre-send attempts as already reviewed; this does not verify their origin.');
+    assert.equal(providerCalls,13,'Backup and restore do not send provider requests.');
     await evaluate(client,`window.__beforeQueueReload=true`);await client.call('Page.reload');
     await until(()=>evaluate(client,`window.__beforeQueueReload!==true && document.querySelector('.studio-history')?.innerText.includes('Lifestyle · Outcome unknown')`),'persisted interrupted queue');
     assert.equal(providerCalls,13,'Reload does not resend any interrupted queue attempt.');
@@ -405,7 +423,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(providerCalls,14,'Only the explicitly authorized retry is sent.');
     assert.equal(await evaluate(client, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.innerText.includes('The image request was not sent.')})`),true,'Remaining unsent attempts retain their outcomes.');
   } finally {
-    restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
     await rm(root,{recursive:true,force:true});
   }
