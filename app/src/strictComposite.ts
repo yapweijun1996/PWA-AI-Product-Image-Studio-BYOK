@@ -68,6 +68,37 @@ export function applyFinalCoverage(source: Uint8ClampedArray, mask: Uint8Clamped
   for (let i = 3; i < source.length; i += 4) source[i] = mask[i];
 }
 
+// A protected rectangle must be opaque in both inputs: otherwise the scene can
+// show through even when the mask preserves the source's original alpha.
+// This source-space check alone does not verify selection completeness or output resampling.
+export function assertProtectedCoverage(width: number, height: number, source: Uint8ClampedArray,
+  mask: Uint8ClampedArray, regions: StrictRect[], crop?: StrictRect): void {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 ||
+      width > MAX_DIMENSION || height > MAX_DIMENSION || width * height > MAX_PIXELS ||
+      !(source instanceof Uint8ClampedArray) || !(mask instanceof Uint8ClampedArray) ||
+      source.length !== width * height * 4 || mask.length !== source.length ||
+      !Array.isArray(regions) || regions.length < 1 || regions.length > 32) {
+    throw new Error('Protected-region evidence is missing or invalid.');
+  }
+  const validRect = (value: StrictRect): boolean => !!value && typeof value === 'object' && !Array.isArray(value) &&
+    Object.keys(value).length === 4 && ['x', 'y', 'width', 'height'].every((key) => Object.hasOwn(value, key)) &&
+    [value.x, value.y, value.width, value.height].every(Number.isSafeInteger) && value.x >= 0 && value.y >= 0 &&
+    value.width > 0 && value.height > 0 && value.x + value.width <= width && value.y + value.height <= height;
+  if (crop !== undefined && !validRect(crop)) throw new Error('The protected-region crop is invalid.');
+  let work = 0;
+  for (const region of regions) {
+    if (!validRect(region) || (work += region.width * region.height) > width * height) throw new Error('Protected-region bounds or work limit are invalid.');
+    if (crop && (region.x < crop.x || region.y < crop.y || region.x + region.width > crop.x + crop.width ||
+        region.y + region.height > crop.y + crop.height)) throw new Error('The crop excludes protected source pixels.');
+    for (let y = region.y; y < region.y + region.height; y++) {
+      for (let x = region.x; x < region.x + region.width; x++) {
+        const alpha = (y * width + x) * 4 + 3;
+        if (source[alpha] !== 255 || mask[alpha] !== 255) throw new Error('A protected source pixel is not fully covered.');
+      }
+    }
+  }
+}
+
 type Canvas = HTMLCanvasElement | OffscreenCanvas;
 type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 type Decoded = { image: CanvasImageSource; width: number; height: number; release: () => void };

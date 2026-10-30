@@ -346,6 +346,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Journal storage, principal scoping, duplicate-status response and crash recovery are not implemented or independently reviewed. No real key, paid request or deployment was authorized by this decision. T-040 remains pending.
 - **Rollback:** A change to the identifier decision requires an explicit versioned migration preserving existing reservations; no runtime state was modified here.
 
+## T-052 protected coverage foundation — 2026-10-30
+
+- **Change:** A standalone source-space check validates nonempty bounded integer rectangles, optional crop containment and fully opaque source/mask alpha for every protected pixel. Requiring opaque source pixels is conservative: partially transparent original pixels can reveal the background even when the mask preserves original alpha. Region count and aggregate pixel work are bounded. This helper does not modify source or mask data.
+- **Evidence:** Eight compositor-render tests passed, including missing, out-of-bounds, fractional and excessive regions, transparent/partially covered source, clipped crop and valid coverage. Production build passed with its existing bundle-size warning.
+- **Critical limits:** The helper is not called by the application; it changes no actual composite, approval or export behavior and may be removed by production tree shaking. No region selection, source binding, migration, persisted evidence, resampling or billboard/copy-layer protection is implemented. The check cannot tell whether a user selected every important label. BUG-007 remains IN_PROGRESS and T-052 remains PENDING until the full paths and compatibility gates are implemented and verified. The routed architecture and verification module files were unavailable; project core rules and current source were used.
+- **Rollback:** Remove the standalone helper and its tests; preserve all originals, masks, composites and reviews.
+
 ## T-050 manual mask and backup record — 2026-10-30
 
 - **Change:** Added a local source selection editor with draw/erase, a non-drag brush action, zoom, preview and explicit review. Masks are oriented full-resolution PNGs with source-bound hashes, immutable versions and an atomic active pointer; the original Blob is not changed. Stale cross-tab saves fail closed. Latest masks can be reopened per source, and a new save activates the reviewed mask. PNG mask alpha is final coverage capped to decoded source alpha; STRICT compositing remains unimplemented. Full-resolution rendering uses a Worker when supported, otherwise a main-thread fallback.

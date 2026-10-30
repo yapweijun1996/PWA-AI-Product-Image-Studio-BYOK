@@ -8,9 +8,33 @@ const result = await build({
 });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
-const { applyFinalCoverage, strictMapping, recipeMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { applyFinalCoverage, assertProtectedCoverage, strictMapping, recipeMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const rgba = (...values) => new Uint8ClampedArray(values);
+
+test('protected source rectangles require opaque source and mask coverage', () => {
+  const source = rgba(1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 0, 10, 11, 12, 128);
+  const mask = rgba(255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 128);
+  const region = { x: 0, y: 0, width: 2, height: 1 };
+  assert.doesNotThrow(() => assertProtectedCoverage(2, 2, source, mask, [region]));
+  const lost = mask.slice(); lost[7] = 254;
+  assert.throws(() => assertProtectedCoverage(2, 2, source, lost, [region]), /not fully covered/);
+  assert.throws(() => assertProtectedCoverage(2, 2, source, mask, [{ x: 0, y: 1, width: 1, height: 1 }]), /not fully covered/);
+  assert.throws(() => assertProtectedCoverage(2, 2, source, mask, [{ x: 1, y: 1, width: 1, height: 1 }]), /not fully covered/);
+  assert.deepEqual([...source], [1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 0, 10, 11, 12, 128]);
+});
+
+test('protected evidence and crop bounds fail closed with bounded work', () => {
+  const pixels = new Uint8ClampedArray(4 * 4 * 4).fill(255);
+  const region = { x: 1, y: 1, width: 2, height: 2 };
+  assert.doesNotThrow(() => assertProtectedCoverage(4, 4, pixels, pixels, [region], region));
+  for (const invalid of [[], [{ ...region, x: -1 }], [{ ...region, width: 0 }], [{ ...region, x: 1.5 }], [{ ...region, width: 4 }], [{ ...region, extra: true }], Array(33).fill(region), Array(5).fill(region)]) {
+    assert.throws(() => assertProtectedCoverage(4, 4, pixels, pixels, invalid));
+  }
+  assert.throws(() => assertProtectedCoverage(4, 4, pixels, pixels.slice(1), [region]), /invalid/);
+  assert.throws(() => assertProtectedCoverage(4, 4, pixels, pixels, [region], { x: 1, y: 1, width: 1, height: 2 }), /crop excludes/);
+  assert.throws(() => assertProtectedCoverage(4, 4, pixels, pixels, [region], { x: 0, y: 0, width: 5, height: 4 }), /crop is invalid/);
+});
 
 test('coverage is final alpha, not multiplied by source alpha', () => {
   const source = rgba(200, 100, 50, 128);
