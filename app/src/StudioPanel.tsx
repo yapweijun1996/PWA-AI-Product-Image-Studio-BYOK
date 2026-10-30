@@ -613,7 +613,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
     {otherBlockers && otherBlockers.length > 0 && <section aria-labelledby="other-blockers-heading">
       <h3 id="other-blockers-heading">Attempts in other projects need attention</h3>
-      <p>Generation is blocked across this browser workspace until these attempts are reviewed. Open each project and check its local attempt history; a gateway may also have its own separate restrictions.</p>
+      <p>Generation is blocked across this browser workspace until these attempts are reviewed. Open each project and check its local attempt history; a gateway may also have its own separate restrictions. After reviewing in another tab, refresh this list.</p>
       <ul>{otherBlockers.map((item) => <li key={item.productId}>{item.name ? <Link to={`/products/${encodeURIComponent(item.productId)}#studio-heading`}>{item.name}</Link> : `Missing project ${item.productId}: preserve local data and seek recovery assistance`} — {item.count} {item.count === 1 ? 'attempt' : 'attempts'}</li>)}</ul>
       <button type="button" className="secondary-button" disabled={busy} onClick={() => { clearQueueConsent(); setOtherBlockers(null); void refreshEntries().catch(() => { setEntries(null); setError('Local attempt history is unavailable. Generation is disabled.'); }); }}>Refresh attempt history</button>
     </section>}

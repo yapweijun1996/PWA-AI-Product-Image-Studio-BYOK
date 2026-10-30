@@ -57,7 +57,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client,browserClient,restoreClient,untrustedClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
+  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
@@ -407,6 +407,20 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[0])}));return li.innerText.includes('This imported record remains untrusted')})()`),'imported local review');
     assert.equal(await evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[1])}));return li.innerText.includes('Review provider billing')})()`),true,'Reviewing one record leaves other imported claims blocked.');
     const otherProductId=await evaluate(untrustedClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('products','readwrite'),store=tx.objectStore('products'),q=store.get(${JSON.stringify(productId)}),id=crypto.randomUUID();q.onsuccess=()=>store.add({...q.result,productId:id,sku:'CROSS-PROJECT-SYNTHETIC',name:'Other synthetic project',facts:[],sourceAssets:[],brandLock:{mode:'STRICT',protectedText:[],forbiddenChanges:[],maskAssetId:null}});tx.oncomplete=()=>resolve(id);tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
+    const {targetId:observerId}=await browserClient.call('Target.createTarget',{url:'about:blank',browserContextId:importContext});
+    const observerTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===observerId),'shared-profile observer tab');
+    observerClient=await connect(observerTarget.webSocketDebuggerUrl);await observerClient.call('Runtime.enable');await observerClient.call('Page.enable');
+    await observerClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await observerClient.call('Page.navigate',{url:`${origin}/products/${otherProductId}`});
+    await until(()=>evaluate(observerClient, `!!document.querySelector('#other-blockers-heading')`),'observer cross-project blocker');
+    assert.equal(await evaluate(observerClient, `document.querySelector('#other-blockers-heading').parentElement.innerText.includes('After reviewing in another tab, refresh this list.')`),true);
+    const beforeCount=await evaluate(observerClient, `Number(document.querySelector('#other-blockers-heading').parentElement.querySelector('li').innerText.match(/([0-9]+) attempts?/)[1])`);
+    await evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[1])}));li.querySelector('input[type=checkbox]').click();[...li.querySelectorAll('button')].find(b=>b.textContent==='Record local review of imported uncertainty').click()})()`);
+    await until(()=>evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[1])}));return li.innerText.includes('This imported record remains untrusted')})()`),'other tab review');
+    assert.equal(await evaluate(observerClient, `Number(document.querySelector('#other-blockers-heading').parentElement.querySelector('li').innerText.match(/([0-9]+) attempts?/)[1])`),beforeCount,'Other tab retains its previous advisory snapshot until refresh.');
+    await evaluate(observerClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Refresh attempt history').click()`);
+    await until(()=>evaluate(observerClient, `Number(document.querySelector('#other-blockers-heading')?.parentElement.querySelector('li')?.innerText.match(/([0-9]+) attempts?/)[1])===${beforeCount-1}`),'other tab refresh reflects committed review');
+    assert.equal(providerCalls,13,'Review and cross-tab refresh do not send provider requests.');
     await untrustedClient.call('Page.navigate',{url:`${origin}/products/${otherProductId}`});
     await until(()=>evaluate(untrustedClient, `!!document.querySelector('#other-blockers-heading')`),'cross-project blocker navigation');
     for (const width of [320,1280]) {
@@ -442,7 +456,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(providerCalls,14,'Only the explicitly authorized retry is sent.');
     assert.equal(await evaluate(client, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.innerText.includes('The image request was not sent.')})`),true,'Remaining unsent attempts retain their outcomes.');
   } finally {
-    untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
     await rm(root,{recursive:true,force:true});
   }
