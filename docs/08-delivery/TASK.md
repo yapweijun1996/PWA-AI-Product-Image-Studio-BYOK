@@ -344,6 +344,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-040 / T-042 provider contract fact check — 2026-10-30
+
+- **Evidence:** The current [OpenAI Images API reference](https://developers.openai.com/api/reference/resources/images/methods/generate) lists `gpt-image-2.5-flare`, `low`, `1024x1024`, PNG and one image as supported request choices. The [model page](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare) lists Standard rates of $5/1M text input, $8/1M image input and $30/1M image output tokens, matching the existing snapshot. The API reference marks output token details optional; the adapter retains partial usage and does not calculate observed cost without complete details.
+- **Synthetic check:** The adapter test verifies the exact fixed generation URL, POST, redirect rejection, synthetic authorization and configured model/quality/size/format/count, with a fake 400 response and one transport invocation. Provider usage and rate suites passed 11 tests; no credential or external provider request was used.
+- **Limits:** Documentation support does not prove account entitlement, actual output token consumption, current invoice or live response behavior. The estimated cost remains an estimate and is not a spending cap. T-040 and T-042 remain IMPLEMENTED_UNVERIFIED pending the listed security, billing and controlled live acceptance.
+- **Rollback:** Revert the synthetic contract test and this evidence with documentation hashes; no runtime behavior or user data changed.
+
 ## T-022 high-repetition source browser restore — 2026-10-30
 
 - **Evidence:** An isolated desktop Chromium context used the actual Vite development modules and browser PNG decoder to create a synthetic 1×1 image with a 1 MiB repetitive text chunk. It saved the source, exported and inspected a 1,050,480-byte backup, and confirmed the original project conflicts with its own import. After deleting only that synthetic product and source from the isolated test database, inspection reported no conflict; the actual restore operation recreated the project. Original, preview and restored bytes all had SHA-256 `1d79dc0a60ec03499ee171347e62578dc1cccf902775750ed12be15d7dc338ce`; after page reload, the restored source retained the same hash. No console warning or error was observed.

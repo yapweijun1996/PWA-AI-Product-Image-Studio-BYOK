@@ -22,6 +22,23 @@ async function simulate(usage) {
   return result.usage;
 }
 
+test('synthetic image request uses the fixed direct Images API contract', async () => {
+  let calls = 0;
+  const result = await generateStudioScene({ apiKey: 'synthetic-only', prompt: 'synthetic scene', timeoutMs: 1000,
+    transport: async (url, init) => {
+      calls++;
+      assert.equal(url, 'https://api.openai.com/v1/images/generations');
+      assert.equal(init.method, 'POST');
+      assert.equal(init.redirect, 'error');
+      assert.equal(init.headers.Authorization, 'Bearer synthetic-only');
+      assert.equal(init.headers['Content-Type'], 'application/json');
+      assert.deepEqual(JSON.parse(init.body), { model: 'gpt-image-2.5-flare', prompt: 'synthetic scene', quality: 'low', size: '1024x1024', output_format: 'png', n: 1 });
+      return new Response('synthetic refusal', { status: 400 });
+    } });
+  assert.deepEqual(result, { outcome: 'DEFINITIVE_FAILURE' });
+  assert.equal(calls, 1);
+});
+
 test('usage retains only allowlisted token fields', async () => {
   const usage = { input_tokens: 12, output_tokens: 8, total_tokens: 20, input_tokens_details: { image_tokens: 7, text_tokens: 5, secret: 'private' }, output_tokens_details: { image_tokens: 8, text_tokens: 0, prompt: 'private' }, key: 'private' };
   assert.deepEqual(await simulate(usage), { input_tokens: 12, output_tokens: 8, total_tokens: 20, input_tokens_details: { image_tokens: 7, text_tokens: 5 }, output_tokens_details: { image_tokens: 8, text_tokens: 0 } });
