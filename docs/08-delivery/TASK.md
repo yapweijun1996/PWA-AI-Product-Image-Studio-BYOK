@@ -378,6 +378,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 durable wait-proof foundation — 2026-10-30
+
+- **Change:** The journal accepts an explicit format 4 definitive-failure record containing the bounded duration and wall deadline. New-format waits are observed by a process-local monotonic tracker; under the journal lock, the final reservation and dispatch path refuses an unelapsed wait and publishes a durable attempt-bound proof after elapsed observation. A proof must match its result; malformed or orphaned evidence fails closed. Existing callers still write their previous formats.
+- **Evidence:** Isolated journal tests cover a forward wall-clock jump, the exact elapsed boundary, two separate journal instances sharing a proof, restart with and without a proof, mismatched evidence and final locked dispatch. The additional dispatch test was run separately after the full suite. No real key or provider request was used.
+- **Limits:** The gateway does not yet create format 4 records, and existing format 3 waits still use wall time. Legacy manual recovery, real multi-process/crash and sync-failure tests, actual platform suspend behavior, UI and independent security review remain open. These tests use synthetic clocks and multiple instances in one process; they do not prove OS process isolation. BUG-001 remains IN_PROGRESS and the current provider path is still vulnerable to forward clock jumps.
+- **Rollback:** Disable generation and preserve all journal evidence. Older journal code rejects format 4 and proof records; do not remove them to force a downgrade. Revert with a reviewed compatibility and recovery plan.
+
 ## T-041 journal protocol barrier foundation — 2026-10-30
 
 - **Change:** On opening an existing private journal, the gateway validates its contents and, under the existing lock, creates a durable `.journal-protocol-v4` barrier. An older in-flight marker prevents first upgrade and is preserved for recovery with compatible software. Existing upgraded journals can reopen with in-flight evidence; a missing or invalid barrier after initialization fails journal scans closed. The barrier does not alter existing attempt results or implement elapsed proofs.
@@ -395,7 +402,7 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 ## T-041 elapsed-time recovery candidate — 2026-10-30
 
 - **Design:** [ADR-016](../02-architecture/ADR.md#adr-016--candidate-elapsed-time-proof-for-provider-retry-waits) proposes versioned duration records, process-local monotonic observation and durable serialized elapsed proofs, with a conservative legacy-review path and a fail-closed version barrier. It records crash, multi-process, old-gateway and rollback boundaries.
-- **Limits:** This remains a candidate: the monotonic tracker and journal version barrier have scoped tests, but durable proofs, live-provider testing and independent review have not been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
+- **Limits:** This remains a candidate: the tracker, version barrier and journal proof foundation have scoped tests, but gateway integration, legacy recovery, live-provider testing and independent review have not been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
 - **Rollback:** Revert this candidate and matching checksums; preserve all existing journal and product records.
 
 ## T-041 forward clock-jump investigation — 2026-10-30
