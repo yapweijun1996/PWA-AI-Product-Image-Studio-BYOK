@@ -527,6 +527,33 @@ test('provider 429 returns safe quota-aware metadata without automatically retry
   assert.equal(count, 1);
 });
 
+test('gateway enforces provider wait across restart, independent of client history', async (t) => {
+  let calls = 0;
+  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '60' } }); } });
+  let session = await f.login(); const first = attempt();
+  const response = await f.generate(session, first, await approval(f, session, first));
+  assert.equal(response.status, 429); assert.equal((await response.json()).error.retryAfterSeconds, 60);
+  assert.equal((await f.acknowledge(session, first.clientAttemptId)).status, 200);
+  await f.stop(); await f.start(); session = await f.login();
+  f.advance(59999);
+  const early = attempt(); const blocked = await f.generate(session, early, await approval(f, session, early));
+  assert.equal(blocked.status, 429); assert.equal((await blocked.json()).error.code, 'RATE_LIMITED'); assert.equal(calls, 1);
+  f.advance(1);
+  const later = attempt(); const retried = await f.generate(session, later, await approval(f, session, later));
+  assert.equal(retried.status, 429); assert.equal((await retried.json()).error.code, 'PROVIDER_LIMIT'); assert.equal(calls, 2);
+});
+
+test('malformed durable wait fails closed without a new provider dispatch', async (t) => {
+  let calls = 0;
+  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '60' } }); } });
+  const session = await f.login(), first = attempt();
+  assert.equal((await f.generate(session, first, await approval(f, session, first))).status, 429);
+  const principal = createHash('sha256').update('studio-local-owner-v1').digest('hex');
+  await writeFile(join(f.journal, `${principal}-${first.clientAttemptId}.result`), JSON.stringify({ outcome: 'DEFINITIVE_FAILURE', format: 3, retryNotBefore: '0' }), { mode: 0o600 });
+  assert.equal((await f.revision(session)).status, 503);
+  assert.equal(calls, 1);
+});
+
 test('unrepresentable provider retry delay retains a durable review gate', async (t) => {
   let calls = 0;
   const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '86401' } }); } });

@@ -340,7 +340,9 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
               const result = await providerPromise;
               if (!result || !['DEFINITIVE_SUCCESS', 'DEFINITIVE_FAILURE', 'UNKNOWN'].includes(result.outcome)) throw new Error('Invalid provider outcome');
               if (result.outcome === 'UNKNOWN') retainInflight = true;
-              try { await journal.finish(principal, body.clientAttemptId, result.outcome); }
+              const waitSeconds = result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT' && Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 1 && result.retryAfterSeconds <= 86400 ? result.retryAfterSeconds : null;
+              const retryNotBefore = waitSeconds === null ? null : now() + waitSeconds * 1000;
+              try { await journal.finish(principal, body.clientAttemptId, result.outcome, retryNotBefore); }
               catch { retainInflight = true; }
               if (retainInflight) reply = { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' };
               else if (result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT') {

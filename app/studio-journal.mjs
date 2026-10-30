@@ -56,7 +56,7 @@ export async function createAttemptJournal(directory) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid journal entry');
       const base = `${match[1]}-${match[2]}`;
       if (match[3] === '.result') {
-        if (!OUTCOMES.has(value.outcome) || !((Object.keys(value).length === 1 && !('format' in value)) || (Object.keys(value).length === 2 && value.format === 2))) throw new Error('Invalid journal outcome');
+        if (!OUTCOMES.has(value.outcome) || !((Object.keys(value).length === 1 && !('format' in value)) || (Object.keys(value).length === 2 && value.format === 2) || (Object.keys(value).length === 3 && value.format === 3 && value.outcome === 'DEFINITIVE_FAILURE' && Number.isSafeInteger(value.retryNotBefore) && value.retryNotBefore >= 0))) throw new Error('Invalid journal outcome');
         results.set(base, value);
       } else if (match[3] === '.ack') {
         if (Object.keys(value).length !== 2 || !OUTCOMES.has(value.recordedOutcome) || !validDate(value.acknowledgedAt)) throw new Error('Invalid journal acknowledgement');
@@ -71,7 +71,7 @@ export async function createAttemptJournal(directory) {
     }
     for (const name of results.keys()) if (!reservations.has(name)) throw new Error('Orphan journal outcome');
     for (const [name, value] of acknowledgements) if (!reservations.has(name) || results.get(name)?.outcome !== value.recordedOutcome) throw new Error('Orphan journal acknowledgement');
-    for (const [name, value] of clean) if (!reservations.has(name) || results.get(name)?.format !== 2 || results.get(name)?.outcome !== value.outcome) throw new Error('Orphan journal cleanup');
+    for (const [name, value] of clean) if (!reservations.has(name) || ![2, 3].includes(results.get(name)?.format) || results.get(name)?.outcome !== value.outcome) throw new Error('Orphan journal cleanup');
     return { reservations, results, acknowledgements, clean };
   }
   async function locked(fn) {
@@ -125,7 +125,7 @@ export async function createAttemptJournal(directory) {
           if (reservations.has(`${principal}-${attempt}`)) return 'duplicate';
           if (await markerMatches(principal, attempt)) return 'duplicate';
           for (const [name, result] of results) {
-            if (result.format === 2 && !acknowledgements.has(name) && !clean.has(name)) return 'busy';
+            if ([2, 3].includes(result.format) && !acknowledgements.has(name) && !clean.has(name)) return 'busy';
           }
           try { await put('.inflight', { principal, attempt }, () => { published = true; }); return 'begun'; }
           catch (reason) { if (reason.code === 'EEXIST' && !published) return 'busy'; throw reason; }
@@ -154,12 +154,12 @@ export async function createAttemptJournal(directory) {
         }
         if (result?.outcome === 'UNKNOWN') throw new Error('Unknown outcome requires review');
         if (!await clearMarker(principal, attempt)) {
-          if (result?.format === 2) throw new Error('Cleanup requires review');
+          if ([2, 3].includes(result?.format)) throw new Error('Cleanup requires review');
           try { await lstat(join(directory, '.inflight')); }
           catch (reason) { if (reason.code === 'ENOENT' && result) return; throw reason; }
           throw new Error('In-flight marker does not match');
         }
-        if (result?.format === 2) await publishClean(name, result.outcome);
+        if ([2, 3].includes(result?.format)) await publishClean(name, result.outcome);
       });
     },
     async cleanupResolved(principal, attempt) {
@@ -178,7 +178,7 @@ export async function createAttemptJournal(directory) {
       return locked(async () => {
         const { results, acknowledgements, clean } = await scan(), name = `${principal}-${attempt}`;
         const result = results.get(name);
-        if (result?.format !== 2 || result.outcome !== 'DEFINITIVE_FAILURE' || acknowledgements.has(name) || clean.has(name)) return false;
+        if (![2, 3].includes(result?.format) || result.outcome !== 'DEFINITIVE_FAILURE' || acknowledgements.has(name) || clean.has(name)) return false;
         await syncDir();
         return true;
       });
@@ -189,9 +189,10 @@ export async function createAttemptJournal(directory) {
     async reserve(principal, attempt, digest, time, maxPerHour, revision) {
       if (!validName(principal, attempt) || !Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid journal identity or revision');
       return locked(async () => {
-        const { reservations, acknowledgements } = await scan(), name = `${principal}-${attempt}`;
+        const { reservations, results, acknowledgements } = await scan(), name = `${principal}-${attempt}`;
         if (acknowledgements.size !== revision) return 'stale';
         if (reservations.has(name)) return 'duplicate';
+        if ([...results.entries()].some(([key, result]) => key.startsWith(`${principal}-`) && result.format === 3 && result.retryNotBefore > time)) return 'rate';
         let recent = 0;
         for (const [key, value] of reservations) if (key.startsWith(`${principal}-`) && value.reservedAt > time - 60 * 60 * 1000) recent++;
         if (recent >= maxPerHour) return 'rate';
@@ -202,9 +203,10 @@ export async function createAttemptJournal(directory) {
     async reserveAndDispatch(principal, attempt, digest, time, maxPerHour, revision, authorized, dispatch, onReserved) {
       if (!validName(principal, attempt) || !HASH.test(digest) || !Number.isSafeInteger(revision) || revision < 0 || typeof authorized !== 'function' || typeof dispatch !== 'function' || typeof onReserved !== 'function') throw new Error('Invalid dispatch');
       return locked(async () => {
-        const { reservations, acknowledgements } = await scan(), name = `${principal}-${attempt}`;
+        const { reservations, results, acknowledgements } = await scan(), name = `${principal}-${attempt}`;
         if (acknowledgements.size !== revision) return 'stale';
         if (reservations.has(name)) return 'duplicate';
+        if ([...results.entries()].some(([key, result]) => key.startsWith(`${principal}-`) && result.format === 3 && result.retryNotBefore > time)) return 'rate';
         let recent = 0;
         for (const [key, value] of reservations) if (key.startsWith(`${principal}-`) && value.reservedAt > time - 60 * 60 * 1000) recent++;
         if (recent >= maxPerHour) return 'rate';
@@ -238,25 +240,26 @@ export async function createAttemptJournal(directory) {
           return;
         }
         if (!await clearMarker(principal, attempt)) {
-          if (result?.format === 2) throw new Error('Cleanup requires review');
+          if ([2, 3].includes(result?.format)) throw new Error('Cleanup requires review');
           try { await lstat(join(directory, '.inflight')); }
           catch (reason) { if (reason.code === 'ENOENT') return; throw reason; }
           throw new Error('In-flight marker does not match; manual recovery required');
         }
-        if (result?.format === 2) await publishClean(name, result.outcome);
+        if ([2, 3].includes(result?.format)) await publishClean(name, result.outcome);
       });
     },
-    async finish(principal, attempt, outcome) {
-      if (!validName(principal, attempt) || !OUTCOMES.has(outcome)) throw new Error('Invalid journal outcome');
+    async finish(principal, attempt, outcome, retryNotBefore = null) {
+      if (!validName(principal, attempt) || !OUTCOMES.has(outcome) || (retryNotBefore !== null && (outcome !== 'DEFINITIVE_FAILURE' || !Number.isSafeInteger(retryNotBefore) || retryNotBefore < 0))) throw new Error('Invalid journal outcome');
       const name = `${principal}-${attempt}`, reservation = await readRecord(name);
       if (!reservation || Object.keys(reservation).length !== 2 || typeof reservation.digest !== 'string' || !HASH.test(reservation.digest) || !Number.isSafeInteger(reservation.reservedAt) || reservation.reservedAt < 0) throw new Error('Invalid journal reservation');
       // Results are immutable and their reservation already exists. Publication does not
       // need the global lock, so unrelated stale locks cannot lose a known outcome.
-      try { await put(`${name}.result`, { outcome, format: 2 }); }
+      const result = retryNotBefore === null ? { outcome, format: 2 } : { outcome, format: 3, retryNotBefore };
+      try { await put(`${name}.result`, result); }
       catch (reason) {
         if (reason.code !== 'EEXIST') throw reason;
         const existing = await readRecord(`${name}.result`);
-        if (!existing || existing.outcome !== outcome || !((Object.keys(existing).length === 1 && !('format' in existing)) || (Object.keys(existing).length === 2 && existing.format === 2))) throw new Error('Conflicting journal outcome');
+        if (!existing || (retryNotBefore === null ? !(existing.outcome === outcome && ((Object.keys(existing).length === 1 && !('format' in existing)) || (Object.keys(existing).length === 2 && existing.format === 2))) : !(existing.outcome === outcome && existing.format === 3 && Object.keys(existing).length === 3 && existing.retryNotBefore === retryNotBefore))) throw new Error('Conflicting journal outcome');
         await syncDir();
       }
     },

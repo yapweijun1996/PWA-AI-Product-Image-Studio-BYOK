@@ -337,6 +337,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** No real key or paid call was used for this change, no provider usage or cost was measured, and no production deployment, independent security approval, OS-level Pi isolation, real-device acceptance, full E2E-007/008 or end-to-end brand fidelity is claimed. Backup refuses projects containing jobs or outputs; users must back up before generating. UNKNOWN and interrupted attempts require review but have no reconciliation workflow yet: preserve their records and do not bypass the block. T-041, T-042, T-051 and T-022 remain open.
 - **Rollback:** Disable the opt-in provider path and revert its gateway, UI, shared policy, tests and contract changes together. Preserve original sources, masks, jobs, attempts, generated scenes and journal records; older versions cannot safely back up the new records.
 
+## T-041 durable bounded provider delay — 2026-10-30
+
+- **Change:** For provider 429 delays of 1–86400 seconds, the gateway persists a not-before timestamp in an immutable journal format 3 result and checks it under the dispatch lock. Explicit acknowledgement does not remove the deadline. A new attempt before the deadline fails before provider dispatch, even from another client or after restart.
+- **Evidence:** A synthetic gateway test records a 60-second delay, acknowledges the original result, restarts the gateway, rejects a new attempt at 59.999 seconds without another provider call and sends a separately authorized attempt at 60 seconds. Existing journal and provider regressions remain applicable. No real provider, seller data or key was used.
+- **Limits:** This does not complete BUG-001: delays above 86400 seconds still require external review and their exact duration is not enforced after acknowledgement. The gateway clock, same-journal boundary, account-external clients, provider behavior and independent security review remain limitations. T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Compatibility/rollback:** Older gateways reject journal format 3 rather than reading it as format 2. Disable generation and use a reviewed compatibility/recovery plan; preserve all journal evidence and user data. Do not delete or rewrite a wait to make an old gateway start.
+
 ## T-041 unsupported provider delay review mitigation — 2026-10-30
 
 - **Change:** A provider 429 with a present invalid or unsupported `Retry-After` retains its durable definitive result and active journal marker; the existing cleanup-pending signal requests explicit external review before acknowledgement. A missing header retains prior behavior. The UI describes the marker as requiring review rather than claiming cleanup necessarily failed.

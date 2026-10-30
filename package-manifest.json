@@ -32,8 +32,8 @@
     },
     {
       "path": "BUG.md",
-      "bytes": 3058,
-      "sha256": "00c72684bc00e805a162108f7237def8d8ecd9ef92aad20994c7a686b4134f65"
+      "bytes": 3373,
+      "sha256": "310ac538950a4612264c60f3f18173e67be96db0883335690c890674ef395467"
     },
     {
       "path": "DESIGN.md",
@@ -157,8 +157,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 22951,
-      "sha256": "5eed5944d24829ca6c6b96783cbb48fc230e17307ba8c200e853490e9af337db"
+      "bytes": 23358,
+      "sha256": "6ab2f77910966329a01998eb0832e06281b7f778347082ddb10805dbaa5a78cb"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -227,8 +227,8 @@
     },
     {
       "path": "docs/05-api/ERROR_RETRY_COST.md",
-      "bytes": 5546,
-      "sha256": "3a6bd9c4aa0510f8df7d1921f317db84339ecffbc002859c2e3dbccb59732573"
+      "bytes": 5723,
+      "sha256": "38d9eeb8948db1840bb9068b0cb738dcae52c471a173d719e29eaeafd0e08709"
     },
     {
       "path": "docs/05-api/OPENAI_ADAPTER.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 106930,
-      "sha256": "c9e023930d55c61f7476763f097073f43cea4bf9378dba10116d3810368b9fd4"
+      "bytes": 108315,
+      "sha256": "b81540dabb1a4f0b04fc67b3b33bed7c63ebe82d1233dba05bccd91e96112c3d"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
