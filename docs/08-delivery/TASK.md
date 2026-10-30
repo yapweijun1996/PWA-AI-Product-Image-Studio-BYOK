@@ -731,6 +731,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
 - **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
 
+## T-052 composite protection lineage — 2026-10-30
+
+- **Change:** Newly saved composites with protected masks bind the mask-evidence digest. Backup validation, review and export transactions reject missing or changed linked evidence and re-render bound composites with it. Existing unbound composites remain readable under legacy rules and are not treated as protected. [ADR-018](../02-architecture/ADR.md) defines v4 backups and downgrade constraints.
+- **Evidence:** Synthetic storage tests cover valid protected composite/review, v4 ZIP inspection and restore to a separate fake IndexedDB, a v4 archive relabelled v3, tampered composite digest, changed mask evidence and an already approved export. A Chromium development-module probe saved a protected composite, inspected a backup and verified that a modified composite digest blocks review and backup. The full application suite reported 261 passing tests and one known BUG-007 TODO failure; the production build passed. No provider or real SKU was used.
+- **Limits:** Review and decision records do not yet bind the evidence digest; stripping a composite digest is indistinguishable from a historical unbound record. Legacy and evidence-free approval/export remain possible. Protected selection completeness, output resampling, conversion and real-device/SKU acceptance remain open. [BUG-007](../../BUG.md), T-052 and the wrong-label TODO remain unresolved.
+- **Rollback:** Preserve all source images, masks, evidence, composites, reviews and v4 backups. Stop editing and use a reviewed migration before downgrade; do not strip evidence to make an old client accept records.
+
 ## T-051 / T-052 protected composite preview and save — 2026-10-30
 
 - **Change:** Composite input loading includes verified mask evidence and its digest. Preview and save pass present evidence to the renderer; save snapshots caller evidence and checks it against the reloaded inputs and again inside the locked transaction. A crop excluding a protected region, a too-small output footprint or overlapping billboard copy is rejected when evidence is present. Evidence-free masks retain prior behavior.

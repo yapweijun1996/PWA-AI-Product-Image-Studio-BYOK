@@ -16,7 +16,7 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const SAFE_PATH = new RegExp(`^(?:project\\.json|export-manifest\\.json|originals/${UUID}\\.(?:png|jpg|webp)|masks/${UUID}\\.(?:png|json)|history/(?:jobs|attempts|qa|heads)/${UUID}\\.json|history/assets/${UUID}\\.(?:json|png)|history/(?:ads|copy-layers)/${UUID}\\.png)$`);
 
 type ManifestFile = { path: string; sha256: string; bytes: number; mimeType: string; approved: boolean; role: 'project' | 'original' | 'mask' | 'receipt' | 'qa' | 'output'; sourceAssetId?: string | null; attemptId?: string | null; qaId?: string | null };
-type Manifest = { schemaVersion: '1.0.0' | '2.0.0' | '3.0.0'; exportId: string; productId: string; createdAt: string; approvedOnly: boolean; files: ManifestFile[]; appVersion: string };
+type Manifest = { schemaVersion: '1.0.0' | '2.0.0' | '3.0.0' | '4.0.0'; exportId: string; productId: string; createdAt: string; approvedOnly: boolean; files: ManifestFile[]; appVersion: string };
 export type BackupPreview = { product: Product; sources: BackupSource[]; masks: BackupMask[]; history: BackupHistory; totalBytes: number; conflict: boolean };
 type Progress = (message: string) => void;
 
@@ -90,7 +90,7 @@ export async function createBackup(productId: string, signal: AbortSignal, progr
   }
   for (const review of snapshot.history.reviews) await add(`history/qa/${review.qaId}.json`, json(review), 'qa', { attemptId: review.attemptId, qaId: review.qaId });
   for (const head of snapshot.history.heads) await add(`history/heads/${head.key.slice('visual-review-head:'.length)}.json`, json(head), 'receipt');
-  const manifest: Manifest = { schemaVersion: snapshot.masks.some((mask) => mask.metadata.protectedEvidence !== undefined) ? '3.0.0' : '2.0.0', exportId: crypto.randomUUID(), productId: snapshot.product.productId, createdAt: new Date().toISOString(), appVersion: __APP_VERSION__, approvedOnly: false, files };
+  const manifest: Manifest = { schemaVersion: snapshot.history.assets.some((asset) => 'kind' in asset && asset.kind === 'strict-composite' && Object.hasOwn(asset, 'protectedEvidenceSha256')) ? '4.0.0' : snapshot.masks.some((mask) => mask.metadata.protectedEvidence !== undefined) ? '3.0.0' : '2.0.0', exportId: crypto.randomUUID(), productId: snapshot.product.productId, createdAt: new Date().toISOString(), appVersion: __APP_VERSION__, approvedOnly: false, files };
   if (!validateManifest(manifest)) throw new Error('The backup manifest is invalid.');
   const manifestBytes = json(manifest);
   if (manifestBytes.length > MAX_JSON || files.reduce((sum, item) => sum + item.bytes, manifestBytes.length) > MAX_TOTAL) throw new Error('This project exceeds the backup size limit. No data was omitted.');
@@ -166,7 +166,7 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
     if (!validateManifest(rawManifest)) throw new Error('The backup manifest is invalid or uses an unsupported version.');
     const manifest = rawManifest as Manifest;
     assertNoSecrets(manifest);
-    if ((manifest.schemaVersion === '1.0.0' && !manifest.approvedOnly) || (manifest.schemaVersion !== '1.0.0' && manifest.approvedOnly) || !['1.0.0', '2.0.0', '3.0.0'].includes(manifest.schemaVersion) || manifest.files.length > MAX_FILES) throw new Error('This backup contains data that this version cannot safely restore.');
+    if ((manifest.schemaVersion === '1.0.0' && !manifest.approvedOnly) || (manifest.schemaVersion !== '1.0.0' && manifest.approvedOnly) || !['1.0.0', '2.0.0', '3.0.0', '4.0.0'].includes(manifest.schemaVersion) || manifest.files.length > MAX_FILES) throw new Error('This backup contains data that this version cannot safely restore.');
     const declared = new Map<string, ManifestFile>();
     for (const item of manifest.files) {
       if (declared.has(item.path) || item.approved || (manifest.schemaVersion === '1.0.0' && (!['project', 'original', 'mask'].includes(item.role) || item.attemptId || item.qaId || item.path.startsWith('history/')))) throw new Error('The backup contains unsupported or duplicate manifest entries.');
@@ -228,7 +228,7 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
     }
     if (masks.length * 2 !== maskInfos.length) throw new Error('The backup has missing or extra mask entries.');
     const hasProtectedEvidence = masks.some((mask) => Object.hasOwn(mask.metadata, 'protectedEvidence') || Object.hasOwn(mask.metadata, 'protectedEvidenceSha256'));
-    if (hasProtectedEvidence !== (manifest.schemaVersion === '3.0.0')) throw new Error('The backup version does not match its protected mask evidence.');
+    if (hasProtectedEvidence !== (manifest.schemaVersion === '3.0.0' || manifest.schemaVersion === '4.0.0')) throw new Error('The backup version does not match its protected mask evidence.');
     const history: BackupHistory = { jobs: [], attempts: [], assets: [], reviews: [], heads: [] };
     const consumed = new Set(['project.json', ...product.sourceAssets.map(sourcePath), ...maskInfos.map((item) => item.path)]);
     async function historyFile(path: string, role: ManifestFile['role'], attemptId?: string, qaId?: string): Promise<Blob> {
@@ -250,7 +250,7 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
       assertNoSecrets(value);
       return value as Record<string, unknown>;
     }
-    if (manifest.schemaVersion === '2.0.0' || manifest.schemaVersion === '3.0.0') {
+    if (manifest.schemaVersion !== '1.0.0') {
       for (const path of declared.keys()) {
         const match = new RegExp(`^history/(jobs|attempts|assets|qa|heads)/(${UUID})\\.json$`).exec(path);
         if (!match) continue;
@@ -280,6 +280,8 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
         }
       }
     }
+    const hasProtectedComposite = history.assets.some((asset) => Object.hasOwn(asset, 'protectedEvidenceSha256'));
+    if (hasProtectedComposite !== (manifest.schemaVersion === '4.0.0')) throw new Error('The backup version does not match its protected composite evidence.');
     if (consumed.size !== declared.size) throw new Error('The backup contains missing or extra records.');
     await validateBackupHistory(product, sources, masks, history, signal);
     cancelled(signal);

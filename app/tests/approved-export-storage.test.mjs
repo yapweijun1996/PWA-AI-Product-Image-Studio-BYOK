@@ -94,18 +94,20 @@ const { createProduct, saveSource, saveMask, addConfirmedFact, createStudioAttem
   createVisualReview, recordVisualDecision, listVisualReviews, listApprovedExportCandidates, loadApprovedExportBatch, commitApprovedExportBatch } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
-async function fixture(maskBytes = sourceBytes) {
+async function fixture(maskBytes = sourceBytes, withProtectedEvidence = false) {
   const product = await createProduct({ sku: randomUUID(), name: 'Synthetic product', category: 'Test', rightsAcknowledged: true });
   const source = { assetId: randomUUID(), sha256: hash(sourceBytes), mimeType: 'image/png', width: 2, height: 1, cameraView: 'FRONT', filename: 'source.png' };
   await saveSource(product.productId, { file: blob(sourceBytes), metadata: source, exifOrientation: 1, previewUrl: '' }, 'FRONT');
   const maskId = randomUUID(), maskSha256 = hash(maskBytes);
+  const evidence = { version: 1, sourceSha256: source.sha256, maskSha256, width: 2, height: 1, regions: [{ x: 0, y: 0, width: 1, height: 1 }] };
   const db = await new Promise((resolve, reject) => { const request = indexedDB.open('product-image-studio'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
   await new Promise((resolve, reject) => {
     const tx = db.transaction(['products', 'masks'], 'readwrite'), products = tx.objectStore('products');
     const request = products.get(product.productId);
     request.onsuccess = () => { const value = request.result; value.brandLock.maskAssetId = maskId; products.put(value); };
     tx.objectStore('masks').add({ maskId, productId: product.productId, sourceAssetId: source.assetId, sourceSha256: source.sha256,
-      width: 2, height: 1, sha256: maskSha256, version: 1, blob: blob(maskBytes) });
+      width: 2, height: 1, sha256: maskSha256, version: 1, blob: blob(maskBytes),
+      ...(withProtectedEvidence ? { protectedEvidence: evidence, protectedEvidenceSha256: hash(Buffer.from(JSON.stringify(evidence))) } : {}) });
     tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
   });
   const attempt = { attemptId: randomUUID(), jobId: randomUUID(), productId: product.productId, sourceAssetId: source.assetId,
@@ -193,6 +195,19 @@ test('STRICT rejects an uncovered source region before approved export', { todo:
       assetSha256: report.assetSha256, reviewId: report.qaId, decisionId: receipt.qaId };
     await loadApprovedExportBatch(f.productId, [selection]);
   }, /protect|coverage|region/i);
+});
+
+test('export rejects a changed protected-evidence digest after approval', async () => {
+  const f = await fixture(sourceBytes, true);
+  f.composite = await save(f, await load(f));
+  assert.ok(f.composite.protectedEvidenceSha256);
+  const { selection } = await approved(f);
+  assert.equal((await loadApprovedExportBatch(f.productId, [selection])).length, 1);
+  const changed = { version: 1, sourceSha256: f.source.sha256, maskSha256: hash(sourceBytes), width: 2, height: 1,
+    regions: [{ x: 1, y: 0, width: 1, height: 1 }] };
+  await mutate(f.db, 'masks', f.maskId, (row) => ({ ...row, protectedEvidence: changed, protectedEvidenceSha256: hash(Buffer.from(JSON.stringify(changed))) }));
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /protected evidence.*changed/i);
+  await assert.rejects(listApprovedExportCandidates(f.productId), /protected evidence.*changed/i);
 });
 
 test('only the latest explicit matching approval is discoverable and exported with allowlisted provenance', async () => {

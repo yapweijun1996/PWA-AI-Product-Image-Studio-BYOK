@@ -3,6 +3,8 @@ import test from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { deflateSync, inflateSync } from 'node:zlib';
 import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
+import { BlobReader, BlobWriter, Uint8ArrayReader, ZipReader, ZipWriter } from '@zip.js/zip.js/lib/zip-core-native.js';
 import { build } from 'vite';
 import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 
@@ -97,7 +99,7 @@ const built = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
   build: { write: false, minify: false, lib: { entry: 'src/products.ts', formats: ['es'], fileName: 'products' } } });
 const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { createProduct, getProduct, saveSource, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint, listVisualReviews,
+const { createProduct, getProduct, saveSource, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint, listVisualReviews, getBackupSnapshot,
   loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts, productSnapshotFingerprint, studioSceneContext } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 const rendererBuilt = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
@@ -211,10 +213,45 @@ test('composite save checks source-bound protected evidence and rejects stale ev
   const valid = await renderStrictCompositePixels({ ...inputs, recipe: full, protectedEvidence: inputs.protectedEvidence });
   const saved = await saveStrictComposite(f.productId, f.attemptId, inputs, valid.blob, valid.mapping, undefined, full);
   assert.equal(saved.maskId, f.maskId);
+  assert.equal(saved.protectedEvidenceSha256, evidenceHash(evidence));
+  assert.equal((await listVisualReviews(f.productId, f.attemptId, saved.assetId)).assetSha256, saved.sha256);
+  await getBackupSnapshot(f.productId);
+  const backupBuilt = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
+    build: { write: false, minify: false, lib: { entry: 'src/backup.ts', formats: ['es'], fileName: 'backup' } } });
+  const backupOutput = Array.isArray(backupBuilt) ? backupBuilt[0] : backupBuilt;
+  const backupCode = backupOutput.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
+  const { createBackup, inspectBackup } = await import(`data:text/javascript;base64,${Buffer.from(backupCode).toString('base64')}`);
+  const signal = new AbortController().signal, archive = await createBackup(f.productId, signal, () => {});
+  const reader = new ZipReader(new BlobReader(archive), { useWebWorkers: false });
+  const files = new Map();
+  for (const entry of await reader.getEntries()) files.set(entry.filename, new Uint8Array(await (await entry.getData(new BlobWriter())).arrayBuffer()));
+  await reader.close();
+  const manifest = JSON.parse(new TextDecoder().decode(files.get('export-manifest.json')));
+  assert.equal(manifest.schemaVersion, '4.0.0');
+  manifest.schemaVersion = '3.0.0'; files.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(manifest)));
+  const writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false, level: 0 });
+  for (const [path, bytes] of files) await writer.add(path, new Uint8ArrayReader(bytes));
+  await assert.rejects(inspectBackup(new File([await writer.close()], 'downgraded.zip'), signal, () => {}), /version.*protected composite/i);
+  const backup = await inspectBackup(new File([archive], 'backup.zip'), signal, () => {});
+  const originalIndexedDB = globalThis.indexedDB;
+  try {
+    globalThis.indexedDB = new IDBFactory();
+    const isolated = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}#protected-composite-restore`);
+    await isolated.restoreProduct(backup.product, backup.sources, backup.masks, backup.history);
+    const restored = await isolated.listStrictComposites(f.productId, f.attemptId);
+    assert.equal(restored[0].protectedEvidenceSha256, evidenceHash(evidence));
+    assert.equal((await isolated.listVisualReviews(f.productId, f.attemptId, saved.assetId)).assetSha256, saved.sha256);
+  } finally { globalThis.indexedDB = originalIndexedDB; }
+  await mutate(f.db, 'generatedAssets', saved.assetId, (row) => ({ ...row, protectedEvidenceSha256: 'a'.repeat(64) }));
+  await assert.rejects(listVisualReviews(f.productId, f.attemptId, saved.assetId), /protected evidence.*changed/i);
+  await assert.rejects(getBackupSnapshot(f.productId), /protected evidence.*changed/i);
+  await mutate(f.db, 'generatedAssets', saved.assetId, (row) => ({ ...row, protectedEvidenceSha256: evidenceHash(evidence) }));
   const omitted = { ...inputs }; delete omitted.protectedEvidence; delete omitted.protectedEvidenceSha256;
   await assert.rejects(saveStrictComposite(f.productId, f.attemptId, omitted, valid.blob, valid.mapping, undefined, full), /inputs changed/);
   const changed = { ...evidence, regions: [{ x: 0, y: 0, width: 1, height: 1 }] };
   await mutate(f.db, 'masks', f.maskId, (row) => ({ ...row, protectedEvidence: changed, protectedEvidenceSha256: evidenceHash(changed) }));
+  await assert.rejects(listVisualReviews(f.productId, f.attemptId, saved.assetId), /protected evidence.*changed/i);
+  await assert.rejects(getBackupSnapshot(f.productId), /protected evidence.*changed/i);
   await assert.rejects(saveStrictComposite(f.productId, f.attemptId, inputs, valid.blob, valid.mapping, undefined, full), /inputs changed/);
 });
 

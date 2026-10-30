@@ -1521,8 +1521,19 @@ export type StrictComposite = {
   blob: Blob; sha256: string; sourceAssetId: string; sourceSha256: string;
   maskId: string; maskSha256: string; sceneAssetId: string; sceneSha256: string;
   mapping: StrictMapping; createdAt: string;
+  protectedEvidenceSha256?: string;
   recipe?: StrictRecipe; recipeSha256?: string; ad?: Blob; adSha256?: string; copyLayer?: Blob;
 };
+
+// Unbound historical composites remain readable but cannot be treated as protected.
+function compositeProtectedEvidence(composite: StrictComposite, mask: BackupMask): ProtectedEvidence | undefined {
+  if (!Object.hasOwn(composite, 'protectedEvidenceSha256')) return undefined;
+  if (typeof composite.protectedEvidenceSha256 !== 'string' || !hashPattern.test(composite.protectedEvidenceSha256) ||
+      !mask.metadata.protectedEvidence || composite.protectedEvidenceSha256 !== mask.metadata.protectedEvidenceSha256) {
+    throw new Error('The composite protected evidence is missing or changed.');
+  }
+  return mask.metadata.protectedEvidence;
+}
 
 async function verifyStrictPng(blob: Blob, expectedHash?: string): Promise<string> {
   if (!(blob instanceof Blob) || blob.type !== 'image/png' || blob.size < 1 || blob.size > STUDIO_MAX_PNG_BYTES) {
@@ -1755,6 +1766,7 @@ export async function validateBackupHistory(product: Product, sources: BackupSou
     if (isStudioScene(asset)) continue;
     const composite = asset as StrictComposite;
     const keys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt',
+      ...(composite && Object.hasOwn(composite, 'protectedEvidenceSha256') ? ['protectedEvidenceSha256'] : []),
       ...(composite.recipe ? ['recipe', 'recipeSha256', ...(composite.ad ? ['ad', 'adSha256'] : []), ...(composite.copyLayer ? ['copyLayer'] : [])] : [])];
     const scene = assets.get(composite.sceneAssetId);
     const source = sources.find((row) => row.metadata.assetId === attempt.sourceAssetId);
@@ -1768,6 +1780,7 @@ export async function validateBackupHistory(product: Product, sources: BackupSou
     if (composite.recipe && (composite.recipe.styleId !== attempt.styleId || composite.recipe.sourceView !== attempt.sceneContext?.sourceView ||
         composite.recipe.topViewConfirmed !== attempt.topViewConfirmed ||
         composite.recipeSha256 !== await sha256(new TextEncoder().encode(JSON.stringify(composite.recipe))))) throw new Error('A composite recipe is invalid.');
+    const protectedEvidence = compositeProtectedEvidence(composite, mask);
     verifyStrictMapping(composite.mapping, source.metadata.width, source.metadata.height, composite.recipe);
     await verifyCopyLayer(composite.recipe, composite.copyLayer);
     if (composite.ad) {
@@ -1775,7 +1788,7 @@ export async function validateBackupHistory(product: Product, sources: BackupSou
       await verifyStrictPng(composite.ad, composite.adSha256);
     }
     const rendered = await renderStrictComposite({ source: source.blob, mask: mask.blob, scene: scene.blob,
-      sourceWidth: source.metadata.width, sourceHeight: source.metadata.height, signal: renderSignal, recipe: composite.recipe, copyLayer: composite.copyLayer })
+      sourceWidth: source.metadata.width, sourceHeight: source.metadata.height, signal: renderSignal, recipe: composite.recipe, copyLayer: composite.copyLayer, protectedEvidence })
       .catch((error: unknown) => { checkBackupCancellation(signal); throw error; });
     if (Boolean(rendered.ad) !== Boolean(composite.ad)) throw new Error('A composite advertisement is missing.');
     if (rendered.ad && composite.ad) await compareCompositePixels(rendered.ad, composite.ad, renderSignal);
@@ -1956,6 +1969,7 @@ async function strictCompositeTransaction(
                   sha256: hash, sourceAssetId: inputs.sourceAssetId, sourceSha256: inputs.sourceSha256,
                   maskId: inputs.maskId, maskSha256: inputs.maskSha256, sceneAssetId: inputs.sceneAssetId,
                   sceneSha256: inputs.sceneSha256, mapping: { ...save.mapping }, createdAt: new Date().toISOString(),
+                  ...(inputs.protectedEvidenceSha256 ? { protectedEvidenceSha256: inputs.protectedEvidenceSha256 } : {}),
                   ...(save.recipe ? { recipe: save.recipe, recipeSha256: await sha256(new TextEncoder().encode(JSON.stringify(save.recipe))) } : {}),
                   ...(save.ad ? { ad: save.ad, adSha256: await verifyStrictPng(save.ad) } : {}),
                   ...(save.copyLayer ? { copyLayer: save.copyLayer } : {}) };
@@ -1964,6 +1978,7 @@ async function strictCompositeTransaction(
                 const composite = compositeRequest?.result as StrictComposite | undefined;
                 const compositeKeys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId',
                   'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt',
+                  ...(composite && Object.hasOwn(composite, 'protectedEvidenceSha256') ? ['protectedEvidenceSha256'] : []),
                   ...(composite?.recipe ? ['recipe', 'recipeSha256', ...(composite.ad ? ['ad', 'adSha256'] : []), ...(composite.copyLayer ? ['copyLayer'] : [])] : [])];
                 if (!composite || !exactKeys(composite, compositeKeys) || composite.kind !== 'strict-composite' ||
                     composite.assetId !== visual.assetId || composite.productId !== productId || composite.attemptId !== attemptId ||
@@ -1980,12 +1995,13 @@ async function strictCompositeTransaction(
                   if (composite.recipe.styleId !== attempt.styleId || composite.recipe.sourceView !== attempt.sceneContext?.sourceView || composite.recipe.topViewConfirmed !== attempt.topViewConfirmed ||
                       composite.recipeSha256 !== recipeHash) throw new Error('The composite recipe lineage is invalid.');
                 }
+                const protectedEvidence = compositeProtectedEvidence(composite, mask);
                 verifyStrictMapping(composite.mapping, source.width, source.height, composite.recipe);
                 await verifyCopyLayer(composite.recipe, composite.copyLayer);
                 await verifyStrictPng(composite.blob, composite.sha256);
                 const cancellation = signal ?? new AbortController().signal;
                 const rendered = await renderStrictComposite({ source: inputs.source, mask: inputs.mask, scene: inputs.scene,
-                  sourceWidth: inputs.sourceWidth, sourceHeight: inputs.sourceHeight, signal: cancellation, recipe: composite.recipe, copyLayer: composite.copyLayer });
+                  sourceWidth: inputs.sourceWidth, sourceHeight: inputs.sourceHeight, signal: cancellation, recipe: composite.recipe, copyLayer: composite.copyLayer, protectedEvidence });
                 verifyStrictMapping(rendered.mapping, source.width, source.height, composite.recipe);
                 if (Boolean(rendered.ad) !== Boolean(composite.ad)) throw new Error('The ad lineage is invalid.');
                 if (rendered.ad && composite.ad) {
@@ -2185,6 +2201,7 @@ export async function listStrictComposites(productId: string, attemptId: string)
     if (row.kind !== 'strict-composite' || row.productId !== productId || row.attemptId !== attemptId) continue;
     if (![row.assetId, row.productId, row.attemptId, row.sourceAssetId, row.maskId, row.sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id)) ||
         ![row.sha256, row.sourceSha256, row.maskSha256, row.sceneSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash)) ||
+        (Object.hasOwn(row, 'protectedEvidenceSha256') && (typeof row.protectedEvidenceSha256 !== 'string' || !hashPattern.test(row.protectedEvidenceSha256))) ||
         !row.mapping || typeof row.createdAt !== 'string' || !Number.isFinite(Date.parse(row.createdAt))) throw new Error('A stored composite has invalid metadata.');
     verifyStrictMapping(row.mapping, row.mapping.sourceWidth, row.mapping.sourceHeight, row.recipe);
     if (row.recipe && row.recipeSha256 !== await sha256(new TextEncoder().encode(JSON.stringify(row.recipe)))) throw new Error('A saved recipe hash does not match.');
@@ -2449,6 +2466,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
           await verifyStrictPng(scene.blob, scene.sha256);
           const compositeKeys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId',
             'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt',
+            ...(composite && Object.hasOwn(composite, 'protectedEvidenceSha256') ? ['protectedEvidenceSha256'] : []),
             ...(composite?.recipe ? ['recipe', 'recipeSha256', ...(composite.ad ? ['ad', 'adSha256'] : []), ...(composite.copyLayer ? ['copyLayer'] : [])] : [])];
           if (!composite || !exactKeys(composite, compositeKeys) || composite.kind !== 'strict-composite' ||
               composite.assetId !== selection.assetId || composite.productId !== productId || composite.attemptId !== attempt.attemptId ||
@@ -2460,11 +2478,12 @@ async function approvedExportTransaction(productId: string, selections: Approved
           if ((attempt.styleId === undefined) !== (composite.recipe === undefined)) throw new Error('The composite recipe lineage is invalid.');
           if (composite.recipe && (composite.recipe.styleId !== attempt.styleId || composite.recipe.sourceView !== attempt.sceneContext?.sourceView || composite.recipe.topViewConfirmed !== attempt.topViewConfirmed ||
               composite.recipeSha256 !== await sha256(new TextEncoder().encode(JSON.stringify(composite.recipe))))) throw new Error('The composite recipe lineage is invalid.');
+          const protectedEvidence = compositeProtectedEvidence(composite, mask);
           verifyStrictMapping(composite.mapping, source.width, source.height, composite.recipe);
           await verifyCopyLayer(composite.recipe, composite.copyLayer);
           await verifyStrictPng(composite.blob, selection.assetSha256);
           const rendered = await renderStrictComposite({ source: original.blob, mask: mask.blob, scene: scene.blob,
-            sourceWidth: source.width, sourceHeight: source.height, signal: cancellation, recipe: composite.recipe, copyLayer: composite.copyLayer });
+            sourceWidth: source.width, sourceHeight: source.height, signal: cancellation, recipe: composite.recipe, copyLayer: composite.copyLayer, protectedEvidence });
           verifyStrictMapping(rendered.mapping, source.width, source.height, composite.recipe);
           if (Boolean(rendered.ad) !== Boolean(composite.ad)) throw new Error('The ad lineage is invalid.');
           if (rendered.ad && composite.ad) {
