@@ -378,6 +378,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 wait-proof publication failure checks — 2026-10-30
+
+- **Evidence:** Synthetic filesystem faults during format 4 wait-proof publication covered proof-file sync failure, hard-link failure and directory sync failure immediately after linking. Each caused the final locked dispatch to reject before invoking its callback. After the injected failure was removed, a separate call synchronized and completed the proof and dispatched once. The focused journal suite passed 9 tests, including separate-process and pre-proof termination cases.
+- **Limits:** Faults are injected into a private temporary test journal; they do not simulate actual power loss, filesystem rollback or every partial-write/OS failure. Provider billing, target-device sleep and independent security review remain open. BUG-001 remains IN_PROGRESS.
+- **Rollback:** Revert these tests and evidence with their documentation hashes; preserve real journal records and proofs.
+
 ## T-041 separate-process elapsed proof checks — 2026-10-30
 
 - **Evidence:** Two separate Node child processes opened the same synthetic journal and used independently injected monotonic clocks. Concurrent reservations at 59,999 ms for a 60-second wait were both blocked; at 60,000 ms they serialized through the journal lock, shared one durable proof and reserved distinct attempts. A newly started process accepted that proof. In a separate case, SIGKILL before proof publication was followed by a new process that remained blocked until its own full 60-second simulated interval elapsed. The focused journal suite passed 6 tests.

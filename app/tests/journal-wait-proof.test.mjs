@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -115,4 +117,73 @@ test('a process terminated before publishing proof cannot shorten a restarted wa
   const restarted = await startWorker();
   assert.equal(await reserve(restarted, 59999), 'rate');
   assert.equal(await reserve(restarted, 60000), 'reserved');
+});
+
+
+test('proof link failure prevents dispatch and retains a recoverable wait', async (t) => {
+  const path = await directory(t); let now = 0, calls = 0;
+  const journal = await createAttemptJournal(path, { monotonicClock: () => now });
+  await prepare(journal); await journal.begin(principal, id(2)); now = 60000;
+  const original = fs.link;
+  fs.link = async (source, target) => {
+    if (String(target).endsWith('.waitproof')) throw Object.assign(new Error('synthetic link failure'), { code: 'EIO' });
+    return original(source, target);
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, () => { calls++; }, () => {}));
+    assert.equal(calls, 0);
+  } finally { fs.link = original; syncBuiltinESMExports(); }
+  assert.equal(await journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, () => { calls++; }, () => {}), 'submitted');
+  assert.equal(calls, 1);
+});
+
+test('directory sync failure after proof link prevents dispatch until journal synchronization recovers', async (t) => {
+  const path = await directory(t); let now = 0, calls = 0, failNext = false, failed = false;
+  const journal = await createAttemptJournal(path, { monotonicClock: () => now });
+  await prepare(journal); await journal.begin(principal, id(2)); now = 60000;
+  const oldLink = fs.link, oldOpen = fs.open;
+  fs.link = async (source, target) => {
+    const result = await oldLink(source, target);
+    if (String(target).endsWith('.waitproof')) failNext = true;
+    return result;
+  };
+  fs.open = async (name, ...args) => {
+    const fd = await oldOpen(name, ...args);
+    if (name === path && failNext) {
+      failNext = false;
+      fd.sync = async () => { failed = true; throw Object.assign(new Error('synthetic sync failure'), { code: 'EIO' }); };
+    }
+    return fd;
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, () => { calls++; }, () => {}));
+    assert.equal(failed, true); assert.equal(calls, 0);
+  } finally { fs.link = oldLink; fs.open = oldOpen; syncBuiltinESMExports(); }
+  assert.deepEqual(JSON.parse(await readFile(join(path, `${principal}-${id(1)}.waitproof`), 'utf8')), { retryAfterSeconds: 60 });
+  assert.equal(await journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, () => { calls++; }, () => {}), 'submitted');
+  assert.equal(calls, 1);
+});
+
+test('proof file sync failure prevents publication and dispatch', async (t) => {
+  const path = await directory(t); let now = 0, calls = 0, failed = false;
+  const journal = await createAttemptJournal(path, { monotonicClock: () => now });
+  await prepare(journal); await journal.begin(principal, id(2)); now = 60000;
+  const original = fs.open;
+  fs.open = async (name, ...args) => {
+    const fd = await original(name, ...args);
+    if (String(name).startsWith(`${path}/.tmp-`)) {
+      fd.sync = async () => { failed = true; throw Object.assign(new Error('synthetic file sync failure'), { code: 'EIO' }); };
+    }
+    return fd;
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, () => { calls++; }, () => {}));
+    assert.equal(failed, true); assert.equal(calls, 0);
+    await assert.rejects(readFile(join(path, `${principal}-${id(1)}.waitproof`)), { code: 'ENOENT' });
+  } finally { fs.open = original; syncBuiltinESMExports(); }
+  assert.equal(await journal.reserveAndDispatch(principal, id(2), digest, 999999999, 10, 0, () => true, () => { calls++; }, () => {}), 'submitted');
+  assert.equal(calls, 1);
 });
