@@ -267,7 +267,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const gatewayCheck = useRef(0);
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useUnsavedChanges(busy || Object.values(styleConsent).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
+  useUnsavedChanges(busy || topConfirmed || Object.values(styleConsent).some(Boolean) || Object.values(attemptOverrides).some(Boolean) || Object.values(sessionOverrides).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
   const unresolved = entries?.some((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? false;
   const validMoney = (value: string) => !value || /^\d{1,9}\.\d{1,6}$/.test(value);
   let plans: PlannedStyle[] = [];

@@ -90,7 +90,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`!!document.querySelector('#source-file')`),'source upload');
     const sourceHash=await evaluate(client,`(async()=>{const c=document.createElement('canvas');c.width=200;c.height=100;const x=c.getContext('2d');x.fillStyle='#a31';x.fillRect(0,0,200,100);const blob=await new Promise(r=>c.toBlob(r,'image/png'));const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');const d=new DataTransfer();d.items.add(new File([blob],'synthetic.png',{type:'image/png'}));const f=document.querySelector('#source-file');f.files=d.files;f.dispatchEvent(new Event('change',{bubbles:true}));return hash})()`);
     await until(()=>evaluate(client,`!!document.querySelector('#camera-view')`),'source preview');
-    await evaluate(client,`(() => {const e=document.querySelector('#camera-view');e.value='FRONT';e.dispatchEvent(new Event('change',{bubbles:true}));[...document.querySelectorAll('.source-panel button')].find(b=>b.textContent==='Save original').click()})()`);
+    await evaluate(client,`(() => {const e=document.querySelector('#camera-view');e.value='TOP';e.dispatchEvent(new Event('change',{bubbles:true}));[...document.querySelectorAll('.source-panel button')].find(b=>b.textContent==='Save original').click()})()`);
     await until(()=>evaluate(client,`document.querySelector('#mask-source')?.options.length>1`),'saved source');
     await evaluate(client,`(() => {const s=document.querySelector('#mask-source');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
     await until(()=>evaluate(client,`document.querySelector('.mask-regions')&&!document.querySelector('.mask-regions').disabled`),'mask editor');
@@ -115,6 +115,23 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`document.querySelector('.provider-session')?.innerText.includes('Provider authorization active')`),'provider authorization');
     await client.call('Page.navigate',{url:`${origin}/products/${productId}`});
     await until(()=>evaluate(client,`[...document.querySelectorAll('.style-plan label')].some(l=>l.innerText.includes('I authorize this single Studio attempt')&&!l.querySelector('input').disabled)`),'generation authorization');
+    await evaluate(client,`(() => {const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const id of ['studio-limit','studio-session-limit']){const e=document.getElementById(id);set.call(e,'0.000001');e.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.style-plan label')].some(l=>l.innerText.includes('per-attempt soft estimate limit')) && [...document.querySelectorAll('.style-plan label')].some(l=>l.innerText.includes('session soft estimate limit'))`),'soft-limit overrides');
+    for(const label of ['per-attempt soft estimate limit','session soft estimate limit']) {
+      await evaluate(client,`(() => {const l=[...document.querySelectorAll('.style-plan label')].find(x=>x.innerText.includes(${JSON.stringify(label)}));l.querySelector('input').click();window.__oldConfirm=window.confirm;window.__confirmCount=0;window.confirm=()=>{window.__confirmCount++;return false}})()`);
+      await evaluate(client,`document.querySelector('a[href="/"]').click()`);
+      await until(()=>evaluate(client,`window.__confirmCount>0 || location.pathname==='/'`),'navigation guard response');
+      assert.equal(await evaluate(client,`location.pathname`),`/products/${productId}`,`${label} confirmation protects the draft.`);
+      assert.equal(await evaluate(client,`window.__confirmCount`),1,'Navigation asks before discarding the override.');
+      await evaluate(client,`(() => {window.confirm=window.__oldConfirm;[...document.querySelectorAll('.style-plan label')].find(x=>x.innerText.includes(${JSON.stringify(label)})).querySelector('input').click()})()`);
+    }
+    await evaluate(client,`(() => {[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('session soft estimate limit')).querySelector('input').click();window.__oldConfirm=window.confirm;window.confirm=()=>true})()`);
+    await evaluate(client,`document.querySelector('a[href="/"]').click()`);
+    await until(()=>evaluate(client,`location.pathname==='/' && !!document.querySelector(${JSON.stringify(`a[href="/products/${productId}"]`)})`),'discarded override and workspace');
+    await evaluate(client,`(() => {window.confirm=window.__oldConfirm;document.querySelector(${JSON.stringify(`a[href="/products/${productId}"]`)}).click()})()`);
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.style-plan label')].some(l=>l.innerText.includes('session soft estimate limit'))`),'reopened queue');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('session soft estimate limit')).querySelector('input').checked`),false,'Discarded override is not silently restored.');
+    await evaluate(client,`(() => {const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const id of ['studio-limit','studio-session-limit']){const e=document.getElementById(id);set.call(e,'');e.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
     assert.equal(providerCalls,0);assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true);
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'generation ready');
@@ -190,6 +207,14 @@ test('production gateway serves a synthetic creation-to-export journey without o
       await evaluate(client, `(() => {const group=[...document.querySelectorAll('.studio-panel fieldset')].find(f=>f.querySelector('legend')?.textContent==='Choose styles');const label=[...group.querySelectorAll('label')].find(l=>l.innerText.trim()===${JSON.stringify(style)});if(!label.querySelector('input').checked)label.querySelector('input').click()})()`);
     }
     await until(()=>evaluate(client,`document.querySelectorAll('.style-plan').length===7`),'seven independent style plans');
+    await evaluate(client, `(() => {const label=[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('compatible with a true 90-degree overhead view'));label.querySelector('input').click();window.__oldConfirm=window.confirm;window.__confirmCount=0;window.confirm=()=>{window.__confirmCount++;return false}})()`);
+    await evaluate(client, `document.querySelector('a[href="/"]').click()`);
+    await until(()=>evaluate(client,`window.__confirmCount>0 || location.pathname==='/'`),'overhead confirmation guard response');
+    assert.equal(await evaluate(client,`location.pathname`),`/products/${productId}`,'Overhead confirmation protects the draft.');
+    assert.equal(await evaluate(client,`window.__confirmCount`),1,'Navigation asks before discarding the overhead confirmation.');
+    assert.equal(providerCalls,3,'An overhead confirmation alone makes no provider request.');
+    await evaluate(client, `window.confirm=window.__oldConfirm`);
+
     assert.match(await evaluate(client,`document.querySelector('.queue-consent-progress').innerText`),/Style authorizations: 0 of 7/);
     for (const width of [320,390,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<600});
