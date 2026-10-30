@@ -21,6 +21,7 @@ export function ProductDetails() {
   const [saving, setSaving] = useState(false);
   const [studioBusy, setStudioBusy] = useState(false);
   const [error, setError] = useState('');
+  const [loadVersion, setLoadVersion] = useState(0);
   useUnsavedChanges(Boolean(name || value || confirmed || saving));
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export function ProductDetails() {
     getProduct(productId).then((value) => { if (mounted) setProduct(value); })
       .catch((reason: unknown) => { if (mounted) setError(message(reason)); });
     return () => { mounted = false; };
-  }, [productId]);
+  }, [productId, loadVersion]);
 
   async function submitFact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,7 +58,7 @@ export function ProductDetails() {
     finally { setSaving(false); }
   }
 
-  if (error && product === undefined) return <><Link className="back-link" to="/">← All products</Link><p className="error-message" role="alert">{error}</p></>;
+  if (error && product === undefined) return <><Link className="back-link" to="/">← All products</Link><p className="error-message" role="alert">{error}</p><button className="secondary-button" type="button" onClick={() => { setError(''); setLoadVersion((value) => value + 1); }}>Retry loading product</button></>;
   if (product === undefined) return <p className="muted" role="status">Loading product…</p>;
   if (product === null) return <><Link className="back-link" to="/">← All products</Link><h1>Product not found</h1><p className="lead">No local project matches this address.</p></>;
   return <>

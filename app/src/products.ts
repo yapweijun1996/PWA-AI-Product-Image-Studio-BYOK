@@ -57,16 +57,22 @@ function notifyProductChanged(productId: string): void {
 }
 const DB_VERSION = 3;
 let connection: Promise<IDBDatabase> | null = null;
-let blockedUpgrade = false;
-const blockedUpgradeError = () => new Error('Storage upgrade is blocked by another open tab. Close the other tab and try again.');
+let pendingOpenMessage: string | null = null;
+const blockedUpgradeMessage = 'Storage upgrade is blocked by another open tab. Close the other tab and try again.';
+const slowOpenMessage = 'Storage is taking longer than expected to open. Close other app tabs and try again. Your data has not been cleared.';
 
 function openDatabase(): Promise<IDBDatabase> {
-  if (blockedUpgrade) return Promise.reject(blockedUpgradeError());
+  if (pendingOpenMessage) return Promise.reject(new Error(pendingOpenMessage));
   if (connection) return connection;
   const pending = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     let abandoned = false;
     let upgradeFailure: Error | undefined;
+    const openTimeout = setTimeout(() => {
+      abandoned = true;
+      pendingOpenMessage = slowOpenMessage;
+      reject(new Error(slowOpenMessage));
+    }, 4000);
     request.onupgradeneeded = (event) => {
       const db = request.result, transaction = request.transaction!;
       try {
@@ -128,16 +134,18 @@ function openDatabase(): Promise<IDBDatabase> {
       }
     };
     request.onblocked = () => {
+      clearTimeout(openTimeout);
       abandoned = true;
-      blockedUpgrade = true;
-      reject(blockedUpgradeError());
+      pendingOpenMessage = blockedUpgradeMessage;
+      reject(new Error(blockedUpgradeMessage));
     };
-    request.onerror = () => { blockedUpgrade = false; reject(upgradeFailure ?? (request.error?.name === 'VersionError'
+    request.onerror = () => { clearTimeout(openTimeout); pendingOpenMessage = null; reject(upgradeFailure ?? (request.error?.name === 'VersionError'
       ? new Error('This workspace requires a newer version of the app. No data was changed.')
       : request.error ?? new Error('Could not open local storage.'))); };
     request.onsuccess = () => {
       const db = request.result;
-      if (abandoned) { blockedUpgrade = false; db.close(); return; }
+      clearTimeout(openTimeout);
+      if (abandoned) { pendingOpenMessage = null; db.close(); return; }
       db.onversionchange = () => { db.close(); connection = null; };
       resolve(db);
     };

@@ -57,7 +57,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient,legacyClient,recoveryClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
+  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient,legacyClient,recoveryClient,detailsRecoveryClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
@@ -347,11 +347,22 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await recoveryClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});await recoveryClient.call('Page.navigate',{url:origin});
     await until(()=>evaluate(recoveryClient, `document.querySelector('[role=alert]')?.innerText.includes('blocked by another open tab')`),'blocked storage guidance');
     assert.equal(await evaluate(recoveryClient, `document.documentElement.scrollWidth<=innerWidth`),true,'Storage recovery controls fit mobile width.');
+    const {targetId:detailsRecoveryId}=await browserClient.call('Target.createTarget',{url:'about:blank',browserContextId:legacyContext});
+    const detailsTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===detailsRecoveryId),'queued product recovery tab');
+    detailsRecoveryClient=await connect(detailsTarget.webSocketDebuggerUrl);await detailsRecoveryClient.call('Runtime.enable');await detailsRecoveryClient.call('Page.enable');
+    await detailsRecoveryClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await detailsRecoveryClient.call('Page.navigate',{url:`${origin}/products/${legacyProduct.productId}`});
+    await until(()=>evaluate(detailsRecoveryClient, `document.querySelector('[role=alert]')?.innerText.includes('Storage')`),'queued direct product recovery guidance');
+    assert.equal(await evaluate(detailsRecoveryClient, `document.documentElement.scrollWidth<=innerWidth`),true,'Direct product recovery fits mobile width.');
+    await evaluate(detailsRecoveryClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Retry loading product').click()`);
+    await until(()=>evaluate(detailsRecoveryClient, `document.querySelector('[role=alert]')?.innerText.includes('Storage')`),'queued direct product retry guidance');
     await evaluate(recoveryClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Retry loading products').click()`);
     await until(()=>evaluate(recoveryClient, `document.querySelector('[role=alert]')?.innerText.includes('blocked by another open tab')`),'blocked retry guidance');
     assert.equal(await evaluate(legacyClient, `(async()=>{const tx=window.__legacyWorkspace.transaction('products'),q=tx.objectStore('products').get(${JSON.stringify(legacyProduct.productId)});return await new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve(q.result.sku);tx.onabort=()=>reject(tx.error)})})()`),'UPGRADE-SYNTHETIC','Blocked retries do not modify the old workspace.');
     await evaluate(legacyClient, `window.__legacyWorkspace.close()`);
     await evaluate(legacyClient, `(async()=>{const q=indexedDB.open('product-image-studio');const db=await new Promise((resolve,reject)=>{q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});db.close()})()`);
+    await evaluate(detailsRecoveryClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Retry loading product').click()`);
+    await until(()=>evaluate(detailsRecoveryClient, `document.querySelector('h1')?.innerText==='Synthetic upgrade recovery'`),'direct product retry after old tab closes');
     await evaluate(recoveryClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Retry loading products').click()`);
     await until(()=>evaluate(recoveryClient, `document.querySelector('.product-list')?.innerText.includes('Synthetic upgrade recovery')`),'workspace retry after old tab closes');
     const legacyRestored=await evaluate(recoveryClient, `(async()=>{const q=indexedDB.open('product-image-studio');const db=await new Promise((resolve,reject)=>{q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('products'),get=tx.objectStore('products').get(${JSON.stringify(legacyProduct.productId)});tx.oncomplete=()=>resolve({version:db.version,product:get.result});tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
@@ -530,7 +541,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(providerCalls,14,'Only the explicitly authorized retry is sent.');
     assert.equal(await evaluate(client, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.innerText.includes('The image request was not sent.')})`),true,'Remaining unsent attempts retain their outcomes.');
   } finally {
-    recoveryClient?.close();legacyClient?.close();observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    detailsRecoveryClient?.close();recoveryClient?.close();legacyClient?.close();observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
     await rm(root,{recursive:true,force:true});
   }
