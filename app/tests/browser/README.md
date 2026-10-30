@@ -12,4 +12,4 @@ The direct-gateway test also checks synthetic credential markers against the fin
 
 The direct-gateway journey also injects a synthetic transport failure, checks that UNKNOWN persists without a resend, and verifies separately acknowledged and authorized retry lineage after reload. Billing review is simulated.
 
-The direct-gateway test also checks first use of the cached product route while offline and simulates a blocked backup route to verify the explicit error and reload flow. This does not replace installed-device or two-build update testing.
+The direct-gateway test also checks first use of the cached product route while offline and simulates a blocked backup route to verify the explicit error and reload flow. A separate synthetic two-build test checks that an old tab retains a draft and can load its cached lazy page after another tab activates an update. These checks do not replace installed-device or suspended-tab testing.
