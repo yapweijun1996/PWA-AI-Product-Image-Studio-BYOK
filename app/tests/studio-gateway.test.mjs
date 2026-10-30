@@ -36,7 +36,7 @@ async function fixture(t, options = {}) {
   let time = 1_800_000_000_000, monotonic = 0, server, origin, calls = [], currentToken = loginToken, currentHash = authTokenHash;
   const transport = options.transport ?? (async (url, init) => { calls.push({ url, init }); return success(); });
   async function start() {
-    server = await createGateway({ authTokenHash: currentHash, providerConfigured: true, staticDirectory: web, now: () => time, monotonicClock: () => monotonic, imageGeneration: options.disabled ? null : { enabled: true, apiKey: fakeKey, journalDirectory: journal, transport, timeoutMs: options.timeoutMs ?? 500, maxAttemptsPerHour: options.maxAttemptsPerHour ?? 10, maxEstimatedUSD: options.maxEstimatedUSD ?? '0.010000' } });
+    server = await createGateway({ authTokenHash: currentHash, providerConfigured: true, staticDirectory: web, now: () => time, monotonicClock: options.realMonotonic ? undefined : () => monotonic, imageGeneration: options.disabled ? null : { enabled: true, apiKey: fakeKey, journalDirectory: journal, transport, timeoutMs: options.timeoutMs ?? 500, maxAttemptsPerHour: options.maxAttemptsPerHour ?? 10, maxEstimatedUSD: options.maxEstimatedUSD ?? '0.010000' } });
     await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`;
   }
   async function stop() { if (server?.listening) await new Promise((resolve) => server.close(resolve)); }
@@ -607,6 +607,27 @@ test('forward wall-clock jump and restart do not release a new provider wait', a
   f.advanceMonotonic(86401000);
   const later = attempt();
   assert.equal((await f.generate(session, later, await approval(f, session, later))).status, 429);
+  assert.equal(calls, 2);
+});
+
+test('a restarted gateway observes a real monotonic wait before a separately approved dispatch', async (t) => {
+  let calls = 0;
+  const f = await fixture(t, { realMonotonic: true, transport: async () => {
+    calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '2' } });
+  } });
+  let session = await f.login(); const first = attempt();
+  assert.equal((await f.generate(session, first, await approval(f, session, first))).status, 429);
+  assert.equal((await f.acknowledge(session, first.clientAttemptId)).status, 200);
+  await f.stop(); f.jumpWall(10_000); await f.start(); session = await f.login();
+  const early = attempt();
+  const blocked = await f.generate(session, early, await approval(f, session, early));
+  assert.equal(blocked.status, 429); assert.equal((await blocked.json()).error.code, 'RATE_LIMITED');
+  assert.equal(calls, 1);
+  await new Promise((resolve) => setTimeout(resolve, 2200));
+  const later = attempt();
+  const response = await f.generate(session, later, await approval(f, session, later));
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error.code, 'PROVIDER_LIMIT');
   assert.equal(calls, 2);
 });
 

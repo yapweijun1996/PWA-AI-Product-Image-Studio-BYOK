@@ -428,6 +428,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Faults are injected into a private temporary test journal; they do not simulate actual power loss, filesystem rollback or every partial-write/OS failure. Provider billing, target-device sleep and independent security review remain open. BUG-001 remains IN_PROGRESS.
 - **Rollback:** Revert these tests and evidence with their documentation hashes; preserve real journal records and proofs.
 
+## T-041 real monotonic elapsed-time check — 2026-10-30
+
+- **Evidence:** A synthetic provider returned a two-second `Retry-After`. The gateway used its normal process monotonic clock; after acknowledgement, a new gateway instance opened the same journal with its injected wall clock advanced by ten seconds. An independently approved early attempt returned the local `RATE_LIMITED` response and the fake transport retained one call. After a real 2.2-second wait, a different attempt with separate approval reached the fake transport. The complete gateway test file passed 52/52.
+- **Limits:** The delay is two seconds, the provider and wall-clock jump are synthetic, and the gateway instances share one OS process. This does not prove a real 86401-second wait, actual system-clock adjustment, process restart or suspension behavior, real provider billing, or independent security acceptance. BUG-001 remains IN_PROGRESS and T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Remove the focused test and this evidence together; preserve all production attempt and journal data.
+
 ## T-041 separate-process elapsed proof checks — 2026-10-30
 
 - **Evidence:** Two separate Node child processes opened the same synthetic journal and used independently injected monotonic clocks. Concurrent reservations at 59,999 ms for a 60-second wait were both blocked; at 60,000 ms they serialized through the journal lock, shared one durable proof and reserved distinct attempts. A newly started process accepted that proof. In a separate case, SIGKILL before proof publication was followed by a new process that remained blocked until its own full 60-second simulated interval elapsed. The focused journal suite passed 6 tests.
