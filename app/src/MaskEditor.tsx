@@ -196,6 +196,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     } else if (active.current) { event.preventDefault(); move(position(event)); }
   }
   function pointerUp(event: PointerEvent<HTMLCanvasElement>) {
+    if (!event.isPrimary) return;
     const drag = regionDrag.current;
     if (drag && drag.pointerId === event.pointerId && loaded) {
       const region = regionFromDrag(drag.start, position(event), loaded.source.width, loaded.source.height);
@@ -213,6 +214,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     if (abandoned) setStatus('Unfinished protected area discarded. Draw it again or enter coordinates below.');
   }
   function pointerCancel(event: PointerEvent<HTMLCanvasElement>) {
+    if (!event.isPrimary) return;
     if (regionDrag.current && regionDrag.current.pointerId !== event.pointerId) return;
     cancelPointer();
   }

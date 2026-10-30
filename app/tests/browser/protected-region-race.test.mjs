@@ -48,7 +48,7 @@ async function evaluate(client, expression) {
   return response.result.value;
 }
 
-test('in-progress protected area cannot change during review or be silently saved', { timeout: 90000 }, async () => {
+test('protected area review and multi-touch brush gestures remain stable', { timeout: 90000 }, async () => {
   assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable before running browser tests.');
   const userDir = await mkdtemp(join(tmpdir(), 'studio-region-browser-'));
   const vite = await createServer({ root: appRoot, configFile: join(appRoot, 'vite.config.ts'), logLevel: 'silent', server: { host: '127.0.0.1', port: 0 } });
@@ -116,6 +116,23 @@ test('in-progress protected area cannot change during review or be silently save
     await until(() => evaluate(client, `document.body.innerText.includes('Mask saved')`), 'mask save');
     const saved = await evaluate(client, `(async () => { const p=await import('/src/products.ts'); const product=await p.getProduct(${JSON.stringify(productId)}); const mask=await p.loadSourceMask(product.productId, product.sourceAssets[0]); const image=await createImageBitmap(mask.blob); const canvas=document.createElement('canvas'); canvas.width=image.width; canvas.height=image.height; const ctx=canvas.getContext('2d'); ctx.drawImage(image,0,0); image.close(); const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data; let nonOpaque=0; for(let i=3;i<pixels.length;i+=4) if(pixels[i]!==255) nonOpaque++; return {regions:mask.protectedEvidence.regions,nonOpaque}; })()`);
     assert.deepEqual(saved, { regions: [{ x, y, width, height }], nonOpaque: 0 });
+    await evaluate(client, `(() => {const t=document.querySelector('#mask-tool'); t.value='erase'; t.dispatchEvent(new Event('change',{bubbles:true})); document.querySelector('.mask-viewport').scrollIntoView({block:'center'});})()`);
+    const brush = await evaluate(client, `(() => {const r=document.querySelector('canvas[aria-label="Mask drawing surface"]').getBoundingClientRect(); return {x:r.left+r.width*.1,y:r.top+r.height*.1,x2:r.left+r.width*.9,y2:r.top+r.height*.1};})()`);
+    await evaluate(client, `window.trace=[]; ['pointerdown','pointerup','pointermove','pointercancel','lostpointercapture'].forEach(n=>document.querySelector('canvas[aria-label="Mask drawing surface"]').addEventListener(n,e=>window.trace.push([n,e.pointerId,e.isPrimary,e.clientX,e.clientY])))`);
+    await touch('touchStart', [{x:brush.x,y:brush.y,id:0}]);
+    await touch('touchStart', [{x:brush.x,y:brush.y,id:0},{x:brush.x+3,y:brush.y+3,id:1}]);
+    await evaluate(client, `document.querySelector('canvas[aria-label="Mask drawing surface"]').dispatchEvent(new PointerEvent('pointercancel', {bubbles:true, pointerId:999, pointerType:'touch', isPrimary:false}))`);
+    await touch('touchMove', [{x:(brush.x+brush.x2)/2,y:brush.y,id:0},{x:brush.x+3,y:brush.y+3,id:1}]);
+    const midAlpha = await evaluate(client, `(() => {const c=document.querySelector('canvas[aria-label="Mask drawing surface"]'); return c.getContext('2d').getImageData(Math.floor(c.width*.5),Math.floor(c.height*.1),1,1).data[3];})()`);
+    assert.equal(midAlpha, 0, 'Primary brush continues after a secondary pointer is cancelled.');
+    await touch('touchEnd', [{x:brush.x+3,y:brush.y+3,id:1}]);
+    await touch('touchMove', [{x:brush.x2,y:brush.y2,id:0}]);
+    await touch('touchEnd', []);
+    const alpha = await evaluate(client, `(() => {const c=document.querySelector('canvas[aria-label="Mask drawing surface"]'); return c.getContext('2d').getImageData(Math.floor(c.width*.9),Math.floor(c.height*.1),1,1).data[3];})()`);
+    const trace = await evaluate(client, 'window.trace');
+    assert.ok(trace.some(([type, , primary]) => type === 'pointerup' && !primary), 'The secondary pointer ended.');
+    assert.ok(trace.some(([type, , primary, x]) => type === 'pointermove' && primary && x > brush.x2 - 1), 'The primary pointer moved after the secondary pointer ended.');
+    assert.equal(alpha, 0, 'Primary brush continues after the secondary touch ends.');
     assert.equal(await evaluate(client, 'document.documentElement.scrollWidth === innerWidth'), true);
   } finally {
     client?.close();
