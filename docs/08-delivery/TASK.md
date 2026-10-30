@@ -344,6 +344,27 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-083 proposed seller session script — 2026-10-30
+
+**Preparation only:** T-084 owner review and consenting participant sessions are still pending. This script is not evidence of seller research, deployment approval or permission to contact anyone. Use a disposable isolated build and synthetic product/image data; generation outcomes, costs and billing states must be visibly labelled as simulated. Never ask for a real API key, seller credential, private product file or paid call. Prepare separately for the supported device and record build, browser, viewport and input method.
+
+**Facilitator protocol:** Obtain informed consent for observation and separate consent for recording; offer a stop or break at any time. Explain that the interface, not the participant, is being evaluated. Ask them to think aloud without coaching. Read each task verbatim, start timing after the prompt, stop when they say they are done or request help, and record any intervention. Allow skips; never manufacture results. Use a fixed synthetic scenario and reset it between sessions without deleting participant data. No remote recruitment or outreach is authorized by this document.
+
+| Task prompt | Start state and observable success | Capture |
+|---|---|---|
+| “You want to prepare a listing photo. Create a product using the sample SKU and name.” | Empty workspace and rights-cleared sample details. Product is saved and can be reopened with the matching SKU. | Completion, elapsed time, input errors, help and navigation friction. |
+| “Add the sample photo and select the part of the product that must stay unchanged.” | Saved sample product and synthetic image. Original is saved; a reviewed source-bound mask is saved. | Steps, whether selection is understood, recovery and use of a non-drag alternative. |
+| “Show me where you would connect the image service. Explain what you think is sent and who can be charged.” | Synthetic local gateway session only; no provider key entry or network request. Participant identifies connection status and describes disclosed prompt data and possible charges in their own words. | Explanation verbatim or paraphrased with consent, uncertainty and misconceptions; do not supply an answer before the observation. |
+| “Prepare the Studio scene and tell me what you would check before proceeding.” | Facilitator-supplied synthetic preview or isolated fake-provider environment with no real key. Participant finds source, style, exact prompt, estimate and explicit consent; observe up to but not including any live-provider authorization. | Whether participant distinguishes estimate from invoice, one attempt from retry, and local original from provider data. |
+| “This simulated attempt has an uncertain outcome. What would you do next?” | Preseeded synthetic UNKNOWN state, with no live call. Participant identifies possible charge and external review; no automatic resend is expected. | Their interpretation, action selected, hesitation and any unsafe expectation. |
+| “Review the sample output, reject a wrong label, and find a way to keep or export your work.” | Rights-cleared preseeded sample with a clearly documented mismatch and separate approved sample. Participant locates human veto/review and distinguishes approved-output export from the unencrypted full-project backup. | Whether mismatch prevents approval, route chosen, privacy understanding, errors and help. |
+
+**Session record:** Use a pseudonymous session ID; capture task outcome as unassisted / assisted / incomplete / skipped, elapsed time, interventions, observable behavior and participant explanations. Note accessibility barriers (focus, labels, contrast, touch targets and non-drag alternatives) with device and exact location. Do not log credentials, raw private assets or unconsented recordings. Store any consented artifacts only in the approved location and apply the agreed retention/deletion policy.
+
+**Analysis and acceptance:** Separate direct observations from facilitator interpretation and proposed fixes. For each reproducible issue record task, location, evidence, impact and affected sessions, then prioritize with a concrete UI acceptance check; do not infer population frequency from a convenience sample. T-083 completes only after T-084 and actual consented sessions, documented outcomes and owner review; the script alone does not complete it.
+
+- **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
+
 ## T-041 elapsed-time recovery candidate — 2026-10-30
 
 - **Design:** [ADR-015](../02-architecture/ADR.md#adr-015--candidate-elapsed-time-proof-for-provider-retry-waits) proposes versioned duration records, process-local monotonic observation and durable serialized elapsed proofs, with a conservative legacy-review path and a fail-closed version barrier. It records crash, multi-process, old-gateway and rollback boundaries.
