@@ -27,16 +27,17 @@ async function until(read, description) {
 }
 
 async function connect(url) {
-  const socket = new WebSocket(url), pending = new Map(); let next = 0;
+  const socket = new WebSocket(url), pending = new Map(), events = []; let next = 0;
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data), handler = pending.get(message.id);
-    if (!handler) return;
+    if (!handler) { if (message.method === 'Page.downloadWillBegin' || message.method === 'Page.downloadProgress') events.push(message); return; }
     pending.delete(message.id);
     message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result);
   });
   socket.addEventListener('close', () => { for (const entry of pending.values()) entry.reject(new Error('DevTools connection closed.')); pending.clear(); });
   return {
+    events,
     call(method, params = {}) {
       return new Promise((resolve, reject) => { const id = ++next; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
     },
@@ -50,6 +51,16 @@ async function evaluate(client, expression) {
   return response.result.value;
 }
 
+async function completedDownload(client, since, directory, description) {
+  const started=await until(()=>client.events.slice(since).find(event=>event.method==='Page.downloadWillBegin'),`${description} start`);
+  await until(()=>{
+    const progress=client.events.slice(since).filter(event=>event.method==='Page.downloadProgress' && event.params.guid===started.params.guid);
+    if(progress.some(event=>event.params.state==='canceled')) throw new Error(`${description} was canceled.`);
+    return progress.some(event=>event.params.state==='completed');
+  },`${description} completion`);
+  return until(async()=> (await readdir(directory)).find(name=>name.startsWith('approved-outputs-') && name.endsWith('.zip')),`${description} file`);
+}
+
 test('protected mask gestures and approved export bundle remain consistent', { timeout: 90000 }, async (t) => {
   assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable before running browser tests.');
   const userDir = await mkdtemp(join(tmpdir(), 'studio-region-browser-'));
@@ -60,7 +71,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
   await new Promise((resolve,reject)=>{gateway.once('error',reject);gateway.listen(0,'127.0.0.1',resolve);});
   const gatewayOrigin=`http://127.0.0.1:${gateway.address().port}`;
   const vite = await createServer({ root: appRoot, configFile: join(appRoot, 'vite.config.ts'), logLevel: 'silent', server: { host: '127.0.0.1', port: 0, proxy:{'/api':{target:gatewayOrigin,changeOrigin:true,configure(proxy){proxy.on('proxyReq',(request,original)=>{if(original.headers.origin) request.setHeader('origin',gatewayOrigin);});}}} } });
-  let browser, client;
+  let browser, client, otherClient;
   try {
     await vite.listen();
     const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
@@ -364,6 +375,19 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').disabled`),true,'Rechecking clears the selection and requires a fresh choice.');
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'preview after approval recheck');
+    const {targetId: otherTargetId}=await client.call('Target.createTarget',{url:`${origin}/help`,background:true});
+    const otherTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(item=>item.id===otherTargetId),'second tab');
+    otherClient=await connect(otherTarget.webSocketDebuggerUrl);
+    await until(()=>evaluate(otherClient, `location.pathname==='/help' && document.readyState==='complete'`),'second tab ready');
+    assert.equal(await evaluate(client, `!!document.querySelector('.approved-export .strict-comparison') && !document.querySelector('.approved-export')?.innerText.includes('Select images and prepare previews again')`),true,'Opening the background tab did not trigger the recheck.');
+    await evaluate(otherClient, `(() => {const c=new BroadcastChannel('product-image-studio-changes');c.postMessage(${JSON.stringify(productId)});c.close()})()`);
+    await until(()=>evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Select images and prepare previews again') && !!document.querySelector('.approved-export fieldset')`),'cross-tab approval recheck');
+    assert.equal(await evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),false,'A project-change notification clears the preview.');
+    assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').disabled`),true,'Cross-tab recheck requires a fresh selection.');
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
+    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'preview after cross-tab recheck');
+    otherClient.close(); otherClient=null;
+    await client.call('Target.closeTarget',{targetId:otherTargetId});
     await evaluate(client, `document.querySelector('.approved-export .strict-comparison').scrollIntoView({block:'start'})`);
     const layout = await evaluate(client, `Array.from(document.querySelectorAll('.approved-export .strict-zoom')).map(el=>{const r=el.getBoundingClientRect();return {width:r.width,x:r.x,y:r.y,height:r.height}})`);
     assert.ok(layout.every(r=>r.width>=220),'Mobile previews have enough width for inspection.');
@@ -387,8 +411,9 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(() => evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),'reopened preview');
     assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Download approved output bundle').disabled`), true);
     await client.call('Page.setDownloadBehavior', {behavior:'allow', downloadPath:userDir});
+    const initialDownloadEvents=client.events.length;
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const box=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes('I inspected every converted output'));box.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Download approved output bundle').click()})()`);
-    const download = await until(async () => (await readdir(userDir)).find(name=>name.startsWith('approved-outputs-') && name.endsWith('.zip')), 'approved output download');
+    const download = await completedDownload(client,initialDownloadEvents,userDir,'approved output download');
     const archive = await readFile(join(userDir,download));
     const { ZipReader, Uint8ArrayReader, Uint8ArrayWriter } = await import('@zip.js/zip.js/lib/zip-core-native.js');
     const zip=new ZipReader(new Uint8ArrayReader(archive));
@@ -416,8 +441,9 @@ test('protected mask gestures and approved export bundle remain consistent', { t
       await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click()`);
       await until(() => evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),`${format} wide preview`);
       assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').disabled`),true,`${format} requires fresh preview confirmation.`);
+      const downloadEvents=client.events.length;
       await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes('I inspected every converted output')).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').click()})()`);
-      const filename=await until(async () => (await readdir(userDir)).find(name=>name.startsWith('approved-outputs-') && name.endsWith('.zip')),`${format} wide ZIP`);
+      const filename=await completedDownload(client,downloadEvents,userDir,`${format} wide ZIP`);
       const archive=await readFile(join(userDir,filename));
       const reader=new ZipReader(new Uint8ArrayReader(archive));
       try {
@@ -490,8 +516,9 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(() => evaluate(client, `window.__beforeGeneratedExportReload!==true && document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(generatedComposite)})`),'generated approved export candidate after reload');
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes(${JSON.stringify(generatedComposite)})).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click();})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`),'generated export preview');
+    const generatedDownloadEvents=client.events.length;
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes('I inspected every converted output')).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').click();})()`);
-    const secondDownload=await until(async () => (await readdir(userDir)).find(name=>name.startsWith('approved-outputs-')&&name.endsWith('.zip')),'generated approved ZIP');
+    const secondDownload=await completedDownload(client,generatedDownloadEvents,userDir,'generated approved ZIP');
     const secondZip=new ZipReader(new Uint8ArrayReader(await readFile(join(userDir,secondDownload))));
     try {const entries=await secondZip.getEntries();const proof=entries.find(e=>e.filename===`provenance/${generatedComposite}.json`), output=entries.find(e=>e.filename===`outputs/${generatedComposite}.png`);assert.ok(proof&&output,'Generated composite and provenance are in the ZIP.');const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter())));const bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.attemptId,generated.attemptId);assert.equal(receipt.sceneSha256,generated.scene);assert.equal(receipt.sourceSha256,originalHash);assert.equal(receipt.reviewId,generatedDecision.reviewId);assert.equal(receipt.decisionId,generatedDecision.decisionId);assert.equal(createHash('sha256').update(bytes).digest('hex'),receipt.outputSha256);} finally {await secondZip.close();}
     assert.equal(providerCalls,1,'Composition, review and export do not resend the provider request.');
@@ -520,7 +547,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.equal(await evaluate(client, `document.documentElement.scrollWidth===innerWidth`),true);
     assert.equal(await evaluate(client, 'document.documentElement.scrollWidth === innerWidth'), true);
   } finally {
-    client?.close();
+    otherClient?.close(); client?.close();
     if (browser && browser.exitCode === null) { browser.kill('SIGTERM'); await Promise.race([new Promise((resolve) => browser.once('exit', resolve)), delay(3000)]); }
     await vite.close();
     await new Promise((resolve,reject)=>gateway.close(error=>error?reject(error):resolve()));
