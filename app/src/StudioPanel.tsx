@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, STUDIO_MAX_PNG_BYTES, STUDIO_MAX_RETRY_AFTER_SECONDS, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD, type StudioStyleId, type StudioSceneContext } from '../studio-policy.mjs';
 import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listOtherStudioBlockers, listStudioAttempts, listStrictComposites, listStyleInputs, loadOriginalSource, productSnapshotFingerprint, resolveImportedUncertainty, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StrictComposite, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
 import { inspectImageHeader } from './imageHeader';
@@ -242,6 +242,8 @@ function moneyString(value: bigint): string {
 
 
 export function StudioPanel({ product, onBusyChange }: { product: Product; onBusyChange: (busy: boolean) => void }) {
+  const location = useLocation();
+  const focusedHistoryKey = useRef<string | null>(null);
   const [gateway, setGateway] = useState<Gateway>('checking');
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [otherBlockers, setOtherBlockers] = useState<Awaited<ReturnType<typeof listOtherStudioBlockers>> | null>(null);
@@ -348,6 +350,15 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     window.addEventListener('offline', offline);
     return () => { active = false; gatewayCheck.current++; window.removeEventListener('offline', offline); };
   }, [product.productId, budgetSessionId]);
+
+  useEffect(() => {
+    if (location.hash !== '#studio-history-heading' || entries === null || focusedHistoryKey.current === location.key) return;
+    const heading = document.getElementById('studio-history-heading');
+    if (!heading) return;
+    focusedHistoryKey.current = location.key;
+    heading.scrollIntoView({ block: 'start' });
+    heading.focus({ preventScroll: true });
+  }, [entries, location.hash, location.key]);
 
   const productVersion = JSON.stringify(product);
   useEffect(() => {
@@ -614,7 +625,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     {otherBlockers && otherBlockers.length > 0 && <section aria-labelledby="other-blockers-heading">
       <h3 id="other-blockers-heading">Attempts in other projects need attention</h3>
       <p>Generation is blocked across this browser workspace until these attempts are reviewed. Open each project and check its local attempt history; a gateway may also have its own separate restrictions. After reviewing in another tab, refresh this list.</p>
-      <ul>{otherBlockers.map((item) => <li key={item.productId}>{item.name ? <Link to={`/products/${encodeURIComponent(item.productId)}#studio-heading`}>{item.name}</Link> : `Missing project ${item.productId}: preserve local data and seek recovery assistance`} — {item.count} {item.count === 1 ? 'attempt' : 'attempts'}</li>)}</ul>
+      <ul>{otherBlockers.map((item) => <li key={item.productId}>{item.name ? <Link to={`/products/${encodeURIComponent(item.productId)}#studio-history-heading`}>{item.name}</Link> : `Missing project ${item.productId}: preserve local data and seek recovery assistance`} — {item.count} {item.count === 1 ? 'attempt' : 'attempts'}</li>)}</ul>
       <button type="button" className="secondary-button" disabled={busy} onClick={() => { clearQueueConsent(); setOtherBlockers(null); void refreshEntries().catch(() => { setEntries(null); setError('Local attempt history is unavailable. Generation is disabled.'); }); }}>Refresh attempt history</button>
     </section>}
     <button className="secondary-button" type="button" disabled={busy} onClick={() => void refreshGateway()}>Check gateway</button>
@@ -652,7 +663,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       {leftScene && rightScene && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>{[leftScene, rightScene].map(({ attempt, asset }) => <figure key={attempt.attemptId} style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved {STYLE_LABELS[attempt.styleId!]} scene · {attempt.attemptId}</figcaption><Scene asset={asset!} /></figure>)}</div>}
       {leftScene && rightScene && <CompositeComparison productId={product.productId} productVersion={productVersion} leftAttempt={leftScene.attempt.attemptId} rightAttempt={rightScene.attempt.attemptId} />}
     </section>
-    <h3>Local attempt history</h3>{entries?.some((entry) => entry.importedUnresolved) && <p>Each imported attempt needs a fresh local billing and rate-limit review before new generation. Reviews recorded by an earlier app version may need to be repeated.</p>}{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset, importedUntrusted, importedUnresolved }) => <li key={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attemptStatusText(attempt, importedUntrusted)}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
+    <h3 id="studio-history-heading" tabIndex={-1}>Local attempt history</h3>{entries?.some((entry) => entry.importedUnresolved) && <p>Each imported attempt needs a fresh local billing and rate-limit review before new generation. Reviews recorded by an earlier app version may need to be repeated.</p>}{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset, importedUntrusted, importedUnresolved }) => <li key={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attemptStatusText(attempt, importedUntrusted)}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
       {attempt.retryOf && <p>Retry of attempt {attempt.retryOf} · job {attempt.jobId}.</p>}
       {(attempt.status === 'DEFINITIVE_FAILURE' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') && <p>{failureText(attempt, importedUntrusted)}</p>}
       {(!attempt.styleId || !attempt.sceneContext || !attempt.selectedFactIds || !attempt.productSnapshotFingerprint || attempt.presetVersion !== STUDIO_PRESET_VERSION || attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION) && <p>This historical attempt cannot be retried with the current preset. Start a new job and give separate fresh consent instead; the original record remains unchanged.</p>}

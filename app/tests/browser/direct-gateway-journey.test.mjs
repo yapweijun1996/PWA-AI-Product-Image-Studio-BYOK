@@ -434,6 +434,15 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(untrustedClient, `!!document.querySelector('#other-blockers-heading')`),'refreshed cross-project blocker');
     await evaluate(untrustedClient, `document.querySelector('#other-blockers-heading').parentElement.querySelector('a').click()`);
     await until(()=>evaluate(untrustedClient, `location.pathname===${JSON.stringify('/products/'+productId)} && !!document.querySelector('.studio-history')`),'blocking project opened');
+    await until(()=>evaluate(untrustedClient, `(() => {const h=document.querySelector('#studio-history-heading'),r=h.getBoundingClientRect();return location.hash==='#studio-history-heading' && document.activeElement===h && r.top>=0 && r.bottom<=innerHeight})()`),'visible focused review history destination');
+    assert.equal(await evaluate(untrustedClient, `document.documentElement.scrollWidth<=innerWidth`),true,'The review destination fits the mobile viewport.');
+    await evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[2])}));const box=li.querySelector('input[type=checkbox]');box.focus();box.click();[...li.querySelectorAll('button')].find(b=>b.textContent==='Record local review of imported uncertainty').click()})()`);
+    await until(()=>evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[2])}));return li.innerText.includes('This imported record remains untrusted')})()`),'destination review');
+    assert.notEqual(await evaluate(untrustedClient, `document.activeElement?.id`),'studio-history-heading','Refreshing the history does not steal focus again.');
+    await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});
+    await evaluate(untrustedClient,`window.__beforeHistoryReload=true`);await untrustedClient.call('Page.reload');
+    await until(()=>evaluate(untrustedClient, `(() => {const h=document.querySelector('#studio-history-heading');if(!h || window.__beforeHistoryReload) return false;const r=h.getBoundingClientRect();return document.activeElement===h && r.top>=0 && r.bottom<=innerHeight})()`),'direct history link after reload at desktop width');
+    assert.equal(await evaluate(untrustedClient, `document.documentElement.scrollWidth<=innerWidth`),true,'The history destination fits the desktop viewport.');
     assert.equal(untrustedClient.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0,'Cross-project navigation has no uncaught page exception.');
     assert.equal(providerCalls,13,'Backup and restore do not send provider requests.');
     await evaluate(client,`window.__beforeQueueReload=true`);await client.call('Page.reload');
