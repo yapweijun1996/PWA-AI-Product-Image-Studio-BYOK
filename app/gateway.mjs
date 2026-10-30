@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, readdir, lstat } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, STUDIO_PRICING_SNAPSHOT, studioEstimateUSD, studioObservedUSD } from './studio-policy.mjs';
+import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from './studio-policy.mjs';
 import { createAttemptJournal } from './studio-journal.mjs';
 import { generateStudioScene } from './studio-provider.mjs';
 
@@ -16,6 +16,7 @@ const MAX_CONNECTS = 20;
 const MAX_FAILURES = 5;
 const MAX_SESSIONS = 128;
 const MAX_BODY = 4096;
+const MAX_IMAGE_BODY = 65536;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
@@ -46,17 +47,17 @@ function empty(response, headers = {}) {
   response.end();
 }
 
-async function readJson(request) {
+async function readJson(request, limit = MAX_BODY) {
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers['content-type'] ?? '')) throw new Error('type');
   const length = request.headers['content-length'];
-  if (length && (!/^\d+$/.test(length) || Number(length) > MAX_BODY)) throw new Error('size');
+  if (length && (!/^\d+$/.test(length) || Number(length) > limit)) throw new Error('size');
   const chunks = []; let total = 0;
   await new Promise((resolve, reject) => {
     let settled = false;
     request.on('data', (chunk) => {
       if (settled) return;
       total += chunk.length;
-      if (total > MAX_BODY) { settled = true; chunks.length = 0; reject(new Error('size')); return; }
+      if (total > limit) { settled = true; chunks.length = 0; reject(new Error('size')); return; }
       chunks.push(chunk);
     });
     request.on('end', () => { if (!settled) { settled = true; resolve(); } });
@@ -90,23 +91,26 @@ function money(value) {
   return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
 }
 function validAttempt(body) {
-  const required = ['clientAttemptId', 'productId', 'styleId', 'lockMode', 'operation', 'model', 'quality', 'size', 'prompt', 'promptVersion', 'sourceAssetHashes', 'estimatedUSD', 'outputFormat', 'reviewRevision'];
+  const required = ['clientAttemptId', 'productId', 'styleId', 'sceneContext', 'presetVersion', 'lockMode', 'operation', 'model', 'quality', 'size', 'prompt', 'promptVersion', 'sourceAssetHashes', 'estimatedUSD', 'outputFormat', 'reviewRevision'];
   if (Object.keys(body).some((key) => !required.includes(key) && !['maxEstimatedUSD', 'softLimitOverride', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride'].includes(key)) || required.some((key) => !Object.hasOwn(body, key))) return false;
+  let expectedPrompt, estimate;
+  try { expectedPrompt = studioBuildPrompt(body.styleId, body.sceneContext); estimate = studioEstimateUSD(expectedPrompt); }
+  catch { return false; }
   return typeof body.clientAttemptId === 'string' && UUID.test(body.clientAttemptId) && body.clientAttemptId === body.clientAttemptId.toLowerCase()
     && typeof body.productId === 'string' && UUID.test(body.productId) && body.productId === body.productId.toLowerCase()
-    && body.styleId === 'studio' && body.lockMode === 'STRICT' && body.operation === 'generate_scene'
+    && body.presetVersion === STUDIO_PRESET_VERSION && body.lockMode === 'STRICT' && body.operation === 'generate_scene'
     && body.model === STUDIO_MODEL && body.quality === STUDIO_QUALITY && body.size === STUDIO_SIZE
-    && body.prompt === STUDIO_PROMPT && body.promptVersion === STUDIO_PROMPT_VERSION && body.outputFormat === 'png'
+    && body.prompt === expectedPrompt && body.promptVersion === STUDIO_SCENE_PROMPT_VERSION && body.outputFormat === 'png'
     && Array.isArray(body.sourceAssetHashes) && body.sourceAssetHashes.length === 1 && typeof body.sourceAssetHashes[0] === 'string' && /^[a-f0-9]{64}$/.test(body.sourceAssetHashes[0])
-    && body.estimatedUSD === studioEstimateUSD() && Number.isSafeInteger(body.reviewRevision) && body.reviewRevision >= 0
+    && body.estimatedUSD === estimate && Number.isSafeInteger(body.reviewRevision) && body.reviewRevision >= 0
     && (!Object.hasOwn(body, 'maxEstimatedUSD') ? !Object.hasOwn(body, 'softLimitOverride')
-      : money(body.maxEstimatedUSD) !== null && (money(body.maxEstimatedUSD) < money(studioEstimateUSD()) ? body.softLimitOverride === true : !Object.hasOwn(body, 'softLimitOverride')))
+      : money(body.maxEstimatedUSD) !== null && (money(body.maxEstimatedUSD) < money(estimate) ? body.softLimitOverride === true : !Object.hasOwn(body, 'softLimitOverride')))
     && (!Object.hasOwn(body, 'sessionPriorUSD') ? !Object.hasOwn(body, 'sessionLimitUSD') && !Object.hasOwn(body, 'sessionLimitOverride')
       : money(body.sessionPriorUSD) !== null && (!Object.hasOwn(body, 'sessionLimitUSD') ? !Object.hasOwn(body, 'sessionLimitOverride')
-        : money(body.sessionLimitUSD) !== null && (money(body.sessionPriorUSD) + money(studioEstimateUSD()) > money(body.sessionLimitUSD) ? body.sessionLimitOverride === true : !Object.hasOwn(body, 'sessionLimitOverride'))));
+        : money(body.sessionLimitUSD) !== null && (money(body.sessionPriorUSD) + money(estimate) > money(body.sessionLimitUSD) ? body.sessionLimitOverride === true : !Object.hasOwn(body, 'sessionLimitOverride'))));
 }
 function attemptDigest(body) {
-  return digest(JSON.stringify([body.clientAttemptId, body.productId, body.styleId, body.lockMode, body.operation, body.model, body.quality, body.size, body.prompt, body.promptVersion, body.sourceAssetHashes, body.estimatedUSD, Object.hasOwn(body, 'maxEstimatedUSD') ? body.maxEstimatedUSD : null, body.softLimitOverride === true, body.sessionPriorUSD ?? null, body.sessionLimitUSD ?? null, body.sessionLimitOverride === true, body.outputFormat, body.reviewRevision]));
+  return digest(JSON.stringify([body.clientAttemptId, body.productId, body.styleId, body.presetVersion, body.sceneContext.productName, body.sceneContext.category, body.sceneContext.confirmedFacts, body.sceneContext.sourceView, body.lockMode, body.operation, body.model, body.quality, body.size, body.prompt, body.promptVersion, body.sourceAssetHashes, body.estimatedUSD, Object.hasOwn(body, 'maxEstimatedUSD') ? body.maxEstimatedUSD : null, body.softLimitOverride === true, body.sessionPriorUSD ?? null, body.sessionLimitUSD ?? null, body.sessionLimitOverride === true, body.outputFormat, body.reviewRevision]));
 }
 
 
@@ -169,7 +173,8 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
     const origin = `http://${expectedHost}`;
     const path = request.url;
     const length = request.headers['content-length'];
-    if (length && (!/^\d+$/.test(length) || Number(length) > MAX_BODY)) return error(response, 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large.');
+    const bodyLimit = path === `${API}/images/approvals` || path === `${API}/images/generate` ? MAX_IMAGE_BODY : MAX_BODY;
+    if (length && (!/^\d+$/.test(length) || Number(length) > bodyLimit)) return error(response, 413, 'PAYLOAD_TOO_LARGE', 'Request body is too large.');
     const acknowledgementPath = /^\/api\/v2\/images\/attempts\/([^/]*)\/acknowledgement$/.exec(path ?? '');
     const expectsBody = request.method === 'POST' && (path === `${API}/auth/login` || path === `${API}/session/connect` || path === `${API}/images/approvals` || path === `${API}/images/generate` || acknowledgementPath);
     if (!expectsBody && ((length && Number(length) > 0) || request.headers['transfer-encoding'])) return error(response, 400, 'INVALID_INPUT', 'Request body is not allowed.');
@@ -276,12 +281,12 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
           const providerValue = readCookie(request, 'provider_session'), providerId = providerValue && digest(providerValue);
           if (!provider) return error(response, 401, 'UNAUTHENTICATED', 'Provider authorization required.');
           let body;
-          try { body = await readJson(request); }
+          try { body = await readJson(request, MAX_IMAGE_BODY); }
           catch (reason) { const oversized = reason.message === 'size'; return error(response, oversized ? 413 : 400, oversized ? 'PAYLOAD_TOO_LARGE' : 'INVALID_INPUT', 'Invalid request.'); }
           const active = () => sessions.get(session.id) === current && current.expires > now() && providers.get(providerId) === provider && provider.expires > now();
           if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
           if (!validAttempt(body)) return error(response, 400, 'INVALID_INPUT', 'Invalid Studio attempt or estimate.');
-          if (money(studioEstimateUSD()) > money(imageConfig.maxEstimatedUSD)) return error(response, 403, 'FORBIDDEN', 'The estimate exceeds the configured estimate guard.');
+          if (money(body.estimatedUSD) > money(imageConfig.maxEstimatedUSD)) return error(response, 403, 'FORBIDDEN', 'The estimate exceeds the configured estimate guard.');
           const bodyDigest = attemptDigest(body);
           if (path === `${API}/images/approvals`) {
             if (approvals.size >= 128) return error(response, 429, 'RATE_LIMITED', 'Too many pending approvals.');
@@ -308,7 +313,7 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
           try {
             const reservation = await journal.reserveAndDispatch(principal, body.clientAttemptId, bodyDigest, now(), imageConfig.maxAttemptsPerHour, approval.revision, () => active() && approval.expires > now(), () => {
               submitted = true;
-              providerPromise = generateStudioScene(imageConfig);
+              providerPromise = generateStudioScene({ ...imageConfig, prompt: body.prompt });
             }, () => { reserved = true; });
             if (reservation === 'stale') reply = { status: 409, code: 'APPROVAL_STALE', message: 'Review occurred after consent; new consent and approval are required before sending.' };
             else if (reservation === 'duplicate') reply = { status: 409, code: 'CONFLICT', message: 'This attempt was already reserved; its original outcome is not known from this response.', outcome: 'UNKNOWN' };

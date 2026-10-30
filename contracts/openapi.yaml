@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
-  version: 3.1.0
+  version: 4.0.0
   description: >-
-    Draft contract revision 3.1.0 adds budget override and usage receipt fields; 3.0.0 required reviewRevision for image attempts.
+    Draft contract revision 4.0.0 requires a preset version and exact scene context for each image attempt.
     The local-only gateway retains /api/v2 as the server-key route namespace;
     no deployed compatibility endpoint or production deployment is claimed.
-    A default-disabled Studio scene subset has only synthetic-provider evidence.
+    A default-disabled local seven-style scene subset has only synthetic-provider evidence.
     The owner configures the OpenAI key on their server; the browser never submits it.
     Source photo/brand QA remains local and requires human approval.
 servers:
@@ -569,6 +569,8 @@ components:
         - clientAttemptId
         - productId
         - styleId
+        - presetVersion
+        - sceneContext
         - lockMode
         - operation
         - model
@@ -595,6 +597,32 @@ components:
         styleId:
           type: string
           enum: [studio, hero, lifestyle, flat_lay, macro, ugc, billboard]
+        presetVersion:
+          type: string
+          pattern: '^\d+\.\d+\.\d+$'
+          description: Exact immutable preset version bound into the one-use approval
+        sceneContext:
+          type: object
+          additionalProperties: false
+          required: [productName, category, confirmedFacts, sourceView]
+          description: Explicitly selected confirmed facts and product context sent to the provider as quoted data; gateway independently reconstructs the permitted prompt.
+          properties:
+            productName:
+              type: string
+              maxLength: 300
+            category:
+              type: string
+              maxLength: 100
+            confirmedFacts:
+              type: array
+              maxItems: 200
+              items:
+                type: string
+                minLength: 1
+                maxLength: 1102
+            sourceView:
+              type: string
+              enum: [TOP, OTHER, UNKNOWN]
         lockMode:
           type: string
           enum: [STRICT, BALANCED, CREATIVE]

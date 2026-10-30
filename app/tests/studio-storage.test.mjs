@@ -3,13 +3,13 @@ import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import 'fake-indexeddb/auto';
 import { build } from 'vite';
-import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, studioEstimateUSD } from '../studio-policy.mjs';
+import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 
 const built = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
   build: { write: false, minify: false, lib: { entry: 'src/products.ts', formats: ['es'], fileName: 'products' } } });
 const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { createProduct, saveSource, createStudioAttempt: createWithConsent, updateStudioAttempt: updateWithConsent, listStudioAttempts, acknowledgeStudioAttempt, globalStudioReviewFingerprint, studioSessionEstimate } =
+const { createProduct, getProduct, saveSource, createStudioAttempt: createWithConsent, updateStudioAttempt: updateWithConsent, listStudioAttempts, acknowledgeStudioAttempt, globalStudioReviewFingerprint, studioSessionEstimate, productSnapshotFingerprint, studioSceneContext } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 const consentByAttempt = new Map();
 async function createStudioAttempt(attempt, fingerprint) {
@@ -43,6 +43,55 @@ async function fixture() {
   }
   return { productId: product.productId, makeAttempt, db };
 }
+
+test('versioned prompt context and product snapshot are immutable across submission', async () => {
+  const { productId, makeAttempt, db } = await fixture();
+  const product = await getProduct(productId), source = product.sourceAssets[0];
+  const sceneContext = studioSceneContext(product, source, []);
+  const prompt = studioBuildPrompt('hero', sceneContext);
+  const attempt = { ...makeAttempt(), styleId: 'hero', presetVersion: STUDIO_PRESET_VERSION,
+    sceneContext, selectedFactIds: [], productSnapshotFingerprint: await productSnapshotFingerprint(product),
+    prompt, promptVersion: STUDIO_SCENE_PROMPT_VERSION, estimatedUSD: studioEstimateUSD(prompt) };
+  await createStudioAttempt(attempt);
+  await assert.rejects(updateStudioAttempt({ ...attempt, status: 'SUBMITTED', sceneContext: { ...sceneContext, sourceView: 'TOP' } }), /context|identity/i);
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('products', 'readwrite'), store = tx.objectStore('products'), request = store.get(productId);
+    request.onsuccess = () => store.put({ ...request.result, name: 'Changed product' });
+    tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+  });
+  await assert.rejects(updateStudioAttempt({ ...attempt, status: 'SUBMITTED' }), /context|changed/i);
+});
+
+test('an unrelated active mask pointer switch does not revoke a versioned job', async () => {
+  const { productId, makeAttempt, db } = await fixture();
+  const product = await getProduct(productId), source = product.sourceAssets[0];
+  const sceneContext = studioSceneContext(product, source, []);
+  const prompt = studioBuildPrompt('hero', sceneContext);
+  const attempt = { ...makeAttempt(), styleId: 'hero', presetVersion: STUDIO_PRESET_VERSION,
+    sceneContext, selectedFactIds: [], productSnapshotFingerprint: await productSnapshotFingerprint(product),
+    prompt, promptVersion: STUDIO_SCENE_PROMPT_VERSION, estimatedUSD: studioEstimateUSD(prompt) };
+  await createStudioAttempt(attempt);
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('products', 'readwrite'), store = tx.objectStore('products'), request = store.get(productId);
+    request.onsuccess = () => { const current = request.result; current.brandLock.maskAssetId = randomUUID(); store.put(current); };
+    tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+  });
+  await updateStudioAttempt({ ...attempt, status: 'SUBMITTED' });
+  await updateStudioAttempt({ ...attempt, status: 'DEFINITIVE_FAILURE' });
+});
+
+test('overhead confirmation cannot be forged or added after preparation', async () => {
+  const { productId, makeAttempt } = await fixture();
+  const product = await getProduct(productId), source = product.sourceAssets[0];
+  const sceneContext = studioSceneContext(product, source, []);
+  const prompt = studioBuildPrompt('flat_lay', sceneContext);
+  const attempt = { ...makeAttempt(), styleId: 'flat_lay', presetVersion: STUDIO_PRESET_VERSION,
+    sceneContext, selectedFactIds: [], productSnapshotFingerprint: await productSnapshotFingerprint(product),
+    prompt, promptVersion: STUDIO_SCENE_PROMPT_VERSION, estimatedUSD: studioEstimateUSD(prompt) };
+  await assert.rejects(createStudioAttempt({ ...attempt, topViewConfirmed: true }), /context|preset/i);
+  await createStudioAttempt(attempt);
+  await assert.rejects(updateStudioAttempt({ ...attempt, topViewConfirmed: true, status: 'SUBMITTED' }), /context|identity/i);
+});
 
 test('session estimate is reserved atomically across products and stale consent cannot send', async () => {
   const first = await fixture(), second = await fixture(), sessionId = randomUUID();

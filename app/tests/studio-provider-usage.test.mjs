@@ -10,11 +10,12 @@ const image = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHD
 
 async function simulate(usage) {
   let calls = 0;
-  const transport = async () => {
+  const transport = async (_url, init) => {
     calls++;
+    assert.equal(JSON.parse(init.body).prompt, 'validated scene prompt');
     return new Response(JSON.stringify({ data: [{ b64_json: image }], usage }), { headers: { 'content-type': 'application/json' } });
   };
-  const result = await generateStudioScene({ apiKey: 'synthetic-only', transport, timeoutMs: 1000 });
+  const result = await generateStudioScene({ apiKey: 'synthetic-only', transport, timeoutMs: 1000, prompt: 'validated scene prompt' });
   assert.equal(calls, 1);
   assert.equal(result.outcome, 'DEFINITIVE_SUCCESS');
   assert.equal(result.image, image);

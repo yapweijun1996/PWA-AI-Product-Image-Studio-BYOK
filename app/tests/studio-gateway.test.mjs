@@ -12,7 +12,7 @@ import { promisify } from 'node:util';
 import { deflateSync } from 'node:zlib';
 import { createGateway } from '../gateway.mjs';
 import { createAttemptJournal } from '../studio-journal.mjs';
-import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, studioEstimateUSD } from '../studio-policy.mjs';
+import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 
 const loginToken = randomBytes(32).toString('base64url');
 const authTokenHash = createHash('sha256').update(loginToken).digest('hex');
@@ -24,7 +24,10 @@ function png() {
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.alloc(1024 * (1 + 1024 * 4)))), chunk('IEND', Buffer.alloc(0))]).toString('base64');
 }
 const image = png();
-function attempt() { return { clientAttemptId: randomUUID(), productId: randomUUID(), styleId: 'studio', lockMode: 'STRICT', operation: 'generate_scene', model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, prompt: STUDIO_PROMPT, promptVersion: STUDIO_PROMPT_VERSION, sourceAssetHashes: ['a'.repeat(64)], estimatedUSD: studioEstimateUSD(), outputFormat: 'png', reviewRevision: 0 }; }
+function attempt(styleId = 'studio', sceneContext = { productName: '', category: '', confirmedFacts: [], sourceView: 'UNKNOWN' }) {
+  const prompt = studioBuildPrompt(styleId, sceneContext);
+  return { clientAttemptId: randomUUID(), productId: randomUUID(), styleId, sceneContext, presetVersion: STUDIO_PRESET_VERSION, lockMode: 'STRICT', operation: 'generate_scene', model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, prompt, promptVersion: STUDIO_SCENE_PROMPT_VERSION, sourceAssetHashes: ['a'.repeat(64)], estimatedUSD: studioEstimateUSD(prompt), outputFormat: 'png', reviewRevision: 0 };
+}
 function success() { return new Response(JSON.stringify({ data: [{ b64_json: image }], usage: { secret: fakeKey } }), { status: 200, headers: { 'content-type': 'application/json' } }); }
 async function fixture(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'studio-attempt-')), journal = options.journal ?? join(root, 'journal'), web = join(root, 'web');
@@ -80,7 +83,7 @@ test('approved strict request reaches only fixed provider route once and returns
   assert.equal(result.clientAttemptId, body.clientAttemptId); assert.equal(result.outcome, 'DEFINITIVE_SUCCESS'); assert.equal(result.image.dataBase64, image);
   assert.deepEqual([result.image.width, result.image.height, result.image.mimeType, result.usage, result.observedUSD, result.providerRequestId], [1024, 1024, 'image/png', null, null, null]);
   assert.equal(f.calls.length, 1); const sent = f.calls[0]; assert.equal(sent.url, 'https://api.openai.com/v1/images/generations'); assert.equal(sent.init.redirect, 'error');
-  assert.deepEqual(JSON.parse(sent.init.body), { model: STUDIO_MODEL, prompt: STUDIO_PROMPT, quality: STUDIO_QUALITY, size: STUDIO_SIZE, output_format: 'png', n: 1 });
+  assert.deepEqual(JSON.parse(sent.init.body), { model: STUDIO_MODEL, prompt: body.prompt, quality: STUDIO_QUALITY, size: STUDIO_SIZE, output_format: 'png', n: 1 });
   assert.doesNotMatch(sent.init.body, /aaaaaaaaaaaaaaaa|synthetic-provider-secret/);
   assert.doesNotMatch(JSON.stringify(result), /synthetic-provider-secret/);
   const records = await Promise.all((await readdir(f.journal)).map((name) => readFile(join(f.journal, name), 'utf8')));
@@ -99,9 +102,53 @@ test('strict validation, estimated-cost guard, body cap, and binding reject with
   const changed = { ...body, productId: randomUUID() }; assert.equal((await f.generate(a, changed, id)).status, 409);
   for (const patch of [{ prompt: 'user text' }, { model: 'other' }, { lockMode: 'CREATIVE' }, { operation: 'reference_edit' }, { sourceAssetHashes: [] }, { imageDataBase64: 'secret' }, { estimatedUSD: '0.000001' }, { maxEstimatedUSD: '0.001' }, { outputFormat: 'webp' }]) assert.equal((await f.approve(a, { ...body, ...patch })).status, 400);
   assert.equal((await f.req('/api/v2/images/generate', a, body, { 'X-Attempt-Approval': id, 'X-Client-Request-Id': randomUUID() })).status, 400);
-  assert.equal((await f.approve(a, { ...body, prompt: 'x'.repeat(5000) })).status, 413);
+  assert.equal((await f.approve(a, { ...body, prompt: 'x'.repeat(70000) })).status, 413);
   assert.equal(f.calls.length, 0);
   const guarded = await fixture(t, { maxEstimatedUSD: '0.001000' }), c = await guarded.login(); assert.equal((await guarded.approve(c, attempt())).status, 403); assert.equal(guarded.calls.length, 0);
+});
+
+test('seven independent scene attempts bind exact style and prompt before a single provider call each', async (t) => {
+  const f = await fixture(t, { maxEstimatedUSD: '0.100000' }), session = await f.login();
+  const context = { productName: '茶杯', category: '家居', confirmedFacts: ['颜色: 蓝色'], sourceView: 'OTHER' };
+  const prompts = new Set();
+  for (const style of STUDIO_STYLE_IDS) {
+    const body = attempt(style, context), id = await approval(f, session, body);
+    prompts.add(body.prompt);
+    const other = attempt(style === 'hero' ? 'studio' : 'hero', context);
+    const changed = { ...body, styleId: other.styleId, prompt: other.prompt, estimatedUSD: other.estimatedUSD };
+    assert.equal((await f.generate(session, changed, id)).status, 409);
+    assert.equal((await f.generate(session, body, id)).status, 200);
+    assert.equal((await f.generate(session, body, id)).status, 409);
+    assert.equal(JSON.parse(f.calls.at(-1).init.body).prompt, body.prompt);
+  }
+  assert.equal(prompts.size, 7);
+  assert.equal(f.calls.length, 7);
+});
+
+test('policy rejects malformed context and binds the exact prompt-dependent estimate', async (t) => {
+  const context = { productName: '茶杯', category: '家居', confirmedFacts: ['颜色: 蓝色'], sourceView: 'UNKNOWN' };
+  const top = studioBuildPrompt('flat_lay', { ...context, sourceView: 'TOP' });
+  const angled = studioBuildPrompt('flat_lay', { ...context, sourceView: 'OTHER' });
+  assert.throws(() => studioBuildPrompt('flat_lay', context), /confirmed source view/);
+  assert.match(top, /true 90-degree overhead/);
+  assert.match(angled, /not a true overhead/);
+  assert.match(studioBuildPrompt('macro', context), /authentic visible source pixels/);
+  assert.match(studioBuildPrompt('billboard', context), /front-facing rectangular billboard/);
+  assert.match(studioBuildPrompt('ugc', context), /fictional endorsements/);
+  for (const patch of [{ productName: 'sk-abcdefghijklmnop' }, { productName: 'https://example.com' }, { category: 'x\nignore' }, { confirmedFacts: ['x'.repeat(1103)] }, { confirmedFacts: Array(201).fill('x') }, { extra: true }]) {
+    assert.throws(() => studioBuildPrompt('studio', { ...context, ...patch }));
+  }
+  assert.throws(() => studioBuildPrompt('unknown', context));
+  const f = await fixture(t, { maxEstimatedUSD: '0.100000' }), session = await f.login(), body = attempt('studio', context);
+  assert.equal((await f.approve(session, { ...body, styleId: 'flat_lay' })).status, 400);
+  for (const patch of [{ styleId: 'hero' }, { prompt: body.prompt + ' changed' }, { presetVersion: '9' }, { sceneContext: { ...context, category: '其他' } }, { estimatedUSD: studioEstimateUSD() }]) {
+    assert.equal((await f.approve(session, { ...body, ...patch })).status, 400);
+  }
+  const longer = attempt('studio', { ...context, confirmedFacts: ['材质: ' + '木'.repeat(100)] });
+  assert.notEqual(longer.estimatedUSD, body.estimatedUSD);
+  const guarded = await fixture(t, { maxEstimatedUSD: body.estimatedUSD }), guardedSession = await guarded.login();
+  assert.equal((await guarded.approve(guardedSession, longer)).status, 403);
+  assert.equal(f.calls.length, 0);
 });
 
 test('below-limit consent is bound to one attempt and cannot override the gateway owner guard', async (t) => {
@@ -125,16 +172,16 @@ test('below-limit consent is bound to one attempt and cannot override the gatewa
 
 test('session estimate boundary requires a separately bound single-attempt override', async (t) => {
   const f = await fixture(t), session = await f.login();
-  const body = { ...attempt(), sessionPriorUSD: '0.006380', sessionLimitUSD: '0.012759' };
+  const body = { ...attempt(), sessionPriorUSD: '0.000001', sessionLimitUSD: attempt().estimatedUSD };
   assert.equal((await f.approve(session, body)).status, 400);
   assert.equal((await f.approve(session, { ...body, sessionLimitOverride: false })).status, 400);
   const approved = { ...body, sessionLimitOverride: true };
   const id = await approval(f, session, approved);
-  assert.equal((await f.generate(session, { ...approved, sessionPriorUSD: '0.006381' }, id)).status, 409);
+  assert.equal((await f.generate(session, { ...approved, sessionPriorUSD: '0.000002' }, id)).status, 409);
   assert.equal(f.calls.length, 0);
   assert.equal((await f.generate(session, approved, id)).status, 200);
   assert.equal(f.calls.length, 1);
-  const equal = { ...attempt(), sessionPriorUSD: '0.006380', sessionLimitUSD: '0.012760' };
+  const equal = { ...attempt(), sessionPriorUSD: '0.000000', sessionLimitUSD: attempt().estimatedUSD };
   assert.equal((await f.approve(session, equal)).status, 201);
   assert.equal((await f.approve(session, { ...equal, sessionLimitOverride: true })).status, 400);
 });

@@ -1,20 +1,22 @@
 import { BlobReader, BlobWriter, Uint8ArrayReader, ZipWriter, configure } from '@zip.js/zip.js/lib/zip-core-native.js';
 import validateManifest from 'virtual:export-manifest-validator';
-import { STUDIO_MODEL, STUDIO_PROMPT, STUDIO_PROMPT_VERSION, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
+import { STUDIO_MODEL, STUDIO_PROMPT, STUDIO_PROMPT_VERSION, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
+import { recipeMapping } from './strictComposite';
+import type { ApprovedExportProvenance, ApprovedExportSelection } from './products';
 import { inspectImageHeader } from './imageHeader';
 import { sha256 } from './prepareSource';
 
 configure({ useWebWorkers: false });
 export type OutputFormat = 'png' | 'jpeg' | 'webp';
-export type OutputRatio = '1:1' | '4:5' | '9:16';
+export type OutputRatio = '1:1' | '4:5' | '9:16' | '16:9';
 export type OutputConversion = { sourceSha256: string; sourceWidth: 1024; sourceHeight: 1024; format: OutputFormat; mimeType: string; ratio: OutputRatio; outputWidth: number; outputHeight: number; scale: number; x: number; y: number; width: number; height: number; background: 'transparent' | 'white' };
 export type RenderedApprovedOutput = { blob: Blob; sha256: string; conversion: OutputConversion };
-export type ApprovedOutputSelection = { attemptId: string; assetId: string; productSha256: string; assetSha256: string; reviewId: string; decisionId: string };
-export type ApprovedOutputProvenance = { attemptId: string; jobId: string; model: string; promptVersion: string; prompt: string; promptSha256: string; quality: string; size: string; styleId: string; createdAt: string; usage: Record<string, unknown> | null; estimatedUSD: string; observedUSD: string | null; pricingSnapshot: string | null; submittedAt: string; reviewId: string; reviewedAt: string; decisionId: string; decidedAt: string; sourceAssetId: string; sourceSha256: string; maskId: string; maskSha256: string; sceneAssetId: string; sceneSha256: string; assetSha256: string; productSha256: string };
-export type ApprovedOutputEntry = { selection: ApprovedOutputSelection; provenance: ApprovedOutputProvenance; rendered: RenderedApprovedOutput };
+export type ApprovedOutputSelection = ApprovedExportSelection;
+export type ApprovedOutputProvenance = ApprovedExportProvenance;
+export type ApprovedOutputEntry = { selection: ApprovedOutputSelection; provenance: ApprovedOutputProvenance; rendered: RenderedApprovedOutput; ad?: Blob; copyLayer?: Blob };
 
 const MAX_IMAGE = 20 * 1024 * 1024, MAX_TOTAL = 320 * 1024 * 1024, MAX_OUTPUTS = 100, MAX_JSON = 1024 * 1024;
-const dimensions: Record<OutputRatio, [number, number]> = { '1:1': [1024, 1024], '4:5': [1024, 1280], '9:16': [900, 1600] };
+const dimensions: Record<OutputRatio, [number, number]> = { '1:1': [1024, 1024], '4:5': [1024, 1280], '9:16': [900, 1600], '16:9': [1600, 900] };
 const mimes: Record<OutputFormat, string> = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const hash = /^[a-f0-9]{64}$/;
@@ -110,11 +112,39 @@ function checkedProvenance(entry: ApprovedOutputEntry) {
   const s = entry.selection, p = entry.provenance;
   for (const id of [s.attemptId, s.assetId, s.reviewId, s.decisionId, p.attemptId, p.jobId, p.reviewId, p.decisionId, p.sourceAssetId, p.maskId, p.sceneAssetId]) if (typeof id !== 'string' || !uuid.test(id)) invalid();
   for (const h of [s.productSha256, s.assetSha256, p.sourceSha256, p.maskSha256, p.sceneSha256, p.assetSha256, p.productSha256, p.promptSha256]) if (typeof h !== 'string' || !hash.test(h)) invalid();
-  if (s.attemptId !== p.attemptId || s.reviewId !== p.reviewId || s.decisionId !== p.decisionId || s.assetSha256 !== p.assetSha256 || s.productSha256 !== p.productSha256 || p.model !== STUDIO_MODEL || p.prompt !== STUDIO_PROMPT || p.promptVersion !== STUDIO_PROMPT_VERSION || p.quality !== STUDIO_QUALITY || p.size !== STUDIO_SIZE || p.styleId !== 'studio' || p.estimatedUSD !== studioEstimateUSD() || !validUsage(p.usage) || !validDate(p.createdAt) || !validDate(p.submittedAt) || !validDate(p.reviewedAt) || !validDate(p.decidedAt)) invalid();
+  if (s.attemptId !== p.attemptId || s.reviewId !== p.reviewId || s.decisionId !== p.decisionId || s.assetSha256 !== p.assetSha256 || s.productSha256 !== p.productSha256 || p.model !== STUDIO_MODEL || p.quality !== STUDIO_QUALITY || p.size !== STUDIO_SIZE || !validUsage(p.usage) || !validDate(p.createdAt) || !validDate(p.submittedAt) || !validDate(p.reviewedAt) || !validDate(p.decidedAt)) invalid();
+  const versioned = p.promptVersion === STUDIO_SCENE_PROMPT_VERSION;
+  let extra = {};
+  if (versioned) {
+    const allowed = ['attemptId', 'jobId', 'assetId', 'model', 'promptVersion', 'prompt', 'promptSha256', 'styleId', 'quality', 'size', 'usage', 'estimatedUSD', 'observedUSD', 'pricingSnapshot', 'createdAt', 'submittedAt', 'reviewId', 'reviewedAt', 'decisionId', 'decidedAt', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'assetSha256', 'productSha256', 'presetVersion', 'sceneContext', 'selectedFactIds', 'productSnapshotFingerprint', 'topViewConfirmed', 'recipe', 'recipeSha256', 'adSha256', 'mapping'];
+    if (Object.keys(p).some((key) => !allowed.includes(key)) || ('assetId' in p && p.assetId !== s.assetId)) invalid();
+    if (p.presetVersion !== STUDIO_PRESET_VERSION || !p.sceneContext || !p.recipe || !p.mapping ||
+        !Array.isArray(p.selectedFactIds) || p.selectedFactIds.length !== p.sceneContext.confirmedFacts?.length ||
+        p.selectedFactIds.some((id) => typeof id !== 'string' || !uuid.test(id)) || new Set(p.selectedFactIds).size !== p.selectedFactIds.length ||
+        typeof p.productSnapshotFingerprint !== 'string' || !hash.test(p.productSnapshotFingerprint) ||
+        typeof p.recipeSha256 !== 'string' || !hash.test(p.recipeSha256) ||
+        p.recipe.styleId !== p.styleId || p.recipe.sourceView !== p.sceneContext.sourceView || p.recipe.topViewConfirmed !== p.topViewConfirmed ||
+        (p.topViewConfirmed !== undefined && p.topViewConfirmed !== true)) invalid();
+    try { if (p.prompt !== studioBuildPrompt(p.styleId, p.sceneContext) || p.estimatedUSD !== studioEstimateUSD(p.prompt)) invalid(); } catch { invalid(); }
+    const mapping = recipeMapping(p.recipe, p.mapping.sourceWidth, p.mapping.sourceHeight);
+    if (Object.keys(p.mapping).length !== 6 || Object.entries(mapping).some(([key, value]) => p.mapping![key as keyof typeof mapping] !== value)) invalid();
+    if (p.recipe.copy && /\b(?:sk-[A-Za-z0-9_-]{8,}|bearer\s+[A-Za-z0-9_-]{8,}|(?:api[\s-]*key|password|secret|token)\s*[:=]\s*\S+)/i.test(p.recipe.copy)) invalid();
+    if (p.styleId === 'billboard' ? (!entry.ad || typeof p.adSha256 !== 'string' || !hash.test(p.adSha256)) : (entry.ad !== undefined || p.adSha256 !== undefined)) invalid();
+    if (p.styleId === 'billboard' && p.recipe.copy ? (!entry.copyLayer || typeof p.recipe.copyLayerSha256 !== 'string' || !hash.test(p.recipe.copyLayerSha256)) : (entry.copyLayer !== undefined || p.recipe.copyLayerSha256 !== undefined)) invalid();
+    const rect = (r: NonNullable<typeof p.recipe>['crop']) => r && Object.fromEntries(Object.keys(r).map((key) => [key, r[key as keyof typeof r]]));
+    const recipeValues = { version: p.recipe.version, styleId: p.recipe.styleId, sourceView: p.recipe.sourceView, topViewConfirmed: p.recipe.topViewConfirmed,
+      crop: rect(p.recipe.crop), display: rect(p.recipe.display), displayFrontFacing: p.recipe.displayFrontFacing, copy: p.recipe.copy, copyLayerSha256: p.recipe.copyLayerSha256 };
+    const recipe = Object.fromEntries(Object.keys(p.recipe).map((key) => [key, recipeValues[key as keyof typeof recipeValues]]));
+    extra = { presetVersion: p.presetVersion, sceneContext: { productName: p.sceneContext.productName, category: p.sceneContext.category, confirmedFacts: [...p.sceneContext.confirmedFacts], sourceView: p.sceneContext.sourceView },
+      selectedFactIds: [...p.selectedFactIds], productSnapshotFingerprint: p.productSnapshotFingerprint, ...(p.topViewConfirmed === undefined ? {} : { topViewConfirmed: p.topViewConfirmed }),
+      recipe, recipeSha256: p.recipeSha256, ...(p.adSha256 === undefined ? {} : { adSha256: p.adSha256 }), mapping };
+  } else if (p.promptVersion !== STUDIO_PROMPT_VERSION || p.prompt !== STUDIO_PROMPT || p.styleId !== 'studio' || p.estimatedUSD !== studioEstimateUSD() ||
+      p.presetVersion !== undefined || p.sceneContext !== undefined || p.selectedFactIds !== undefined || p.productSnapshotFingerprint !== undefined || p.topViewConfirmed !== undefined ||
+      p.recipe !== undefined || p.recipeSha256 !== undefined || p.adSha256 !== undefined || p.mapping !== undefined || entry.ad !== undefined || entry.copyLayer !== undefined) invalid();
   if (p.observedUSD === null ? p.pricingSnapshot !== null : p.pricingSnapshot !== STUDIO_PRICING_SNAPSHOT || studioObservedUSD(p.usage) !== p.observedUSD) invalid();
   // Reconstruct every exported field; never serialize stored objects wholesale.
   const usage = p.usage === null ? null : Object.fromEntries(Object.entries(p.usage).map(([key, value]) => [key, isObject(value) ? Object.fromEntries(Object.entries(value)) : value]));
-  return { attemptId: p.attemptId, jobId: p.jobId, assetId: s.assetId, sourceAssetId: p.sourceAssetId, maskId: p.maskId, sceneAssetId: p.sceneAssetId, reviewId: p.reviewId, decisionId: p.decisionId, sourceSha256: p.sourceSha256, maskSha256: p.maskSha256, sceneSha256: p.sceneSha256, assetSha256: p.assetSha256, productSha256: p.productSha256, model: p.model, promptVersion: p.promptVersion, prompt: p.prompt, promptSha256: p.promptSha256, quality: p.quality, size: p.size, styleId: p.styleId, createdAt: p.createdAt, usage, estimatedUSD: p.estimatedUSD, observedUSD: p.observedUSD, pricingSnapshot: p.pricingSnapshot, submittedAt: p.submittedAt, reviewedAt: p.reviewedAt, decidedAt: p.decidedAt };
+  return { attemptId: p.attemptId, jobId: p.jobId, assetId: s.assetId, sourceAssetId: p.sourceAssetId, maskId: p.maskId, sceneAssetId: p.sceneAssetId, reviewId: p.reviewId, decisionId: p.decisionId, sourceSha256: p.sourceSha256, maskSha256: p.maskSha256, sceneSha256: p.sceneSha256, assetSha256: p.assetSha256, productSha256: p.productSha256, model: p.model, promptVersion: p.promptVersion, prompt: p.prompt, promptSha256: p.promptSha256, quality: p.quality, size: p.size, styleId: p.styleId, createdAt: p.createdAt, usage, estimatedUSD: p.estimatedUSD, observedUSD: p.observedUSD, pricingSnapshot: p.pricingSnapshot, submittedAt: p.submittedAt, reviewedAt: p.reviewedAt, decidedAt: p.decidedAt, ...extra };
 }
 export async function packageApprovedOutputs(productId: string, entries: ApprovedOutputEntry[], signal: AbortSignal): Promise<Blob> {
   cancelled(signal);
@@ -126,6 +156,7 @@ export async function packageApprovedOutputs(productId: string, entries: Approve
     cancelled(signal);
     const provenance = checkedProvenance(entry), r = entry.rendered, c = r.conversion;
     if (await sha256(new TextEncoder().encode(provenance.prompt)) !== provenance.promptSha256) invalid();
+    if (entry.provenance.recipe && await sha256(new TextEncoder().encode(JSON.stringify(entry.provenance.recipe))) !== entry.provenance.recipeSha256) invalid();
     if (seen.has(provenance.assetId)) throw new Error('Duplicate output IDs.'); seen.add(provenance.assetId);
     if (!isObject(c) || !Object.hasOwn(mimes, c.format) || !Object.hasOwn(dimensions, c.ratio) || c.sourceSha256 !== provenance.assetSha256 || JSON.stringify(c) !== JSON.stringify(conversionFor(provenance.assetSha256, c.format, c.ratio))) invalid();
     const bytes = await imageBytes(r.blob, c.mimeType, c.outputWidth, c.outputHeight, signal);
@@ -138,6 +169,21 @@ export async function packageApprovedOutputs(productId: string, entries: Approve
     const meta = { approved: true, sourceAssetId: provenance.sourceAssetId, attemptId: provenance.attemptId, qaId: provenance.decisionId };
     files.push({ path, sha256: r.sha256, bytes: bytes.length, mimeType: c.mimeType, role: 'output', ...meta }, { path: infoPath, sha256: await sha256(info), bytes: info.length, mimeType: 'application/json', role: 'receipt', ...meta });
     items.push({ path, blob: r.blob }, { path: infoPath, blob: info }); total += bytes.length + info.length;
+    if (entry.ad) {
+      const ad = await imageBytes(entry.ad, 'image/png', 1024, 1024, signal);
+      if (await sha256(ad) !== entry.provenance.adSha256) invalid();
+      const adPath = `ads/${provenance.assetId}.png`;
+      files.push({ path: adPath, sha256: entry.provenance.adSha256!, bytes: ad.length, mimeType: 'image/png', role: 'output', ...meta });
+      items.push({ path: adPath, blob: entry.ad }); total += ad.length;
+    }
+    if (entry.copyLayer) {
+      const layer = await imageBytes(entry.copyLayer, 'image/png', 1024, 1024, signal);
+      const layerHash = entry.provenance.recipe?.copyLayerSha256;
+      if (!layerHash || await sha256(layer) !== layerHash) invalid();
+      const layerPath = `copy-layers/${provenance.assetId}.png`;
+      files.push({ path: layerPath, sha256: layerHash, bytes: layer.length, mimeType: 'image/png', role: 'output', ...meta });
+      items.push({ path: layerPath, blob: entry.copyLayer }); total += layer.length;
+    }
     if (total > MAX_TOTAL) throw new Error('Output bundle exceeds the size limit.');
   }
   const manifest = { schemaVersion: '1.0.0', exportId: crypto.randomUUID(), productId, createdAt: new Date().toISOString(), approvedOnly: true, files, appVersion: __APP_VERSION__ };

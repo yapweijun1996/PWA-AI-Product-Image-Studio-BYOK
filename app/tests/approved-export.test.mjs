@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID, webcrypto, createHash } from 'node:crypto';
 import { build } from 'vite';
-import { BlobReader, TextWriter, ZipReader } from '@zip.js/zip.js/lib/zip-core-native.js';
-import { STUDIO_MODEL, STUDIO_PROMPT, STUDIO_PROMPT_VERSION, studioEstimateUSD } from '../studio-policy.mjs';
+import { BlobReader, BlobWriter, TextWriter, ZipReader } from '@zip.js/zip.js/lib/zip-core-native.js';
+import { STUDIO_MODEL, STUDIO_PROMPT, STUDIO_PROMPT_VERSION, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 const result = await build({ configFile: 'vite.config.ts', logLevel: 'silent', build: { write: false, minify: false, lib: { entry: 'src/approvedExport.ts', formats: ['es'], fileName: 'approved-export' } } });
@@ -103,4 +103,77 @@ test('rejects duplicates, mismatched hashes, unsupported prompt and unsafe usage
   await assert.rejects(packageApprovedOutputs(product, [], signal()), /selection/i);
   const controller = new AbortController(); controller.abort();
   await assert.rejects(packageApprovedOutputs(product, [entry], controller.signal), { name: 'AbortError' });
+});
+
+const digest = (value) => createHash('sha256').update(value).digest('hex');
+async function styledFixture(style = 'studio') {
+  const entry = await fixture();
+  const context = { productName: 'Cup', category: 'Kitchen', confirmedFacts: ['Color: blue'], sourceView: 'OTHER' };
+  const prompt = studioBuildPrompt(style, context);
+  const recipe = { version: 1, styleId: style, sourceView: 'OTHER', ...(style === 'billboard' ? { display: { x: 100, y: 200, width: 512, height: 512 }, displayFrontFacing: true, copy: 'Hello' } : {}) };
+  if (style === 'billboard') {
+    entry.copyLayer = png(1024, 1024);
+    recipe.copyLayerSha256 = digest(Buffer.from(await entry.copyLayer.arrayBuffer()));
+  }
+  const mapping = style === 'billboard'
+    ? { x: 100, y: 200, width: 512, height: 512, sourceWidth: 1024, sourceHeight: 1024 }
+    : { x: 102.39999999999998, y: 102.39999999999998, width: 819.2, height: 819.2, sourceWidth: 1024, sourceHeight: 1024 };
+  Object.assign(entry.provenance, { styleId: style, promptVersion: STUDIO_SCENE_PROMPT_VERSION, presetVersion: STUDIO_PRESET_VERSION, sceneContext: context, selectedFactIds: [randomUUID()], productSnapshotFingerprint: 'e'.repeat(64), prompt, promptSha256: digest(prompt), estimatedUSD: studioEstimateUSD(prompt), recipe, recipeSha256: digest(JSON.stringify(recipe)), mapping });
+  if (style === 'billboard') { entry.ad = png(1024, 1024); entry.provenance.adSha256 = digest(Buffer.from(await entry.ad.arrayBuffer())); }
+  return entry;
+}
+
+test('versioned provenance is retained; incomplete and altered scene or recipe are rejected', async () => {
+  const entry = await styledFixture(), product = randomUUID();
+  const contents = await unpack(await packageApprovedOutputs(product, [entry], signal()));
+  const receipt = contents[`provenance/${entry.selection.assetId}.json`];
+  assert.deepEqual(receipt.sceneContext, entry.provenance.sceneContext);
+  assert.deepEqual(receipt.selectedFactIds, entry.provenance.selectedFactIds);
+  assert.deepEqual(receipt.recipe, entry.provenance.recipe);
+  for (const change of [
+    { prompt: entry.provenance.prompt + ' altered' },
+    { presetVersion: undefined },
+    { selectedFactIds: [] },
+    { recipeSha256: '0'.repeat(64) },
+    { recipe: { ...entry.provenance.recipe, styleId: 'hero' } },
+    { mapping: { ...entry.provenance.mapping, x: 0 } },
+    { sceneContext: { ...entry.provenance.sceneContext, unknown: true } },
+  ]) await assert.rejects(packageApprovedOutputs(product, [{ ...entry, provenance: { ...entry.provenance, ...change } }], signal()));
+});
+
+test('billboard bundle includes the complete ad with verified manifest hash and rejects missing or tampered ads and secrets', async () => {
+  const entry = await styledFixture('billboard'), product = randomUUID();
+  const archive = await packageApprovedOutputs(product, [entry], signal());
+  const contents = await unpack(archive), path = `ads/${entry.selection.assetId}.png`;
+  const record = contents['export-manifest.json'].files.find((item) => item.path === path);
+  assert.equal(record.sha256, entry.provenance.adSha256);
+  const layerPath = `copy-layers/${entry.selection.assetId}.png`;
+  assert.equal(contents['export-manifest.json'].files.find((item) => item.path === layerPath).sha256, entry.provenance.recipe.copyLayerSha256);
+  const reader = new ZipReader(new BlobReader(archive), { useWebWorkers: false });
+  try {
+    const file = (await reader.getEntries()).find((item) => item.filename === path);
+    const blob = await file.getData(new BlobWriter('image/png'));
+    assert.deepEqual(Buffer.from(await blob.arrayBuffer()), Buffer.from(await entry.ad.arrayBuffer()));
+    const layer = (await reader.getEntries()).find((item) => item.filename === layerPath);
+    assert.deepEqual(Buffer.from(await (await layer.getData(new BlobWriter('image/png'))).arrayBuffer()), Buffer.from(await entry.copyLayer.arrayBuffer()));
+  } finally { await reader.close(); }
+  await assert.rejects(packageApprovedOutputs(product, [{ ...entry, ad: undefined }], signal()));
+  await assert.rejects(packageApprovedOutputs(product, [{ ...entry, ad: png(100, 100) }], signal()));
+  await assert.rejects(packageApprovedOutputs(product, [{ ...entry, provenance: { ...entry.provenance, adSha256: '0'.repeat(64) } }], signal()));
+  await assert.rejects(packageApprovedOutputs(product, [{ ...entry, copyLayer: undefined }], signal()));
+  await assert.rejects(packageApprovedOutputs(product, [{ ...entry, copyLayer: png(100, 100) }], signal()));
+  const recipe = { ...entry.provenance.recipe, copy: 'password: mysecret' };
+  await assert.rejects(packageApprovedOutputs(product, [{ ...entry, provenance: { ...entry.provenance, recipe, recipeSha256: digest(JSON.stringify(recipe)) } }], signal()));
+});
+
+test('16:9 fits the whole square composite with horizontal margins', async () => {
+  const rendered = await renderApprovedOutput(png(1024, 1024), 'png', '16:9', signal());
+  assert.equal(rendered.conversion.outputWidth, 1600);
+  assert.equal(rendered.conversion.outputHeight, 900);
+  assert.equal(rendered.conversion.width, 900);
+  assert.equal(rendered.conversion.height, 900);
+  assert.equal(rendered.conversion.x, 350);
+  assert.equal(rendered.conversion.y, 0);
+  const entry = await styledFixture('billboard');
+  await packageApprovedOutputs(randomUUID(), [{ ...entry, rendered }], signal());
 });

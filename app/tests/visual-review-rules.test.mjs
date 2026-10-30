@@ -69,3 +69,23 @@ test('rejects malformed fields, values, precision and variants', () => {
   assert.throws(() => evaluate(scores, checks, 'other'));
   assert.throws(() => evaluate(null));
 });
+
+test('style-specific unresolved or mismatched evidence cannot be approved even at 100', () => {
+  const max = { design: '5', typography: '5', geometry: '5', realism: '5', style: '5' };
+  const cases = {
+    studio: ['scene'], hero: ['support'], lifestyle: ['context'], flat_lay: ['view'],
+    macro: ['crop', 'detail', 'protected'], ugc: ['endorsement'], billboard: ['ad', 'copy', 'display', 'surroundings'],
+  };
+  for (const [styleId, fields] of Object.entries(cases)) {
+    const all = Object.fromEntries(fields.map((key) => [key, 'MATCH']));
+    assert.equal(evaluateVisualReview(max, checks, 'default', styleId, all).status, 'PASS_CANDIDATE');
+    for (const field of fields) {
+      assert.equal(evaluateVisualReview(max, checks, 'default', styleId, { ...all, [field]: 'UNKNOWN' }).status, 'UNVERIFIABLE');
+      const veto = evaluateVisualReview(max, checks, 'default', styleId, { ...all, [field]: 'MISMATCH' });
+      assert.equal(veto.status, 'REJECTED');
+      assert.equal(veto.hardVetoFindings[0].severity, 'BLOCKER');
+    }
+    assert.throws(() => evaluateVisualReview(max, checks, 'default', styleId, {}));
+    assert.throws(() => evaluateVisualReview(max, checks, 'default', styleId, { ...all, extra: 'MATCH' }));
+  }
+});

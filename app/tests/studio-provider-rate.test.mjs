@@ -8,7 +8,7 @@ async function simulate(retryAfter) {
     calls++;
     return new Response('untrusted provider error', { status: 429, headers: retryAfter === null ? {} : { 'Retry-After': retryAfter } });
   };
-  const result = await generateStudioScene({ apiKey: 'synthetic-only', transport, timeoutMs: 1000 });
+  const result = await generateStudioScene({ apiKey: 'synthetic-only', transport, timeoutMs: 1000, prompt: 'validated scene prompt' });
   assert.equal(calls, 1);
   return result;
 }

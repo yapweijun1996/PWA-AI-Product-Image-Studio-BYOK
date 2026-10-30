@@ -1,5 +1,5 @@
 import { inflateSync } from 'node:zlib';
-import { STUDIO_MODEL, STUDIO_PROMPT, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_MAX_PNG_BYTES } from './studio-policy.mjs';
+import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_MAX_PNG_BYTES } from './studio-policy.mjs';
 
 const ENDPOINT = 'https://api.openai.com/v1/images/generations';
 const MAX_RESPONSE = 24 * 1024 * 1024;
@@ -97,7 +97,7 @@ function parseUsage(value) {
   return usage;
 }
 
-export async function generateStudioScene({ apiKey, transport, timeoutMs }) {
+export async function generateStudioScene({ apiKey, transport, timeoutMs, prompt }) {
   const controller = new AbortController();
   let timer;
   const timeout = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, timeoutMs); });
@@ -106,7 +106,7 @@ export async function generateStudioScene({ apiKey, transport, timeoutMs }) {
       const response = await transport(ENDPOINT, {
         method: 'POST', redirect: 'error', signal: controller.signal,
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: STUDIO_MODEL, prompt: STUDIO_PROMPT, quality: STUDIO_QUALITY, size: STUDIO_SIZE, output_format: 'png', n: 1 })
+        body: JSON.stringify({ model: STUDIO_MODEL, prompt, quality: STUDIO_QUALITY, size: STUDIO_SIZE, output_format: 'png', n: 1 })
       });
       if (response.status === 429) return { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: retryAfterSeconds(response) };
       if (!response.ok) return { outcome: response.status >= 400 && response.status < 500 && response.status !== 408 ? 'DEFINITIVE_FAILURE' : 'UNKNOWN' };

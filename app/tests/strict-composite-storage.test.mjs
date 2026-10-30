@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { deflateSync, inflateSync } from 'node:zlib';
 import 'fake-indexeddb/auto';
 import { build } from 'vite';
-import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, studioEstimateUSD } from '../studio-policy.mjs';
+import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 
 // Synthetic PNGs and a minimal canvas decoder keep these storage tests local.
 function crc32(data) {
@@ -44,6 +44,7 @@ globalThis.createImageBitmap = async (file) => {
   for (let y = 0; y < height; y++) pixels.set(raw.subarray(y * (width * 4 + 1) + 1, (y + 1) * (width * 4 + 1)), y * width * 4);
   return { width, height, pixels, close() {} };
 };
+let syntheticFont = 20;
 class TestCanvas {
   constructor() { this._width = 0; this._height = 0; this.pixels = new Uint8ClampedArray(); }
   set width(value) { this._width = value; this.pixels = new Uint8ClampedArray(this._width * this._height * 4); }
@@ -54,6 +55,13 @@ class TestCanvas {
   getContext() {
     const canvas = this;
     return {
+      fillRect(x, y, w, h) {
+        for (let row = y; row < y + h; row++) for (let col = x; col < x + w; col++) {
+          canvas.pixels.set([255, 255, 255, 255], (row * canvas.width + col) * 4);
+        }
+      },
+      measureText(value) { return { width: value.length * 10 }; },
+      fillText() { canvas.pixels.set([syntheticFont, 0, 0, 255], (875 * canvas.width + 512) * 4); },
       clearRect(x, y, w, h) {
         for (let row = y; row < y + h; row++) canvas.pixels.fill(0, (row * canvas.width + x) * 4, (row * canvas.width + x + w) * 4);
       },
@@ -89,11 +97,16 @@ const built = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
   build: { write: false, minify: false, lib: { entry: 'src/products.ts', formats: ['es'], fileName: 'products' } } });
 const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { createProduct, saveSource, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint,
-  loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts } =
+const { createProduct, getProduct, saveSource, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint, listVisualReviews,
+  loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts, productSnapshotFingerprint, studioSceneContext } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const rendererBuilt = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
+  build: { write: false, minify: false, lib: { entry: 'src/strictComposite.ts', formats: ['es'], fileName: 'strict-composite' } } });
+const rendererOutput = Array.isArray(rendererBuilt) ? rendererBuilt[0] : rendererBuilt;
+const rendererCode = rendererOutput.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
+const { renderStrictCompositePixels } = await import(`data:text/javascript;base64,${Buffer.from(rendererCode).toString('base64')}`);
 
-async function fixture() {
+async function fixture(styleId) {
   const product = await createProduct({ sku: randomUUID(), name: 'Synthetic product', category: 'Test', rightsAcknowledged: true });
   const source = { assetId: randomUUID(), sha256: hash(sourceBytes), mimeType: 'image/png', width: 2, height: 1, cameraView: 'FRONT', filename: 'source.png' };
   await saveSource(product.productId, { file: blob(sourceBytes), metadata: source, exifOrientation: 1, previewUrl: '' }, 'FRONT');
@@ -111,6 +124,12 @@ async function fixture() {
     sourceSha256: source.sha256, maskId, maskSha256, prompt: STUDIO_PROMPT, promptVersion: STUDIO_PROMPT_VERSION,
     model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, estimatedUSD: studioEstimateUSD(),
     submittedAt: new Date().toISOString(), status: 'PREPARED', usage: null, observedUSD: null };
+  if (styleId) {
+    const current = await getProduct(product.productId), sceneContext = studioSceneContext(current, source, []);
+    const prompt = studioBuildPrompt(styleId, sceneContext);
+    Object.assign(attempt, { styleId, sceneContext, selectedFactIds: [], presetVersion: STUDIO_PRESET_VERSION,
+      productSnapshotFingerprint: await productSnapshotFingerprint(current), prompt, promptVersion: STUDIO_SCENE_PROMPT_VERSION, estimatedUSD: studioEstimateUSD(prompt) });
+  }
   const fingerprint = await globalStudioReviewFingerprint();
   await createStudioAttempt(attempt, fingerprint);
   await updateStudioAttempt({ ...attempt, status: 'SUBMITTED' }, undefined, fingerprint);
@@ -156,6 +175,31 @@ function maskVersion(f, version) {
   return { maskId: randomUUID(), productId: f.productId, sourceAssetId: f.source.assetId, sourceSha256: f.source.sha256,
     width: 2, height: 1, sha256: hash(sourceBytes), version, blob: blob(sourceBytes) };
 }
+
+test('completed versioned scene remains accessible after product facts or name change', async () => {
+  const f = await fixture('hero');
+  await mutate(f.db, 'products', f.productId, (row) => ({ ...row, name: 'Updated product name' }));
+  await addConfirmedFact(f.productId, 'Finish', 'Matte');
+  const inputs = await load(f);
+  assert.equal(inputs.styleId, 'hero');
+  assert.equal(inputs.sourceSha256, f.source.sha256);
+});
+
+test('billboard rerenders from frozen copy pixels after font changes and rejects layer tampering', async () => {
+  const f = await fixture('billboard'), inputs = await load(f);
+  const recipe = { version: 1, styleId: 'billboard', sourceView: 'OTHER',
+    display: { x: 100, y: 100, width: 600, height: 600 }, displayFrontFacing: true, copy: 'Exact seller copy' };
+  const rendered = await renderStrictCompositePixels({ ...inputs, recipe });
+  recipe.copyLayerSha256 = hash(Buffer.from(await rendered.copyLayer.arrayBuffer()));
+  const saved = await saveStrictComposite(f.productId, f.attemptId, inputs, rendered.blob, rendered.mapping, undefined, recipe, rendered.copyLayer);
+  try {
+    syntheticFont = 99;
+    const history = await listVisualReviews(f.productId, f.attemptId, saved.assetId);
+    assert.equal(history.assetSha256, saved.sha256);
+    await mutate(f.db, 'generatedAssets', saved.assetId, (row) => ({ ...row, copyLayer: blob(sceneBytes) }));
+    await assert.rejects(listVisualReviews(f.productId, f.attemptId, saved.assetId), /hash/i);
+  } finally { syntheticFont = 20; }
+});
 
 test('strict composites preserve exact input identities and append a distinct unapproved asset', async () => {
   const f = await fixture(), inputs = await load(f);

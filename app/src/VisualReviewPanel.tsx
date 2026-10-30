@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createVisualReview, listVisualReviews, loadStrictCompositeInputs, recordVisualDecision, type Product, type StrictComposite, type VisualReviewRecord, type VisualDecisionRecord } from './products';
-import { evaluateVisualReview, type ReviewChecks, type ReviewScores, type ReviewVariant, type VisualReviewEvaluation } from './visualReviewRules';
+import { evaluateVisualReview, STYLE_REVIEW_FIELDS, type ReviewCheck, type ReviewChecks, type ReviewScores, type ReviewVariant, type StyleReviewChecks, type VisualReviewEvaluation } from './visualReviewRules';
 import { LocalImage } from './LocalImage';
 import { useUnsavedChanges } from './useUnsavedChanges';
 
@@ -16,7 +16,7 @@ const CHECK_FIELDS: Array<[keyof ReviewChecks, string]> = [
 const EMPTY_SCORES: ReviewScores = { design: '', typography: '', geometry: '', realism: '', style: '' };
 const UNKNOWN_CHECKS: ReviewChecks = { product: 'UNKNOWN', typography: 'UNKNOWN', claims: 'UNKNOWN', viewpoint: 'UNKNOWN', source: 'UNKNOWN', mask: 'UNKNOWN' };
 
-type History = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[]; product: Product; productSha256: string; assetSha256: string };
+type History = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[]; product: Product; productSha256: string; assetSha256: string; recipeSha256?: string; adSha256?: string };
 
 export function VisualReviewPanel({ productId, productVersion, attemptId, composite, disabled }: { productId: string; productVersion: string; attemptId: string; composite: StrictComposite; disabled: boolean }) {
   const [source, setSource] = useState<{ blob: Blob; width: number; height: number } | null>(null);
@@ -25,6 +25,9 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
   const [reloadVersion, setReloadVersion] = useState(0);
   const [scores, setScores] = useState<ReviewScores>(EMPTY_SCORES);
   const [checks, setChecks] = useState<ReviewChecks>(UNKNOWN_CHECKS);
+  const styleId = composite.recipe?.styleId;
+  const emptyStyleChecks = (): StyleReviewChecks => Object.fromEntries((styleId ? STYLE_REVIEW_FIELDS[styleId] : []).map(([key]) => [key, 'UNKNOWN']));
+  const [styleChecks, setStyleChecks] = useState<StyleReviewChecks>(emptyStyleChecks);
   const [variant, setVariant] = useState<ReviewVariant | ''>('');
   const [note, setNote] = useState('');
   const [reviewed, setReviewed] = useState(false);
@@ -40,8 +43,8 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
   const alive = useRef(true);
   const pendingReload = useRef(false);
   const history = evidenceVersion === productVersion ? historyState : null;
-  const hasDraft = Boolean(note) || Boolean(variant) || Object.values(scores).some(Boolean) || Object.values(checks).some((value) => value !== 'UNKNOWN');
-  const noteRequired = Object.values(checks).some((value) => value !== 'MATCH');
+  const hasDraft = Boolean(note) || Boolean(variant) || Object.values(scores).some(Boolean) || Object.values(checks).some((value) => value !== 'UNKNOWN') || Object.values(styleChecks).some((value) => value !== 'UNKNOWN');
+  const noteRequired = Object.values(checks).some((value) => value !== 'MATCH') || Object.values(styleChecks).some((value) => value !== 'MATCH');
   useUnsavedChanges(busy || reviewed || Boolean(choice) || hasDraft);
 
   useEffect(() => {
@@ -63,19 +66,19 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
     void Promise.all([loadStrictCompositeInputs(productId, attemptId, composite.sceneAssetId, abort.signal), listVisualReviews(productId, attemptId, composite.assetId, abort.signal)]).then(([inputs, records]) => {
       if (abort.signal.aborted || !alive.current) return;
       if (inputs.sourceSha256 !== composite.sourceSha256 || inputs.maskSha256 !== composite.maskSha256 || inputs.sceneSha256 !== composite.sceneSha256 || inputs.maskId !== composite.maskId) throw new Error('The source, active mask or scene changed since this composite.');
-      if (records.assetSha256 !== composite.sha256) throw new Error('The saved composite changed since it was displayed. Reopen the workspace before reviewing it.');
+      if (records.assetSha256 !== composite.sha256 || records.recipeSha256 !== composite.recipeSha256 || records.adSha256 !== composite.adSha256) throw new Error('The saved composite or recipe changed since it was displayed. Reopen the workspace before reviewing it.');
       setSource({ blob: inputs.source, width: inputs.sourceWidth, height: inputs.sourceHeight }); setHistory(records); setEvidenceVersion(productVersion);
     }).catch((reason) => { if (!abort.signal.aborted && alive.current) setError(reason instanceof Error ? reason.message : 'The review evidence could not be loaded.'); });
     return () => { alive.current = false; abort.abort(); controller.current?.abort(); };
   }, [productId, productVersion, attemptId, composite.assetId, reloadVersion]);
 
   let evaluation: VisualReviewEvaluation | null = null;
-  try { if (variant) evaluation = evaluateVisualReview(scores, checks, variant); } catch { /* incomplete score is not a review */ }
+  try { if (variant) evaluation = evaluateVisualReview(scores, checks, variant, styleId, styleId ? styleChecks : undefined); } catch { /* incomplete score is not a review */ }
   const latest = history?.reviews.reduce<VisualReviewRecord | null>((current, item) => !current || item.revision > current.revision ? item : current, null) ?? null;
   const currentDecision = latest ? history?.decisions.find((item) => item.reportId === latest.qaId && item.current) : undefined;
-  const latestIsCurrent = Boolean(latest && latest.productSha256 === history?.productSha256);
+  const latestIsCurrent = Boolean(latest && latest.productSha256 === history?.productSha256 && latest.recipeSha256 === composite.recipeSha256 && latest.adSha256 === composite.adSha256);
   function invalidateDecision() { setReviewed(false); setChoice(''); setDecisionConfirmed(false); }
-  function clearDraft() { setScores(EMPTY_SCORES); setChecks(UNKNOWN_CHECKS); setVariant(''); setNote(''); invalidateDecision(); }
+  function clearDraft() { setScores(EMPTY_SCORES); setChecks(UNKNOWN_CHECKS); setStyleChecks(emptyStyleChecks()); setVariant(''); setNote(''); invalidateDecision(); }
 
   async function submitReview(event: FormEvent) {
     event.preventDefault();
@@ -83,9 +86,9 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
     running.current = true; setBusy(true); setError(''); setNotice('');
     const abort = new AbortController(); controller.current = abort;
     try {
-      await createVisualReview(productId, attemptId, composite.assetId, scores, checks, variant, note, history.productSha256, composite.sha256, abort.signal);
-      if (alive.current) { setReviewed(false); setScores(EMPTY_SCORES); setChecks(UNKNOWN_CHECKS); setVariant(''); setNote(''); setChoice(''); setDecisionConfirmed(false); setNotice('Review recorded. A passing candidate still requires a separate explicit decision.'); }
-      try { const records = await listVisualReviews(productId, attemptId, composite.assetId, abort.signal); if (records.assetSha256 !== composite.sha256) throw new Error('Composite changed'); if (alive.current) setHistory(records); }
+      await createVisualReview(productId, attemptId, composite.assetId, scores, checks, variant, note, history.productSha256, composite.sha256, abort.signal, composite.recipeSha256, composite.adSha256, styleId ? styleChecks : undefined);
+      if (alive.current) { setReviewed(false); setScores(EMPTY_SCORES); setChecks(UNKNOWN_CHECKS); setStyleChecks(emptyStyleChecks()); setVariant(''); setNote(''); setChoice(''); setDecisionConfirmed(false); setNotice('Review recorded. A passing candidate still requires a separate explicit decision.'); }
+      try { const records = await listVisualReviews(productId, attemptId, composite.assetId, abort.signal); if (records.assetSha256 !== composite.sha256 || records.recipeSha256 !== composite.recipeSha256 || records.adSha256 !== composite.adSha256) throw new Error('Composite changed'); if (alive.current) setHistory(records); }
       catch { if (alive.current) { setHistory(null); setError('The review was saved, but history could not be refreshed. Reload the workspace.'); } }
     } catch (reason) { if (alive.current && !abort.signal.aborted) { setHistory(null); setSource(null); setReviewed(false); setError(reason instanceof Error ? reason.message : 'Review could not be saved.'); } }
     finally { if (controller.current === abort) controller.current = null; running.current = false; if (alive.current) { setBusy(false); if (pendingReload.current) { pendingReload.current = false; setReloadVersion((value) => value + 1); } } }
@@ -98,7 +101,7 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
     try {
       await recordVisualDecision(productId, attemptId, composite.assetId, latest.qaId, choice, abort.signal);
       if (alive.current) { setChoice(''); setDecisionConfirmed(false); setNotice('Your separate decision was recorded for this exact review and image.'); }
-      try { const records = await listVisualReviews(productId, attemptId, composite.assetId, abort.signal); if (records.assetSha256 !== composite.sha256) throw new Error('Composite changed'); if (alive.current) setHistory(records); }
+      try { const records = await listVisualReviews(productId, attemptId, composite.assetId, abort.signal); if (records.assetSha256 !== composite.sha256 || records.recipeSha256 !== composite.recipeSha256 || records.adSha256 !== composite.adSha256) throw new Error('Composite changed'); if (alive.current) setHistory(records); }
       catch { if (alive.current) { setHistory(null); setError('The decision was saved, but history could not be refreshed. Reload the workspace.'); } }
     } catch (reason) { if (alive.current && !abort.signal.aborted) { setHistory(null); setSource(null); setChoice(''); setDecisionConfirmed(false); setError(reason instanceof Error ? reason.message : 'Decision could not be saved.'); } }
     finally { if (controller.current === abort) controller.current = null; running.current = false; if (alive.current) { setBusy(false); if (pendingReload.current) { pendingReload.current = false; setReloadVersion((value) => value + 1); } } }
@@ -110,9 +113,10 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
     {error && <><p className="error-message" role="alert">{error}</p><button type="button" className="secondary-button" disabled={busy} onClick={() => setReloadVersion((value) => value + 1)}>Recheck review evidence</button></>}{notice && <p role="status">{notice}</p>}
     {!history && !error && <p role="status">Checking review evidence…</p>}
     {source && history && <><label className="checkbox-label"><input type="checkbox" checked={nativePixels} onChange={(event) => setNativePixels(event.target.checked)} /><span>View at native pixel size (one image pixel per CSS pixel)</span></label>{!nativePixels && <><label htmlFor={`qa-zoom-${composite.assetId}`}>Review zoom: {zoom}%</label><input id={`qa-zoom-${composite.assetId}`} type="range" min="100" max="400" step="25" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></>}<div className="strict-comparison"><figure><div className="strict-zoom" role="region" tabIndex={0} aria-label="Review original source zoom area"><LocalImage blob={source.blob} alt="Original source for human review" zoom={zoom} nativeWidth={nativePixels ? source.width : undefined} /></div><figcaption>Original source · {source.width} × {source.height}</figcaption></figure><figure><div className="strict-zoom" role="region" tabIndex={0} aria-label="Review composite zoom area"><LocalImage blob={composite.blob} alt="Composite for human review" zoom={zoom} nativeWidth={nativePixels ? 1024 : undefined} /></div><figcaption>Unapproved composite · 1024 × 1024</figcaption></figure></div></>}
+    {history && composite.recipe && <div><p>Style: {composite.recipe.styleId} · recipe SHA-256 {composite.recipeSha256}.</p>{composite.recipe.crop && <p>Original-pixel crop: x {composite.recipe.crop.x}, y {composite.recipe.crop.y}, width {composite.recipe.crop.width}, height {composite.recipe.crop.height}. If required identifiers are absent or unreadable, mark them Cannot verify.</p>}{composite.ad && <figure><div className="strict-zoom" role="region" tabIndex={0} aria-label="Complete billboard ad review"><LocalImage blob={composite.ad} alt="Complete advertisement before display placement" nativeWidth={nativePixels ? 1024 : undefined} zoom={zoom} /></div><figcaption>Complete ad · SHA-256 {composite.adSha256} · supplied copy: {composite.recipe.copy || '(none)'}</figcaption></figure>}</div>}
     {history && <><p>Last checked review: {latest ? `${latest.report.status} · score ${latest.report.weightedScore}/100${latestIsCurrent ? '' : ' · historical product snapshot'}` : 'none'}{currentDecision ? ` · decision ${currentDecision.decision}` : ' · no current human decision'}. A new review supersedes earlier decisions; evidence is checked again before any decision.</p>
       <div className="qa-product-context"><h6>Product details in this review</h6><p>SKU: {history.product.sku} · Name: {history.product.name} · Category: {history.product.category}</p><p>Original view: {history.product.sourceAssets.find((item) => item.assetId === composite.sourceAssetId)?.cameraView ?? 'UNKNOWN'} · Source rights acknowledged: {history.product.rightsAcknowledged ? 'yes' : 'no'}</p><p>Protected text: {history.product.brandLock.protectedText.join(', ') || 'none recorded'} · Forbidden changes: {history.product.brandLock.forbiddenChanges.join(', ') || 'none recorded'} · Locked colors: {history.product.brandLock.lockedColors?.join(', ') || 'none recorded'}</p><p>Recorded facts:</p>{history.product.facts.length ? <ul>{history.product.facts.map((fact) => <li key={fact.factId}>{fact.name}: {fact.value} ({fact.confirmed ? 'confirmed' : 'unconfirmed'})</li>)}</ul> : <p>None recorded.</p>}<p>Product snapshot SHA-256: {history.productSha256}</p></div>
-      {history.reviews.length > 0 && <details><summary>Review history</summary><ol>{history.reviews.map((item) => <li key={item.qaId}><p>Review {item.revision} · {new Date(item.createdAt).toLocaleString()} · {item.report.status} · {item.report.weightedScore}/100</p><p>{SCORE_FIELDS.map(([key, label]) => `${label}: ${item.report.scores[key]}/5`).join(' · ')}</p><p>{CHECK_FIELDS.map(([key, label]) => `${label}: ${item.checks[key]}`).join(' · ')}</p>{item.report.reviewerNote && <p>Reviewer notes: {item.report.reviewerNote}</p>}{item.report.hardVetoFindings.map((finding) => <p className="error-message" key={finding.code}>{finding.description}</p>)}{history.decisions.filter((decision) => decision.reportId === item.qaId).map((decision) => <p key={decision.qaId}>{decision.current ? 'Current' : 'Historical'} decision: {decision.decision} · {new Date(decision.createdAt).toLocaleString()}</p>)}</li>)}</ol></details>}
+      {history.reviews.length > 0 && <details><summary>Review history</summary><ol>{history.reviews.map((item) => <li key={item.qaId}><p>Review {item.revision} · {new Date(item.createdAt).toLocaleString()} · {item.report.status} · {item.report.weightedScore}/100</p><p>{SCORE_FIELDS.map(([key, label]) => `${label}: ${item.report.scores[key]}/5`).join(' · ')}</p><p>{CHECK_FIELDS.map(([key, label]) => `${label}: ${item.checks[key]}`).join(' · ')}</p>{item.styleId && item.styleChecks && <p>{item.styleId}: {Object.entries(item.styleChecks).map(([key, value]) => `${key} ${value}`).join(' · ')}</p>}{item.report.reviewerNote && <p>Reviewer notes: {item.report.reviewerNote}</p>}{item.report.hardVetoFindings.map((finding) => <p className="error-message" key={finding.code}>{finding.description}</p>)}{history.decisions.filter((decision) => decision.reportId === item.qaId).map((decision) => <p key={decision.qaId}>{decision.current ? 'Current' : 'Historical'} decision: {decision.decision} · {new Date(decision.createdAt).toLocaleString()}</p>)}</li>)}</ol></details>}
       <form onSubmit={submitReview}>
         <label htmlFor={`qa-variant-${composite.assetId}`}>Product labeling</label><select id={`qa-variant-${composite.assetId}`} value={variant} disabled={busy || disabled} onChange={(event) => { setVariant(event.target.value as ReviewVariant | ''); invalidateDecision(); }}><option value="">Choose labeling</option><option value="default">Branded or readable label</option><option value="unbranded">Unbranded / no readable text</option></select>
         {variant === 'unbranded' && <p>Unbranded weighting is not yet agreed. Scored review and approval are unavailable until that policy is decided.</p>}
@@ -120,6 +124,7 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
         {variant === 'default' && !evaluation && Object.values(scores).some(Boolean) && <p>Complete all five scores using decimal values from 0 to 5 with at most six fractional digits.</p>}
         {SCORE_FIELDS.map(([key, label]) => <label key={key}>{label} <input type="number" min="0" max="5" step="any" inputMode="decimal" value={scores[key]} disabled={busy || disabled} onChange={(event) => { setScores((old) => ({ ...old, [key]: event.target.value })); invalidateDecision(); }} /></label>)}
         {CHECK_FIELDS.map(([key, label]) => <label key={key}>{label}<select value={checks[key]} disabled={busy || disabled} onChange={(event) => { setChecks((old) => ({ ...old, [key]: event.target.value as ReviewChecks[typeof key] })); invalidateDecision(); }}><option value="UNKNOWN">Cannot verify</option><option value="MATCH">Verified / no issue</option><option value="MISMATCH">Mismatch / prohibited</option></select></label>)}
+        {styleId && <fieldset><legend>Style-specific evidence</legend>{STYLE_REVIEW_FIELDS[styleId].map(([key, label]) => <label key={key}>{label}<select value={styleChecks[key]} disabled={busy || disabled} onChange={(event) => { setStyleChecks((old) => ({ ...old, [key]: event.target.value as ReviewCheck })); invalidateDecision(); }}><option value="UNKNOWN">Cannot verify</option><option value="MATCH">Verified / no issue</option><option value="MISMATCH">Mismatch / prohibited</option></select></label>)}</fieldset>}
         <label htmlFor={`qa-note-${composite.assetId}`}>Review notes {noteRequired ? '(required)' : '(optional)'} — describe each finding and its source/output region or why it cannot be verified</label><textarea id={`qa-note-${composite.assetId}`} maxLength={2000} value={note} disabled={busy || disabled} onChange={(event) => { setNote(event.target.value); invalidateDecision(); }} />
         {evaluation && <p role="status">Proposed status: {evaluation.status}; weighted score {evaluation.weightedScore}/100. {evaluation.hardVetoFindings.length > 0 && 'A hard veto blocks approval.'}</p>}
         <label className="checkbox-label"><input type="checkbox" checked={reviewed} disabled={busy || disabled || !source || !evaluation || (noteRequired && !note.trim())} onChange={(event) => setReviewed(event.target.checked)} /><span>I personally compared this original and composite and marked uncertain or mismatched details honestly.</span></label>

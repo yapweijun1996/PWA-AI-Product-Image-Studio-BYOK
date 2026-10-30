@@ -1,9 +1,15 @@
 import { inspectImageHeader } from './imageHeader';
 
 export type StrictCompositeMapping = { x: number; y: number; width: number; height: number; sourceWidth: number; sourceHeight: number };
-type Inputs = { source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number; signal: AbortSignal };
+export type StrictRect = { x: number; y: number; width: number; height: number };
+export type StrictRecipe = {
+  version: 1; styleId: 'studio' | 'hero' | 'lifestyle' | 'flat_lay' | 'macro' | 'ugc' | 'billboard';
+  sourceView: 'TOP' | 'OTHER' | 'UNKNOWN'; topViewConfirmed?: true; crop?: StrictRect;
+  display?: StrictRect; displayFrontFacing?: true; copy?: string; copyLayerSha256?: string;
+};
+type Inputs = { source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number; signal: AbortSignal; recipe?: StrictRecipe; copyLayer?: Blob };
 type RenderInputs = Omit<Inputs, 'signal'>;
-type Result = { blob: Blob; mapping: StrictCompositeMapping };
+type Result = { blob: Blob; mapping: StrictCompositeMapping; ad?: Blob; copyLayer?: Blob };
 const EDGE = 1024;
 const MAX_PIXELS = 24_000_000;
 const MAX_DIMENSION = 20_000;
@@ -14,6 +20,40 @@ export function strictMapping(sourceWidth: number, sourceHeight: number): Strict
   const scale = Math.min(819.2 / sourceWidth, 819.2 / sourceHeight);
   const width = sourceWidth * scale, height = sourceHeight * scale;
   return { x: (EDGE - width) / 2, y: (EDGE - height) / 2, width, height, sourceWidth, sourceHeight };
+}
+
+export function recipeMapping(recipe: StrictRecipe, sw: number, sh: number): StrictCompositeMapping {
+  if (!recipe || recipe.version !== 1 || !['studio', 'hero', 'lifestyle', 'flat_lay', 'macro', 'ugc', 'billboard'].includes(recipe.styleId) ||
+      !['TOP', 'OTHER', 'UNKNOWN'].includes(recipe.sourceView) ||
+      !Number.isSafeInteger(sw) || !Number.isSafeInteger(sh) || sw < 1 || sh < 1 ||
+      Object.keys(recipe).some((key) => !['version', 'styleId', 'sourceView', 'topViewConfirmed', 'crop', 'display', 'displayFrontFacing', 'copy', 'copyLayerSha256'].includes(key))) throw new Error('Unsupported composition recipe.');
+  const rect = (r: StrictRect | undefined, width: number, height: number) => !!r &&
+    Object.keys(r).length === 4 && ['x', 'y', 'width', 'height'].every((key) => Object.hasOwn(r, key)) &&
+    [r.x, r.y, r.width, r.height].every(Number.isSafeInteger) && r.x >= 0 && r.y >= 0 &&
+    r.width > 0 && r.height > 0 && r.x + r.width <= width && r.y + r.height <= height;
+  if (recipe.styleId !== 'macro' && recipe.crop !== undefined) throw new Error('A crop is only supported for macro.');
+  if (recipe.styleId !== 'billboard' && (recipe.display !== undefined || recipe.displayFrontFacing !== undefined || recipe.copy !== undefined || recipe.copyLayerSha256 !== undefined)) throw new Error('Display options are only supported for billboard.');
+  if (recipe.styleId === 'flat_lay' && recipe.sourceView === 'UNKNOWN') throw new Error('Confirm the source viewpoint before choosing flat-lay.');
+  if ((recipe.topViewConfirmed !== undefined && recipe.topViewConfirmed !== true) ||
+      (recipe.styleId === 'flat_lay' && recipe.sourceView === 'TOP') !== (recipe.topViewConfirmed === true)) throw new Error('A true overhead flat-lay requires explicit source-view confirmation.');
+  if (recipe.styleId === 'macro' && !rect(recipe.crop, sw, sh)) throw new Error('Choose a valid oriented source-pixel macro crop.');
+  if (recipe.styleId === 'billboard' && (!rect(recipe.display, EDGE, EDGE) || recipe.displayFrontFacing !== true ||
+      typeof recipe.copy !== 'string' || recipe.copy.length > 100 || /[\r\n\t]/.test(recipe.copy))) throw new Error('Inspect and select a front-facing rectangular display and enter one line of exact copy or no copy.');
+  if (recipe.copyLayerSha256 !== undefined && (recipe.styleId !== 'billboard' || !recipe.copy || !/^[a-f0-9]{64}$/.test(recipe.copyLayerSha256))) throw new Error('The copy layer identity is invalid.');
+  if (recipe.styleId === 'studio') return strictMapping(sw, sh);
+  if (recipe.styleId === 'billboard') {
+    const d = recipe.display!;
+    const scale = Math.min(d.width / 1024, d.height / 1024);
+    return { x: d.x + (d.width - 1024 * scale) / 2, y: d.y + (d.height - 1024 * scale) / 2, width: 1024 * scale, height: 1024 * scale, sourceWidth: sw, sourceHeight: sh };
+  }
+  const crop = recipe.crop;
+  const sourceW = crop?.width ?? sw, sourceH = crop?.height ?? sh;
+  const layout = { hero: [0.86, 0.50, 0.48], lifestyle: [0.62, 0.30, 0.61],
+    flat_lay: [0.72, 0.50, 0.50], macro: [0.94, 0.50, 0.50], ugc: [0.58, 0.67, 0.59] }[recipe.styleId]!;
+  const scale = Math.min(EDGE * layout[0] / sourceW, EDGE * layout[0] / sourceH);
+  const width = sourceW * scale, height = sourceH * scale;
+  return { x: Math.max(0, Math.min(EDGE - width, EDGE * layout[1] - width / 2)),
+    y: Math.max(0, Math.min(EDGE - height, EDGE * layout[2] - height / 2)), width, height, sourceWidth: sw, sourceHeight: sh };
 }
 
 // Mask alpha is already final coverage, not an opacity multiplier.
@@ -110,11 +150,45 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
     const scale = Math.max(EDGE / sceneWidth, EDGE / sceneHeight);
     outputContext.drawImage(decoded.image, (EDGE - sceneWidth * scale) / 2, (EDGE - sceneHeight * scale) / 2, sceneWidth * scale, sceneHeight * scale);
     decoded.release(); decoded = undefined;
-    const mapping = strictMapping(sw, sh);
-    outputContext.drawImage(product, mapping.x, mapping.y, mapping.width, mapping.height);
+    const mapping = inputs.recipe ? recipeMapping(inputs.recipe, sw, sh) : strictMapping(sw, sh);
+    let ad: Blob | undefined, copyLayer: Blob | undefined;
+    if (inputs.recipe?.styleId === 'macro') {
+      const crop = inputs.recipe.crop!;
+      const selected = productContext.getImageData(crop.x, crop.y, crop.width, crop.height).data;
+      if (!selected.some((value, index) => index % 4 === 3 && value !== 0)) throw new Error('The macro crop contains no visible product pixels.');
+      outputContext.drawImage(product, crop.x, crop.y, crop.width, crop.height, mapping.x, mapping.y, mapping.width, mapping.height);
+    } else if (inputs.recipe?.styleId === 'billboard') {
+      const canvas = makeCanvas(EDGE, EDGE); canvases.push(canvas);
+      const adContext = context(canvas);
+      adContext.fillStyle = '#ffffff'; adContext.fillRect(0, 0, EDGE, EDGE);
+      const copy = inputs.recipe.copy!;
+      const scale = Math.min(720 / sw, (copy ? 650 : 820) / sh);
+      const w = sw * scale, h = sh * scale;
+      adContext.drawImage(product, (EDGE - w) / 2, (copy ? 720 : EDGE) / 2 - h / 2, w, h);
+      if (copy) {
+        if (inputs.copyLayer) {
+          const layerHeader = await header(inputs.copyLayer);
+          if (layerHeader.mimeType !== 'image/png' || layerHeader.width !== EDGE || layerHeader.height !== EDGE || layerHeader.orientation !== 1) throw new Error('The copy layer dimensions are invalid.');
+          decoded = await decode(inputs.copyLayer); checkCancelled();
+          if (decoded.width !== EDGE || decoded.height !== EDGE) throw new Error('The copy layer dimensions are invalid.');
+          adContext.drawImage(decoded.image, 0, 0); decoded.release(); decoded = undefined;
+          copyLayer = inputs.copyLayer;
+        } else {
+          const layer = makeCanvas(EDGE, EDGE); canvases.push(layer);
+          const text = context(layer);
+          text.fillStyle = '#111111'; text.font = '40px sans-serif'; text.textAlign = 'center'; text.textBaseline = 'middle';
+          if (text.measureText(copy).width > 920) throw new Error('The exact copy does not fit on the ad.');
+          text.fillText(copy, EDGE / 2, 875);
+          copyLayer = await png(layer); checkCancelled();
+          adContext.drawImage(layer, 0, 0);
+        }
+      } else if (inputs.copyLayer) throw new Error('An empty ad cannot have a copy layer.');
+      ad = await png(canvas); checkCancelled();
+      outputContext.drawImage(canvas, mapping.x, mapping.y, mapping.width, mapping.height);
+    } else outputContext.drawImage(product, mapping.x, mapping.y, mapping.width, mapping.height);
     checkCancelled();
     const blob = await png(output); checkCancelled();
-    return { blob, mapping };
+    return { blob, mapping, ...(ad ? { ad } : {}), ...(copyLayer ? { copyLayer } : {}) };
   } finally {
     decoded?.release();
     for (const canvas of canvases) { canvas.width = 0; canvas.height = 0; }

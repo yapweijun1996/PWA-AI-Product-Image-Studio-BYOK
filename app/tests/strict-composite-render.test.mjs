@@ -8,7 +8,7 @@ const result = await build({
 });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
-const { applyFinalCoverage, strictMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { applyFinalCoverage, strictMapping, recipeMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const rgba = (...values) => new Uint8ClampedArray(values);
 
@@ -44,4 +44,31 @@ test('mapping preserves aspect ratio and fills the centered 80 percent fit', () 
   assert.equal(tall.y, (1024 - 819.2) / 2);
   const identity = strictMapping(1024, 1280);
   assert.equal(identity.width / identity.sourceWidth, identity.height / identity.sourceHeight);
+});
+
+test('seven styles have distinct bounded, uniformly scaled layouts', () => {
+  const rect = { x: 100, y: 100, width: 300, height: 200 };
+  const recipes = ['studio', 'hero', 'lifestyle', 'flat_lay', 'macro', 'ugc', 'billboard'].map((styleId) => ({
+    version: 1, styleId, sourceView: 'TOP',
+    ...(styleId === 'flat_lay' ? { topViewConfirmed: true } : {}),
+    ...(styleId === 'macro' ? { crop: rect } : {}),
+    ...(styleId === 'billboard' ? { display: rect, displayFrontFacing: true, copy: '' } : {}),
+  }));
+  const mappings = recipes.map((recipe) => recipeMapping(recipe, 1000, 800));
+  assert.equal(new Set(mappings.map((mapping) => JSON.stringify(mapping))).size, 7);
+  for (const mapping of mappings) {
+    assert.ok(mapping.x >= 0 && mapping.y >= 0 && mapping.x + mapping.width <= 1024 && mapping.y + mapping.height <= 1024);
+  }
+  assert.equal(mappings[6].width, mappings[6].height);
+  assert.equal(mappings[4].width / mappings[4].height, rect.width / rect.height);
+});
+
+test('macro and billboard reject ambiguous or clipped selections', () => {
+  assert.throws(() => recipeMapping({ version: 1, styleId: 'flat_lay', sourceView: 'TOP' }, 500, 500));
+  assert.throws(() => recipeMapping({ version: 1, styleId: 'flat_lay', sourceView: 'OTHER', topViewConfirmed: true }, 500, 500));
+  assert.throws(() => recipeMapping({ version: 1, styleId: 'flat_lay', sourceView: 'UNKNOWN' }, 500, 500));
+  assert.throws(() => recipeMapping({ version: 1, styleId: 'macro', sourceView: 'OTHER', crop: { x: 450, y: 0, width: 100, height: 100 } }, 500, 500));
+  assert.throws(() => recipeMapping({ version: 1, styleId: 'billboard', sourceView: 'OTHER', display: { x: 0, y: 0, width: 300, height: 200 }, copy: '' }, 500, 500));
+  assert.throws(() => recipeMapping({ version: 1, styleId: 'billboard', sourceView: 'OTHER', display: { x: 900, y: 0, width: 200, height: 200 }, displayFrontFacing: true, copy: '' }, 500, 500));
+  assert.throws(() => recipeMapping({ version: 1, styleId: 'billboard', sourceView: 'OTHER', display: { x: 0, y: 0, width: 300, height: 200 }, displayFrontFacing: true, copy: 'one\ntwo' }, 500, 500));
 });

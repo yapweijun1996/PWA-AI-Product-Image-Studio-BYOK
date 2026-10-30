@@ -71,6 +71,10 @@
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
+    "presetVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
     "promptSha256": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"

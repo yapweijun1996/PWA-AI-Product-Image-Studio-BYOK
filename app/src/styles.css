@@ -121,6 +121,11 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .studio-panel form { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 18px; }
 .studio-panel form > label:first-child { font-weight: 700; font-size: 13px; }
 .studio-panel input:not([type="checkbox"]) { width: min(100%, 240px); min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink); }
+.studio-panel fieldset { border: 0; padding: 0; margin: 8px 0; min-width: 0; width: 100%; }
+.studio-panel fieldset legend { font-weight: 700; }
+.studio-panel form > label { display: flex; flex-direction: column; gap: 6px; width: min(100%, 420px); }
+.style-plan { width: 100%; min-width: 0; border-top: 1px solid var(--border); padding-top: 12px; overflow-wrap: anywhere; }
+.style-plan summary { cursor: pointer; min-height: 44px; padding: 12px 0; }
 .studio-history { list-style: none; padding: 0; }
 .studio-history li { border-top: 1px solid var(--border); padding: 12px 0; }
 .studio-scene { display: block; max-width: min(100%, 420px); height: auto; }
@@ -130,12 +135,15 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .strict-composite figure { margin: 12px 0; min-width: 0; }
 .strict-composite figure img { display: block; width: 100%; max-width: 420px; height: auto; }
 .strict-zoom { max-height: 420px; overflow: auto; }
+.strict-selection-outline { position: absolute; box-sizing: border-box; border: 2px solid var(--accent); outline: 1px solid var(--surface); pointer-events: none; }
 .strict-composite figcaption { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .strict-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .visual-review { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
 .qa-product-context { overflow-wrap: anywhere; }
 .visual-review form { align-items: stretch; }
 .visual-review form > label:not(.checkbox-label) { display: flex; flex-direction: column; gap: 6px; }
+.visual-review fieldset { min-width: 0; width: 100%; border: 1px solid var(--border); padding: 12px; }
+.visual-review fieldset label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
 .visual-review select, .visual-review textarea { width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink); }
 .visual-decision { margin-top: 16px; }
 .strict-composite summary { cursor: pointer; min-height: 44px; padding: 12px 0; }

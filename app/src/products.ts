@@ -1,12 +1,13 @@
 import validateProduct from 'virtual:product-validator';
 import validateGenerationJob from 'virtual:generation-job-validator';
 import validateQaReport from 'virtual:qa-report-validator';
-import { evaluateVisualReview, type ReviewScores, type ReviewChecks, type ReviewVariant, type VisualReviewEvaluation } from './visualReviewRules';
+import { evaluateVisualReview, type ReviewScores, type ReviewChecks, type ReviewVariant, type VisualReviewEvaluation, type StyleReviewChecks } from './visualReviewRules';
 import { sha256, type PreparedSource } from './prepareSource';
 import { inspectImageHeader } from './imageHeader';
 import { STUDIO_MAX_PNG_BYTES, STUDIO_PROMPT, STUDIO_MODEL, STUDIO_PROMPT_VERSION, STUDIO_QUALITY,
-  STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
-import { renderStrictComposite } from './strictComposite';
+  STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION,
+  studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
+import { renderStrictComposite, recipeMapping, type StrictRecipe } from './strictComposite';
 
 export type Fact = {
   factId: string;
@@ -399,7 +400,7 @@ export async function validateBackupMasks(product: Product, masks: BackupMask[],
   return verified;
 }
 
-export async function loadSourceMask(productId: string, source: SourceMetadata): Promise<{ blob: Blob; sha256: string } | null> {
+export async function loadSourceMask(productId: string, source: SourceMetadata): Promise<{ blob: Blob; sha256: string; maskId: string } | null> {
   const db = await openDatabase();
   const snapshot = await new Promise<{ product: Product; source: unknown; mask: unknown; versions: unknown[] }>((resolve, reject) => {
     const tx = db.transaction(['products', 'sourceAssets', 'masks'], 'readonly');
@@ -437,7 +438,7 @@ export async function loadSourceMask(productId: string, source: SourceMetadata):
   }, versions);
   const latest = versions.reduce<BackupMask | null>((current, mask) =>
     !current || mask.metadata.version > current.metadata.version ? mask : current, null);
-  return latest ? { blob: latest.blob, sha256: latest.metadata.sha256 } : null;
+  return latest ? { blob: latest.blob, sha256: latest.metadata.sha256, maskId: latest.metadata.maskId } : null;
 }
 
 export async function saveMask(productId: string, source: SourceMetadata, blob: Blob, expectedMaskAssetId: string | null): Promise<Product> {
@@ -672,10 +673,50 @@ export async function restoreProduct(product: Product, sources: BackupSource[], 
   });
 }
 
+export type StudioStyleId = 'studio' | 'hero' | 'lifestyle' | 'flat_lay' | 'macro' | 'ugc' | 'billboard';
+export type StudioSceneContext = { productName: string; category: string; confirmedFacts: string[]; sourceView: 'TOP' | 'OTHER' | 'UNKNOWN' };
+
+function productSnapshot(product: Product): string {
+  const { updatedAt: _updatedAt, brandLock, ...rest } = product;
+  const { maskAssetId: _maskAssetId, ...lock } = brandLock;
+  return JSON.stringify({ ...rest, brandLock: lock });
+}
+export async function productSnapshotFingerprint(product: Product): Promise<string> {
+  return sha256(new TextEncoder().encode(productSnapshot(product)));
+}
+export function studioSceneContext(product: Product, source: SourceMetadata, selectedFactIds: string[]): StudioSceneContext {
+  if (!Array.isArray(selectedFactIds) || new Set(selectedFactIds).size !== selectedFactIds.length ||
+      selectedFactIds.some((id) => !product.facts.some((fact) => fact.factId === id && fact.confirmed))) {
+    throw new Error('Selected facts must be unique and confirmed.');
+  }
+  const selected = new Set(selectedFactIds);
+  return { productName: product.name, category: product.category,
+    confirmedFacts: product.facts.filter((fact) => selected.has(fact.factId)).map((fact) => `${fact.name}: ${fact.value}`),
+    sourceView: source.cameraView === 'TOP' ? 'TOP' : source.cameraView === 'UNKNOWN' ? 'UNKNOWN' : 'OTHER' };
+}
+function validateAttemptContext(attempt: StudioAttempt, product: Product, requireCurrent = true): void {
+  if (attempt.styleId === undefined && attempt.presetVersion === undefined && attempt.sceneContext === undefined && attempt.productSnapshotFingerprint === undefined && attempt.selectedFactIds === undefined && attempt.topViewConfirmed === undefined) return;
+  const source = product.sourceAssets.find((item) => item.assetId === attempt.sourceAssetId);
+  if (!source || !attempt.styleId || attempt.presetVersion !== STUDIO_PRESET_VERSION ||
+      attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION || !attempt.sceneContext ||
+      !Array.isArray(attempt.selectedFactIds) || new Set(attempt.selectedFactIds).size !== attempt.selectedFactIds.length ||
+      attempt.selectedFactIds.some((id) => typeof id !== 'string' || !uuidPattern.test(id)) ||
+      (requireCurrent && JSON.stringify(attempt.sceneContext) !== JSON.stringify(studioSceneContext(product, source, attempt.selectedFactIds))) ||
+      (!requireCurrent && attempt.styleId === 'flat_lay' && attempt.sceneContext.sourceView === 'TOP' && source.cameraView !== 'TOP') ||
+      ((attempt.styleId === 'flat_lay' && attempt.sceneContext.sourceView === 'TOP') !== (attempt.topViewConfirmed === true)) ||
+      (attempt.topViewConfirmed !== undefined && attempt.topViewConfirmed !== true) ||
+      attempt.prompt !== studioBuildPrompt(attempt.styleId, attempt.sceneContext) ||
+      attempt.estimatedUSD !== studioEstimateUSD(attempt.prompt) ||
+      typeof attempt.productSnapshotFingerprint !== 'string' || !hashPattern.test(attempt.productSnapshotFingerprint)) {
+    throw new Error('The job context or preset no longer matches the confirmed product and source.');
+  }
+}
+
 export type StudioAttempt = {
   attemptId: string; jobId: string; productId: string; sourceAssetId: string;
   sourceSha256: string; maskId: string; maskSha256: string;
   prompt: string; promptVersion: string; model: string; quality: string; size: string;
+  styleId?: StudioStyleId; presetVersion?: string; sceneContext?: StudioSceneContext; selectedFactIds?: string[]; productSnapshotFingerprint?: string; topViewConfirmed?: true;
   estimatedUSD: string; maxEstimatedUSD?: string; softLimitOverride?: true; submittedAt: string;
   budgetSessionId?: string; sessionPriorUSD?: string; sessionLimitUSD?: string; sessionLimitOverride?: true;
   status: 'PREPARED' | 'SUBMITTED' | 'DEFINITIVE_FAILURE' | 'UNKNOWN' | 'DEFINITIVE_SUCCESS';
@@ -800,7 +841,7 @@ function isStudioScene(value: unknown): value is StudioAsset {
 }
 
 type StudioJob = {
-  schemaVersion: '1.0.0'; jobId: string; productId: string; styleId: 'studio';
+  schemaVersion: '1.0.0'; jobId: string; productId: string; styleId: StudioStyleId; presetVersion?: string;
   lockMode: 'STRICT'; operation: 'generate_scene'; sourceHashes: string[];
   promptVersion: string; promptSha256: string; model: string; quality: string; size: string;
   status: string; createdAt: string;
@@ -819,7 +860,8 @@ function studioJob(attempt: StudioAttempt, promptHash: string, sentAt: string | 
   }[attempt.status];
   const outcome = attempt.status === 'PREPARED' ? 'NOT_SUBMITTED' : attempt.status === 'SUBMITTED' ? undefined : attempt.status;
   return {
-    schemaVersion: '1.0.0', jobId: attempt.jobId, productId: attempt.productId, styleId: 'studio',
+    schemaVersion: '1.0.0', jobId: attempt.jobId, productId: attempt.productId, styleId: attempt.styleId ?? 'studio',
+    ...(attempt.presetVersion === undefined ? {} : { presetVersion: attempt.presetVersion }),
     lockMode: 'STRICT', operation: 'generate_scene', sourceHashes: [attempt.sourceSha256],
     promptVersion: attempt.promptVersion, promptSha256: promptHash, model: attempt.model,
     quality: attempt.quality, size: attempt.size, status: status[0], createdAt: attempt.submittedAt,
@@ -872,7 +914,31 @@ export async function studioSessionEstimate(sessionId: string): Promise<string> 
 }
 
 
-export async function studioInput(productId: string): Promise<{ source: SourceMetadata; maskId: string; maskSha256: string }> {
+export async function listStyleInputs(productId: string, signal?: AbortSignal): Promise<Array<{ source: SourceMetadata; maskId: string; maskSha256: string }>> {
+  if (signal?.aborted) throw new DOMException('Input verification was cancelled.', 'AbortError');
+  const product = await getProduct(productId);
+  if (signal?.aborted) throw new DOMException('Input verification was cancelled.', 'AbortError');
+  if (!product || !product.rightsAcknowledged) throw new Error('A rights-acknowledged project is required.');
+  const entries: Array<{ source: SourceMetadata; maskId: string; maskSha256: string }> = [];
+  for (const source of product.sourceAssets) {
+    if (signal?.aborted) throw new DOMException('Input verification was cancelled.', 'AbortError');
+    const mask = await loadSourceMask(productId, source);
+    if (signal?.aborted) throw new DOMException('Input verification was cancelled.', 'AbortError');
+    if (mask) entries.push({ source, maskId: mask.maskId, maskSha256: mask.sha256 });
+  }
+  return entries;
+}
+
+export async function studioInput(productId: string, sourceAssetId?: string): Promise<{ source: SourceMetadata; maskId: string; maskSha256: string }> {
+  if (sourceAssetId !== undefined) {
+    const product = await getProduct(productId);
+    if (!product || !product.rightsAcknowledged) throw new Error('A rights-acknowledged project is required.');
+    const source = product.sourceAssets.find((entry) => entry.assetId === sourceAssetId);
+    if (!source) throw new Error('The selected source no longer belongs to this project.');
+    const mask = await loadSourceMask(productId, source);
+    if (!mask) throw new Error('The selected source has no verified saved mask.');
+    return { source, maskId: mask.maskId, maskSha256: mask.sha256 };
+  }
   const db = await openDatabase();
   const snapshot = await new Promise<{ product: Product; mask: unknown }>((resolve, reject) => {
     const tx = db.transaction(['products', 'masks'], 'readonly');
@@ -898,6 +964,10 @@ export async function studioInput(productId: string): Promise<{ source: SourceMe
 
 export async function createStudioAttempt(attempt: StudioAttempt, consentReviewFingerprint: string): Promise<void> {
   if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null || attempt.pricingSnapshot !== undefined || attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined || attempt.cleanupPending !== undefined || (attempt.recoveryLockVersion !== undefined && attempt.recoveryLockVersion !== 1)) throw new Error('A new attempt must be prepared without a result and with a valid recovery lock version.');
+  const snapshot = await getProduct(attempt.productId);
+  if (!snapshot) throw new Error('The project no longer exists.');
+  validateAttemptContext(attempt, snapshot);
+  if (attempt.productSnapshotFingerprint !== undefined && await productSnapshotFingerprint(snapshot) !== attempt.productSnapshotFingerprint) throw new Error('The product changed since consent.');
   const promptHash = await sha256(new TextEncoder().encode(attempt.prompt));
   const job = checkedStudioJob(studioJob(attempt, promptHash, null, null));
   const db = await openDatabase();
@@ -906,6 +976,7 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
     const product = tx.objectStore('products').get(attempt.productId);
     const mask = tx.objectStore('masks').get(attempt.maskId);
     const source = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
+    const versions = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
     const attempts = tx.objectStore('attempts').getAll();
     let failure: Error | undefined;
     attempts.onsuccess = () => {
@@ -913,6 +984,8 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
         const p = checkedProduct(product.result);
         const m = mask.result as Record<string, unknown> | undefined;
         const s = source.result as Record<string, unknown> | undefined;
+        if (attempt.productSnapshotFingerprint !== undefined && productSnapshot(p) !== productSnapshot(snapshot)) throw new Error('The product changed since consent.');
+        validateAttemptContext(attempt, p);
         if ((attempts.result as StudioAttempt[]).some((entry) => entry.productId === attempt.productId && studioAttemptBlocks(entry))) {
           throw new Error('Another attempt for this product is in progress or UNKNOWN. Review its history before generating.');
         }
@@ -923,10 +996,11 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
             (attempt.sessionPriorUSD === undefined || studioSessionTotal(attempts.result as StudioAttempt[], attempt.budgetSessionId) !== attempt.sessionPriorUSD)) {
           throw new Error('The session estimate changed after consent. Review the updated total and authorize a new attempt.');
         }
-        if (!p.rightsAcknowledged || p.brandLock.maskAssetId !== attempt.maskId ||
+        if (!p.rightsAcknowledged || (attempt.styleId === undefined && p.brandLock.maskAssetId !== attempt.maskId) ||
             !p.sourceAssets.some((item) => item.assetId === attempt.sourceAssetId && item.sha256 === attempt.sourceSha256) ||
             !m || m.productId !== attempt.productId || m.sourceAssetId !== attempt.sourceAssetId || m.sourceSha256 !== attempt.sourceSha256 || m.sha256 !== attempt.maskSha256 ||
-            !s || s.productId !== attempt.productId || s.sha256 !== attempt.sourceSha256) throw new Error('The source or active mask changed. Review it again before generating.');
+            !s || s.productId !== attempt.productId || s.sha256 !== attempt.sourceSha256 ||
+            (versions.result as MaskMetadata[]).some((row) => row.version > (m.version as number))) throw new Error('The source or mask version changed. Review it again before generating.');
         tx.objectStore('jobs').add(job);
         tx.objectStore('attempts').add(attempt);
       } catch (error) { failure = error instanceof Error ? error : new Error('Could not save the attempt.'); tx.abort(); }
@@ -936,8 +1010,14 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
   });
 }
 
-export async function updateStudioAttempt(attempt: StudioAttempt, asset?: StudioAsset, consentReviewFingerprint?: string): Promise<void> {
+export async function updateStudioAttempt(attempt: StudioAttempt, asset?: StudioAsset, consentReviewFingerprint?: string, expectedSessionTotal?: string): Promise<void> {
   const promptHash = await sha256(new TextEncoder().encode(attempt.prompt));
+  const snapshot = await getProduct(attempt.productId);
+  if (!snapshot) throw new Error('The project no longer exists.');
+  if (attempt.status === 'SUBMITTED') {
+    validateAttemptContext(attempt, snapshot);
+    if (attempt.productSnapshotFingerprint !== undefined && await productSnapshotFingerprint(snapshot) !== attempt.productSnapshotFingerprint) throw new Error('The product changed since consent.');
+  }
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(['products', 'masks', 'sourceAssets', 'jobs', 'attempts', 'generatedAssets'], 'readwrite');
@@ -946,6 +1026,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
     const productRequest = tx.objectStore('products').get(attempt.productId);
     const maskRequest = tx.objectStore('masks').get(attempt.maskId);
     const sourceRequest = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
+    const versionsRequest = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
     const allAttempts = tx.objectStore('attempts').getAll();
     let failure: Error | undefined;
     allAttempts.onsuccess = () => {
@@ -953,8 +1034,8 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
         const previous = previousRequest.result as StudioAttempt | undefined;
         const job = jobRequest.result as StudioJob | undefined;
         if (!previous || !job || !validateGenerationJob(job)) throw new Error('The saved attempt or job is missing or invalid.');
-        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion'];
-        if (immutable.some((key) => previous[key] !== attempt[key])) throw new Error('Attempt identity or input changed.');
+        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion', 'styleId', 'presetVersion', 'productSnapshotFingerprint', 'topViewConfirmed'];
+        if (immutable.some((key) => previous[key] !== attempt[key]) || JSON.stringify(previous.sceneContext) !== JSON.stringify(attempt.sceneContext) || JSON.stringify(previous.selectedFactIds) !== JSON.stringify(attempt.selectedFactIds)) throw new Error('Attempt identity or input changed.');
         const allowed = previous.status === 'PREPARED' ? ['SUBMITTED', 'DEFINITIVE_FAILURE'] : previous.status === 'SUBMITTED' ? ['DEFINITIVE_FAILURE', 'DEFINITIVE_SUCCESS', 'UNKNOWN'] : [];
         if (attempt.status === 'SUBMITTED' && (allAttempts.result as StudioAttempt[]).some((entry) =>
           entry.productId === attempt.productId && entry.attemptId !== attempt.attemptId && studioAttemptBlocks(entry))) {
@@ -968,15 +1049,22 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
             studioReviewFingerprint(allAttempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
           throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
         }
+        if (attempt.status === 'SUBMITTED' && expectedSessionTotal !== undefined &&
+            (!attempt.budgetSessionId || studioSessionTotal(allAttempts.result as StudioAttempt[], attempt.budgetSessionId) !== expectedSessionTotal)) {
+          throw new Error('The session estimate changed after consent. Review the updated total before sending.');
+        }
         if (attempt.status === 'SUBMITTED') {
           const product = checkedProduct(productRequest.result);
           const mask = maskRequest.result as Record<string, unknown> | undefined;
           const source = sourceRequest.result as Record<string, unknown> | undefined;
-          if (!product.rightsAcknowledged || product.brandLock.maskAssetId !== attempt.maskId ||
+          if (attempt.productSnapshotFingerprint !== undefined && productSnapshot(product) !== productSnapshot(snapshot)) throw new Error('The product changed since consent.');
+          validateAttemptContext(attempt, product);
+          if (!product.rightsAcknowledged || (attempt.styleId === undefined && product.brandLock.maskAssetId !== attempt.maskId) ||
               !product.sourceAssets.some((item) => item.assetId === attempt.sourceAssetId && item.sha256 === attempt.sourceSha256) ||
               !mask || mask.productId !== attempt.productId || mask.sourceAssetId !== attempt.sourceAssetId ||
               mask.sourceSha256 !== attempt.sourceSha256 || mask.sha256 !== attempt.maskSha256 ||
-              !source || source.productId !== attempt.productId || source.sha256 !== attempt.sourceSha256) {
+              !source || source.productId !== attempt.productId || source.sha256 !== attempt.sourceSha256 ||
+              (versionsRequest.result as MaskMetadata[]).some((row) => row.version > (mask.version as number))) {
             throw new Error('The source or active mask changed. Review it again before generating.');
           }
         }
@@ -1024,12 +1112,15 @@ export type StrictCompositeInputs = {
   source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number;
   sourceAssetId: string; sourceSha256: string; maskId: string; maskSha256: string;
   sceneAssetId: string; sceneSha256: string;
+  styleId?: StudioStyleId; sourceView?: StudioSceneContext['sourceView'];
+  topViewConfirmed?: true;
 };
 export type StrictComposite = {
   kind: 'strict-composite'; assetId: string; productId: string; attemptId: string;
   blob: Blob; sha256: string; sourceAssetId: string; sourceSha256: string;
   maskId: string; maskSha256: string; sceneAssetId: string; sceneSha256: string;
   mapping: StrictMapping; createdAt: string;
+  recipe?: StrictRecipe; recipeSha256?: string; ad?: Blob; adSha256?: string; copyLayer?: Blob;
 };
 
 async function verifyStrictPng(blob: Blob, expectedHash?: string): Promise<string> {
@@ -1065,14 +1156,25 @@ async function verifyStrictPng(blob: Blob, expectedHash?: string): Promise<strin
   }
   return hash;
 }
+async function verifyCopyLayer(recipe: StrictRecipe | undefined, copyLayer: Blob | undefined): Promise<void> {
+  const needsLayer = recipe?.styleId === 'billboard' && Boolean(recipe.copy);
+  if (needsLayer) {
+    if (!copyLayer || !recipe?.copyLayerSha256 || !hashPattern.test(recipe.copyLayerSha256)) throw new Error('The frozen copy layer is missing.');
+    await verifyStrictPng(copyLayer, recipe.copyLayerSha256);
+  } else if (copyLayer !== undefined || recipe?.copyLayerSha256 !== undefined) throw new Error('An unexpected copy layer is present.');
+}
 
-function verifyStrictMapping(mapping: StrictMapping, sourceWidth: number, sourceHeight: number): void {
+
+function verifyStrictMapping(mapping: StrictMapping, sourceWidth: number, sourceHeight: number, recipe?: StrictRecipe): void {
   if (!mapping || typeof mapping !== 'object' || Object.keys(mapping).length !== 6 ||
       !Number.isSafeInteger(sourceWidth) || !Number.isSafeInteger(sourceHeight) || sourceWidth < 1 || sourceHeight < 1 ||
       mapping.sourceWidth !== sourceWidth || mapping.sourceHeight !== sourceHeight) throw new Error('The composite mapping is invalid.');
-  const scale = Math.min(819.2 / sourceWidth, 819.2 / sourceHeight);
-  const width = sourceWidth * scale, height = sourceHeight * scale;
-  const expected = [width, height, (1024 - width) / 2, (1024 - height) / 2];
+  const expectedMapping = recipe ? recipeMapping(recipe, sourceWidth, sourceHeight) : (() => {
+    const scale = Math.min(819.2 / sourceWidth, 819.2 / sourceHeight);
+    const width = sourceWidth * scale, height = sourceHeight * scale;
+    return { width, height, x: (1024 - width) / 2, y: (1024 - height) / 2 };
+  })();
+  const expected = [expectedMapping.width, expectedMapping.height, expectedMapping.x, expectedMapping.y];
   const actual = [mapping.width, mapping.height, mapping.x, mapping.y];
   if (actual.some((value, index) => typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value - expected[index]) > 1e-7)) {
     throw new Error('The composite mapping is not the fixed centered fit.');
@@ -1082,6 +1184,7 @@ function verifyStrictMapping(mapping: StrictMapping, sourceWidth: number, source
 type VisualProvenance = {
   assetSha256: string; sourceSha256: string; maskId: string; maskSha256: string;
   sceneAssetId: string; sceneSha256: string; productSha256: string;
+  recipeSha256?: string; adSha256?: string;
 };
 type VisualReport = {
   schemaVersion: '1.0.0'; qaId: string; assetId: string; sourceSha256: string; lockMode: 'STRICT';
@@ -1094,6 +1197,7 @@ export type VisualReviewRecord = VisualProvenance & {
   kind: 'visual-review'; qaId: string; assetId: string; productId: string; attemptId: string;
   revision: number; report: VisualReport; scoresText: ReviewScores; checks: ReviewChecks;
   variant: ReviewVariant; createdAt: string;
+  styleId?: StudioStyleId; styleChecks?: StyleReviewChecks;
 };
 export type VisualDecisionRecord = VisualProvenance & {
   kind: 'visual-decision'; qaId: string; assetId: string; productId: string; attemptId: string;
@@ -1101,15 +1205,15 @@ export type VisualDecisionRecord = VisualProvenance & {
 };
 type StoredVisualDecision = Omit<VisualDecisionRecord, 'current'>;
 type CheckedVisualHistory = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[] };
-type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string };
+type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string; recipeSha256?: string; adSha256?: string };
 type VisualOperation =
-  | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string }
+  | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string; expectedRecipeSha256?: string; expectedAdSha256?: string; styleChecks?: StyleReviewChecks }
   | { kind: 'decision'; assetId: string; reportId: string; decision: 'APPROVED' | 'REJECTED' }
   | { kind: 'list'; assetId: string };
 
 const provenanceKeys = ['assetSha256', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'productSha256'] as const;
 function sameProvenance(a: VisualProvenance, b: VisualProvenance): boolean {
-  return provenanceKeys.every((key) => a[key] === b[key]);
+  return provenanceKeys.every((key) => a[key] === b[key]) && a.recipeSha256 === b.recipeSha256 && a.adSha256 === b.adSha256;
 }
 function exactKeys(value: object, keys: string[]): boolean {
   return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
@@ -1119,33 +1223,39 @@ function validVisualBase(row: VisualProvenance & { qaId: string; assetId: string
   return row.productId === productId && row.attemptId === attemptId && row.assetId === assetId &&
     [row.qaId, row.assetId, row.productId, row.attemptId, row.maskId, row.sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id)) &&
     [row.assetSha256, row.sourceSha256, row.maskSha256, row.sceneSha256, row.productSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash)) &&
+    (row.recipeSha256 === undefined || (typeof row.recipeSha256 === 'string' && hashPattern.test(row.recipeSha256))) &&
+    (row.adSha256 === undefined || (row.recipeSha256 !== undefined && typeof row.adSha256 === 'string' && hashPattern.test(row.adSha256))) &&
     typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt));
 }
 
-function validateVisualNote(note: unknown, checks: ReviewChecks): void {
+function validateVisualNote(note: unknown, checks: ReviewChecks, styleChecks?: StyleReviewChecks): void {
   if (typeof note !== 'string' || note.length > 2000) throw new Error('The review note is invalid.');
-  if (Object.values(checks).some((check) => check !== 'MATCH') && !note.trim()) {
+  if ([...Object.values(checks), ...Object.values(styleChecks ?? {})].some((check) => check !== 'MATCH') && !note.trim()) {
     throw new Error('Describe the finding and its source/output region or reason in the review note.');
   }
 }
 
-function checkedVisualHistory(rows: unknown[], productId: string, attemptId: string, assetId: string, current: VisualProvenance): CheckedVisualHistory {
+function checkedVisualHistory(rows: unknown[], productId: string, attemptId: string, assetId: string, current: VisualProvenance, currentStyle?: StudioStyleId): CheckedVisualHistory {
   const reviews: VisualReviewRecord[] = [], decisions: StoredVisualDecision[] = [];
-  const common = ['kind', 'qaId', 'assetId', 'productId', 'attemptId', ...provenanceKeys, 'createdAt'];
+  const base = ['kind', 'qaId', 'assetId', 'productId', 'attemptId', ...provenanceKeys, 'createdAt'];
   for (const value of rows) {
     if (!value || typeof value !== 'object') throw new Error('A visual review record is corrupt.');
     const row = value as VisualReviewRecord | StoredVisualDecision;
     if (!validVisualBase(row, productId, attemptId, assetId)) throw new Error('A visual review record has invalid identity or provenance.');
+    const common = [...base, ...(row.recipeSha256 === undefined ? [] : ['recipeSha256']), ...(row.adSha256 === undefined ? [] : ['adSha256'])];
     if (row.kind === 'visual-review') {
-      if (!exactKeys(row, [...common, 'revision', 'report', 'scoresText', 'checks', 'variant']) ||
+      if (!exactKeys(row, [...common, 'revision', 'report', 'scoresText', 'checks', 'variant', ...(row.recipeSha256 ? ['styleId', 'styleChecks'] : [])]) ||
           !Number.isSafeInteger(row.revision) || row.revision < 1 || !validateQaReport(row.report) ||
           row.report.qaId !== row.qaId || row.report.assetId !== assetId || row.report.sourceSha256 !== row.sourceSha256 ||
           row.report.lockMode !== 'STRICT' || row.report.humanDecision !== 'PENDING' ||
           row.report.reviewedAt !== row.createdAt || row.report.weightingVariant !== row.variant) {
         throw new Error('A visual review report is invalid.');
       }
-      const evaluated = evaluateVisualReview(row.scoresText, row.checks, row.variant);
-      validateVisualNote(row.report.reviewerNote, row.checks);
+      if (row.recipeSha256 && (!row.styleId || !row.styleChecks || (row.recipeSha256 === current.recipeSha256 && row.styleId !== currentStyle))) throw new Error('The review style does not match its recipe.');
+      const evaluated = row.recipeSha256
+        ? evaluateVisualReview(row.scoresText, row.checks, row.variant, row.styleId, row.styleChecks)
+        : evaluateVisualReview(row.scoresText, row.checks, row.variant);
+      validateVisualNote(row.report.reviewerNote, row.checks, row.styleChecks);
       if (JSON.stringify(row.report.scores) !== JSON.stringify(evaluated.scores) ||
           row.report.weightedScore !== evaluated.weightedScore || row.report.status !== evaluated.status ||
           JSON.stringify(row.report.hardVetoFindings) !== JSON.stringify(evaluated.hardVetoFindings)) {
@@ -1182,7 +1292,7 @@ function checkedVisualHistory(rows: unknown[], productId: string, attemptId: str
 // hashing and image decoding without letting IndexedDB close the transaction.
 async function strictCompositeTransaction(
   productId: string, attemptId: string, sceneAssetId: string,
-  save?: { inputs: StrictCompositeInputs; expected: StrictCompositeInputs; blob: Blob; mapping: StrictMapping },
+  save?: { inputs: StrictCompositeInputs; expected: StrictCompositeInputs; blob: Blob; mapping: StrictMapping; recipe?: StrictRecipe; ad?: Blob; copyLayer?: Blob },
   signal?: AbortSignal, visual?: VisualOperation,
 ): Promise<StrictCompositeInputs | StrictComposite | VisualReviewRecord | VisualDecisionRecord | VisualHistory> {
   if (![productId, attemptId, sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id))) {
@@ -1247,9 +1357,10 @@ async function strictCompositeTransaction(
             try {
               const product = checkedProduct(productRequest.result);
               validateBackupReferences(product);
-              if (product.productId !== productId || !product.rightsAcknowledged || product.brandLock.maskAssetId !== attempt.maskId) {
+              if (product.productId !== productId || !product.rightsAcknowledged || (attempt.styleId === undefined && product.brandLock.maskAssetId !== attempt.maskId)) {
                 throw new Error('The rights or active mask changed since this attempt.');
               }
+              validateAttemptContext(attempt, product, false);
               const source = product.sourceAssets.find((item) => item.assetId === attempt.sourceAssetId);
               if (!source || source.sha256 !== attempt.sourceSha256) throw new Error('The attempt source no longer belongs to this project.');
               ownedSource(product, source);
@@ -1283,13 +1394,16 @@ async function strictCompositeTransaction(
                 if (!verifying) return;
                 versions.push(version);
               }
-              validateMaskReferences(product, versions);
+              validateMaskReferences({ ...product, brandLock: { ...product.brandLock, maskAssetId: attempt.maskId } }, versions);
               await verifyStrictPng(scene.blob, scene.sha256);
               if (!verifying) return;
               const inputs: StrictCompositeInputs = { source: original.blob, mask: mask.blob, scene: scene.blob,
                 sourceWidth: source.width, sourceHeight: source.height, sourceAssetId: source.assetId, sourceSha256: source.sha256,
-                maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId, sceneSha256: scene.sha256 };
+                maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId, sceneSha256: scene.sha256,
+                ...(attempt.styleId ? { styleId: attempt.styleId, sourceView: attempt.sceneContext!.sourceView, ...(attempt.topViewConfirmed ? { topViewConfirmed: true as const } : {}) } : {}) };
               if (save) {
+                if ((attempt.styleId === undefined) !== (save.recipe === undefined) ||
+                    (save.recipe && (save.recipe.styleId !== attempt.styleId || save.recipe.sourceView !== attempt.sceneContext?.sourceView || save.recipe.topViewConfirmed !== attempt.topViewConfirmed))) throw new Error('The recipe does not match the immutable job.');
                 if ((['sourceWidth', 'sourceHeight', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256'] as const)
                   .some((key) => save.expected[key] !== inputs[key])) throw new Error('The verified composite inputs changed before saving.');
                 const given = save.inputs;
@@ -1305,18 +1419,23 @@ async function strictCompositeTransaction(
                   throw new Error('The composite inputs changed after loading.');
                 }
                 if (!verifying) return;
-                verifyStrictMapping(save.mapping, source.width, source.height);
+                verifyStrictMapping(save.mapping, source.width, source.height, save.recipe);
+                await verifyCopyLayer(save.recipe, save.copyLayer);
                 const hash = await verifyStrictPng(save.blob);
                 if (!verifying) return;
                 result = { kind: 'strict-composite', assetId: crypto.randomUUID(), productId, attemptId, blob: save.blob,
                   sha256: hash, sourceAssetId: inputs.sourceAssetId, sourceSha256: inputs.sourceSha256,
                   maskId: inputs.maskId, maskSha256: inputs.maskSha256, sceneAssetId: inputs.sceneAssetId,
-                  sceneSha256: inputs.sceneSha256, mapping: { ...save.mapping }, createdAt: new Date().toISOString() };
+                  sceneSha256: inputs.sceneSha256, mapping: { ...save.mapping }, createdAt: new Date().toISOString(),
+                  ...(save.recipe ? { recipe: save.recipe, recipeSha256: await sha256(new TextEncoder().encode(JSON.stringify(save.recipe))) } : {}),
+                  ...(save.ad ? { ad: save.ad, adSha256: await verifyStrictPng(save.ad) } : {}),
+                  ...(save.copyLayer ? { copyLayer: save.copyLayer } : {}) };
               } else if (visual) {
                 if (product.brandLock.mode !== 'STRICT') throw new Error('A STRICT project is required for visual review.');
                 const composite = compositeRequest?.result as StrictComposite | undefined;
                 const compositeKeys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId',
-                  'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt'];
+                  'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt',
+                  ...(composite?.recipe ? ['recipe', 'recipeSha256', ...(composite.ad ? ['ad', 'adSha256'] : []), ...(composite.copyLayer ? ['copyLayer'] : [])] : [])];
                 if (!composite || !exactKeys(composite, compositeKeys) || composite.kind !== 'strict-composite' ||
                     composite.assetId !== visual.assetId || composite.productId !== productId || composite.attemptId !== attemptId ||
                     composite.sourceAssetId !== inputs.sourceAssetId || composite.sourceSha256 !== inputs.sourceSha256 ||
@@ -1326,19 +1445,33 @@ async function strictCompositeTransaction(
                     typeof composite.sha256 !== 'string' || !hashPattern.test(composite.sha256)) {
                   throw new Error('The saved composite or its input lineage is invalid.');
                 }
-                verifyStrictMapping(composite.mapping, source.width, source.height);
+                if ((attempt.styleId === undefined) !== (composite.recipe === undefined)) throw new Error('The composite recipe lineage is invalid.');
+                if (composite.recipe) {
+                  const recipeHash = await sha256(new TextEncoder().encode(JSON.stringify(composite.recipe)));
+                  if (composite.recipe.styleId !== attempt.styleId || composite.recipe.sourceView !== attempt.sceneContext?.sourceView || composite.recipe.topViewConfirmed !== attempt.topViewConfirmed ||
+                      composite.recipeSha256 !== recipeHash) throw new Error('The composite recipe lineage is invalid.');
+                }
+                verifyStrictMapping(composite.mapping, source.width, source.height, composite.recipe);
+                await verifyCopyLayer(composite.recipe, composite.copyLayer);
                 await verifyStrictPng(composite.blob, composite.sha256);
                 const cancellation = signal ?? new AbortController().signal;
                 const rendered = await renderStrictComposite({ source: inputs.source, mask: inputs.mask, scene: inputs.scene,
-                  sourceWidth: inputs.sourceWidth, sourceHeight: inputs.sourceHeight, signal: cancellation });
-                verifyStrictMapping(rendered.mapping, source.width, source.height);
+                  sourceWidth: inputs.sourceWidth, sourceHeight: inputs.sourceHeight, signal: cancellation, recipe: composite.recipe, copyLayer: composite.copyLayer });
+                verifyStrictMapping(rendered.mapping, source.width, source.height, composite.recipe);
+                if (Boolean(rendered.ad) !== Boolean(composite.ad)) throw new Error('The ad lineage is invalid.');
+                if (rendered.ad && composite.ad) {
+                  if (!composite.adSha256) throw new Error('The ad hash is missing.');
+                  await verifyStrictPng(composite.ad, composite.adSha256);
+                  await compareCompositePixels(rendered.ad, composite.ad, cancellation);
+                }
                 await compareCompositePixels(rendered.blob, composite.blob, cancellation);
                 if (!verifying) return;
                 const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: inputs.sourceSha256,
                   maskId: inputs.maskId, maskSha256: inputs.maskSha256, sceneAssetId: inputs.sceneAssetId,
-                  sceneSha256: inputs.sceneSha256, productSha256: await sha256(new TextEncoder().encode(JSON.stringify(product))) };
+                  sceneSha256: inputs.sceneSha256, productSha256: attempt.styleId ? await productSnapshotFingerprint(product) : await sha256(new TextEncoder().encode(JSON.stringify(product))),
+                  ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
                 if (!verifying) return;
-                const history = checkedVisualHistory(reviewsRequest!.result, productId, attemptId, visual.assetId, provenance);
+                const history = checkedVisualHistory(reviewsRequest!.result, productId, attemptId, visual.assetId, provenance, composite.recipe?.styleId);
                 const entries = (await Promise.all((reviewsRequest!.result as Array<VisualReviewRecord | StoredVisualDecision>)
                   .map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
                 if (!verifying) return;
@@ -1348,7 +1481,8 @@ async function strictCompositeTransaction(
                     !Array.isArray(head.entries) || JSON.stringify(head.entries) !== JSON.stringify(entries)) {
                   throw new Error('Visual review history is incomplete or has an invalid history head.');
                 }
-                if (visual.kind === 'list') result = { ...history, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256 };
+                if (visual.kind === 'list') result = { ...history, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256,
+                  ...(provenance.recipeSha256 ? { recipeSha256: provenance.recipeSha256 } : {}), ...(provenance.adSha256 ? { adSha256: provenance.adSha256 } : {}) };
                 else if (visual.kind === 'review') {
                   if (typeof visual.expectedProductSha256 !== 'string' || !hashPattern.test(visual.expectedProductSha256) ||
                       visual.expectedProductSha256 !== provenance.productSha256) {
@@ -1358,8 +1492,12 @@ async function strictCompositeTransaction(
                       visual.expectedAssetSha256 !== provenance.assetSha256) {
                     throw new Error('The composite changed since you reviewed it. Reload and review the current image before saving.');
                   }
-                  validateVisualNote(visual.note, visual.checks);
-                  const evaluated = evaluateVisualReview(visual.scoresText, visual.checks, visual.variant);
+                  if (visual.expectedRecipeSha256 !== provenance.recipeSha256 || visual.expectedAdSha256 !== provenance.adSha256) throw new Error('The recipe or advertisement changed since it was reviewed.');
+                  validateVisualNote(visual.note, visual.checks, visual.styleChecks);
+                  const evaluated = composite.recipe
+                    ? evaluateVisualReview(visual.scoresText, visual.checks, visual.variant, composite.recipe.styleId, visual.styleChecks)
+                    : evaluateVisualReview(visual.scoresText, visual.checks, visual.variant);
+                  if (!composite.recipe && visual.styleChecks !== undefined) throw new Error('Legacy reviews do not use style checks.');
                   const qaId = crypto.randomUUID(), createdAt = new Date().toISOString();
                   const report: VisualReport = { schemaVersion: '1.0.0', qaId, assetId: visual.assetId,
                     sourceSha256: inputs.sourceSha256, lockMode: 'STRICT', ...evaluated, weightingVariant: visual.variant,
@@ -1367,7 +1505,8 @@ async function strictCompositeTransaction(
                   if (!validateQaReport(report)) throw new Error('The visual review report does not satisfy the QA schema.');
                   const record: VisualReviewRecord = { kind: 'visual-review', qaId, assetId: visual.assetId,
                     productId, attemptId, revision: history.reviews.length + 1, report,
-                    scoresText: visual.scoresText, checks: visual.checks, variant: visual.variant, ...provenance, createdAt };
+                    scoresText: visual.scoresText, checks: visual.checks, variant: visual.variant, ...provenance, createdAt,
+                    ...(composite.recipe ? { styleId: composite.recipe.styleId, styleChecks: visual.styleChecks! } : {}) };
                   appendReview = record; result = record;
                 } else {
                   const latest = history.reviews[history.reviews.length - 1];
@@ -1464,30 +1603,33 @@ async function compareCompositePixels(expected: Blob, actual: Blob, signal: Abor
   } finally { canvas.width = 0; canvas.height = 0; }
 }
 
-export async function saveStrictComposite(productId: string, attemptId: string, inputs: StrictCompositeInputs, blob: Blob, mapping: StrictMapping, signal?: AbortSignal): Promise<StrictComposite> {
+export async function saveStrictComposite(productId: string, attemptId: string, inputs: StrictCompositeInputs, blob: Blob, mapping: StrictMapping, signal?: AbortSignal, recipe?: StrictRecipe, copyLayer?: Blob): Promise<StrictComposite> {
   const cancellation = signal ?? new AbortController().signal;
   checkCompositeCancellation(cancellation);
   const given = inputs && { ...inputs }, placement = mapping && { ...mapping };
   if (!given) throw new Error('The composite inputs are invalid.');
-  verifyStrictMapping(placement, given.sourceWidth, given.sourceHeight);
+  verifyStrictMapping(placement, given.sourceWidth, given.sourceHeight, recipe);
+  await verifyCopyLayer(recipe, copyLayer);
   await verifyStrictPng(blob);
   checkCompositeCancellation(cancellation);
   const expected = await loadStrictCompositeInputs(productId, attemptId, given.sceneAssetId, cancellation);
   checkCompositeCancellation(cancellation);
-  let rendered: { blob: Blob; mapping: StrictMapping };
+  let rendered: { blob: Blob; mapping: StrictMapping; ad?: Blob; copyLayer?: Blob };
   try {
     rendered = await renderStrictComposite({ source: expected.source, mask: expected.mask, scene: expected.scene,
-      sourceWidth: expected.sourceWidth, sourceHeight: expected.sourceHeight, signal: cancellation });
+      sourceWidth: expected.sourceWidth, sourceHeight: expected.sourceHeight, signal: cancellation, recipe });
   } catch (error) {
     checkCompositeCancellation(cancellation);
     throw error;
   }
-  verifyStrictMapping(rendered.mapping, expected.sourceWidth, expected.sourceHeight);
-  verifyStrictMapping(placement, expected.sourceWidth, expected.sourceHeight);
+  verifyStrictMapping(rendered.mapping, expected.sourceWidth, expected.sourceHeight, recipe);
+  verifyStrictMapping(placement, expected.sourceWidth, expected.sourceHeight, recipe);
+  if (Boolean(rendered.copyLayer) !== Boolean(copyLayer)) throw new Error('The copy layer does not match the requested text.');
+  if (rendered.copyLayer && copyLayer) await compareCompositePixels(rendered.copyLayer, copyLayer, cancellation);
   await compareCompositePixels(rendered.blob, blob, cancellation);
   checkCompositeCancellation(cancellation);
   return await strictCompositeTransaction(productId, attemptId, given.sceneAssetId,
-    { inputs: given, expected, blob, mapping: placement }, cancellation) as StrictComposite;
+    { inputs: given, expected, blob, mapping: placement, recipe, ad: rendered.ad, copyLayer }, cancellation) as StrictComposite;
 }
 
 export async function listStrictComposites(productId: string, attemptId: string): Promise<StrictComposite[]> {
@@ -1505,7 +1647,10 @@ export async function listStrictComposites(productId: string, attemptId: string)
     if (![row.assetId, row.productId, row.attemptId, row.sourceAssetId, row.maskId, row.sceneAssetId].every((id) => typeof id === 'string' && uuidPattern.test(id)) ||
         ![row.sha256, row.sourceSha256, row.maskSha256, row.sceneSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash)) ||
         !row.mapping || typeof row.createdAt !== 'string' || !Number.isFinite(Date.parse(row.createdAt))) throw new Error('A stored composite has invalid metadata.');
-    verifyStrictMapping(row.mapping, row.mapping.sourceWidth, row.mapping.sourceHeight);
+    verifyStrictMapping(row.mapping, row.mapping.sourceWidth, row.mapping.sourceHeight, row.recipe);
+    if (row.recipe && row.recipeSha256 !== await sha256(new TextEncoder().encode(JSON.stringify(row.recipe)))) throw new Error('A saved recipe hash does not match.');
+    await verifyCopyLayer(row.recipe, row.copyLayer);
+    if (row.ad) { if (!row.adSha256) throw new Error('A saved ad hash is missing.'); await verifyStrictPng(row.ad, row.adSha256); }
     await verifyStrictPng(row.blob, row.sha256);
     composites.push(row);
   }
@@ -1547,9 +1692,10 @@ async function visualReviewOperation(productId: string, attemptId: string, opera
 
 export async function createVisualReview(productId: string, attemptId: string, assetId: string, scoresText: ReviewScores,
   checks: ReviewChecks, variant: ReviewVariant, note: string, expectedProductSha256: string,
-  expectedAssetSha256: string, signal?: AbortSignal): Promise<VisualReviewRecord> {
+  expectedAssetSha256: string, signal?: AbortSignal, expectedRecipeSha256?: string, expectedAdSha256?: string, styleChecks?: StyleReviewChecks): Promise<VisualReviewRecord> {
   const operation: VisualOperation = { kind: 'review', assetId, scoresText: structuredClone(scoresText),
-    checks: structuredClone(checks), variant, note, expectedProductSha256, expectedAssetSha256 };
+    checks: structuredClone(checks), variant, note, expectedProductSha256, expectedAssetSha256, expectedRecipeSha256, expectedAdSha256,
+    ...(styleChecks === undefined ? {} : { styleChecks: structuredClone(styleChecks) }) };
   return await visualReviewOperation(productId, attemptId, operation, signal) as VisualReviewRecord;
 }
 
@@ -1567,13 +1713,15 @@ export type ApprovedExportSelection = {
 };
 export type ApprovedExportProvenance = {
   attemptId: string; jobId: string; model: string; promptVersion: string; prompt: string; promptSha256: string;
-  styleId: 'studio'; quality: string; size: string;
+  styleId: StudioStyleId; quality: string; size: string;
   usage: Record<string, unknown> | null; estimatedUSD: string; observedUSD: string | null; pricingSnapshot: string | null;
   createdAt: string; submittedAt: string; reviewId: string; reviewedAt: string; decisionId: string; decidedAt: string;
   sourceAssetId: string; sourceSha256: string; maskId: string; maskSha256: string;
   sceneAssetId: string; sceneSha256: string; assetSha256: string; productSha256: string;
+  presetVersion?: string; sceneContext?: StudioSceneContext; selectedFactIds?: string[]; productSnapshotFingerprint?: string; topViewConfirmed?: true;
+  recipe?: StrictRecipe; recipeSha256?: string; adSha256?: string; mapping?: StrictMapping;
 };
-export type ApprovedExportEntry = { selection: ApprovedExportSelection; blob: Blob; provenance: ApprovedExportProvenance };
+export type ApprovedExportEntry = { selection: ApprovedExportSelection; blob: Blob; ad?: Blob; copyLayer?: Blob; provenance: ApprovedExportProvenance };
 
 function checkedExportUsage(value: unknown): Record<string, unknown> | null {
   if (value === null) return null;
@@ -1614,11 +1762,11 @@ function checkedExportAttempt(attempt: StudioAttempt): Record<string, unknown> |
   const allowed = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256',
     'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride',
     'submittedAt', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'status',
-    'usage', 'observedUSD', 'pricingSnapshot', 'acknowledgedAt', 'recordedOutcome', 'cleanupPending', 'recoveryLockVersion'];
+    'usage', 'observedUSD', 'pricingSnapshot', 'acknowledgedAt', 'recordedOutcome', 'cleanupPending', 'recoveryLockVersion',
+    'styleId', 'presetVersion', 'sceneContext', 'selectedFactIds', 'productSnapshotFingerprint', 'topViewConfirmed'];
   if (Object.keys(attempt).some((key) => !allowed.includes(key)) ||
-      attempt.prompt !== STUDIO_PROMPT || attempt.promptVersion !== STUDIO_PROMPT_VERSION ||
-      attempt.model !== STUDIO_MODEL || attempt.quality !== STUDIO_QUALITY || attempt.size !== STUDIO_SIZE ||
-      attempt.estimatedUSD !== studioEstimateUSD()) throw new Error('The attempt provenance is unsupported.');
+      (!attempt.styleId && (attempt.prompt !== STUDIO_PROMPT || attempt.promptVersion !== STUDIO_PROMPT_VERSION || attempt.estimatedUSD !== studioEstimateUSD())) ||
+      attempt.model !== STUDIO_MODEL || attempt.quality !== STUDIO_QUALITY || attempt.size !== STUDIO_SIZE) throw new Error('The attempt provenance is unsupported.');
   const usage = checkedExportUsage(attempt.usage);
   if (attempt.observedUSD === null ? attempt.pricingSnapshot !== undefined :
       attempt.pricingSnapshot !== STUDIO_PRICING_SNAPSHOT || studioObservedUSD(usage) !== attempt.observedUSD) {
@@ -1693,10 +1841,11 @@ async function approvedExportTransaction(productId: string, selections: Approved
         if (product.productId !== productId || !product.rightsAcknowledged || product.brandLock.mode !== 'STRICT') {
           throw new Error('The project is not eligible for approved export.');
         }
-        const productSha256 = await sha256(new TextEncoder().encode(JSON.stringify(product)));
+        const legacyProductSha256 = await sha256(new TextEncoder().encode(JSON.stringify(product)));
+        const versionedProductSha256 = await productSnapshotFingerprint(product);
         for (const selection of selected) {
           checkCompositeCancellation(cancellation);
-          if (selection.productSha256 !== productSha256) throw new Error('The selected approval is stale.');
+          if (selection.productSha256 !== legacyProductSha256 && selection.productSha256 !== versionedProductSha256) throw new Error('The selected approval is stale.');
           const attempt = await exportRequest(tx.objectStore('attempts').get(selection.attemptId)) as StudioAttempt | undefined;
           if (!attempt || attempt.attemptId !== selection.attemptId || attempt.productId !== productId ||
               attempt.status !== 'DEFINITIVE_SUCCESS' ||
@@ -1704,9 +1853,12 @@ async function approvedExportTransaction(productId: string, selections: Approved
               ![attempt.sourceSha256, attempt.maskSha256].every((hash) => typeof hash === 'string' && hashPattern.test(hash))) {
             throw new Error('The successful attempt is missing or invalid.');
           }
+          validateAttemptContext(attempt, product, false);
+          const productSha256 = attempt.styleId ? versionedProductSha256 : legacyProductSha256;
+          if (selection.productSha256 !== productSha256) throw new Error('The selected approval is stale.');
           const usage = checkedExportAttempt(attempt);
-          if (product.brandLock.maskAssetId !== attempt.maskId) throw new Error('The active mask changed.');
           const source = product.sourceAssets.find((item) => item.assetId === attempt.sourceAssetId);
+          if (attempt.styleId === undefined && product.brandLock.maskAssetId !== attempt.maskId) throw new Error('The active mask changed.');
           if (!source || source.sha256 !== attempt.sourceSha256) throw new Error('The attempt source changed.');
           ownedSource(product, source);
           const [sourceRow, maskRow, versions, job, rows, composite, reviews, head] = await Promise.all([
@@ -1744,10 +1896,11 @@ async function approvedExportTransaction(productId: string, selections: Approved
             verifiedVersions.push(version);
             checkCompositeCancellation(cancellation);
           }
-          validateMaskReferences(product, verifiedVersions);
+          validateMaskReferences({ ...product, brandLock: { ...product.brandLock, maskAssetId: attempt.maskId } }, verifiedVersions);
           await verifyStrictPng(scene.blob, scene.sha256);
           const compositeKeys = ['kind', 'assetId', 'productId', 'attemptId', 'blob', 'sha256', 'sourceAssetId',
-            'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt'];
+            'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256', 'mapping', 'createdAt',
+            ...(composite?.recipe ? ['recipe', 'recipeSha256', ...(composite.ad ? ['ad', 'adSha256'] : []), ...(composite.copyLayer ? ['copyLayer'] : [])] : [])];
           if (!composite || !exactKeys(composite, compositeKeys) || composite.kind !== 'strict-composite' ||
               composite.assetId !== selection.assetId || composite.productId !== productId || composite.attemptId !== attempt.attemptId ||
               composite.sourceAssetId !== source.assetId || composite.sourceSha256 !== source.sha256 ||
@@ -1755,16 +1908,27 @@ async function approvedExportTransaction(productId: string, selections: Approved
               composite.sceneAssetId !== scene.assetId || composite.sceneSha256 !== scene.sha256 ||
               composite.sha256 !== selection.assetSha256 || typeof composite.createdAt !== 'string' ||
               !Number.isFinite(Date.parse(composite.createdAt))) throw new Error('The selected composite lineage is invalid.');
-          verifyStrictMapping(composite.mapping, source.width, source.height);
+          if ((attempt.styleId === undefined) !== (composite.recipe === undefined)) throw new Error('The composite recipe lineage is invalid.');
+          if (composite.recipe && (composite.recipe.styleId !== attempt.styleId || composite.recipe.sourceView !== attempt.sceneContext?.sourceView || composite.recipe.topViewConfirmed !== attempt.topViewConfirmed ||
+              composite.recipeSha256 !== await sha256(new TextEncoder().encode(JSON.stringify(composite.recipe))))) throw new Error('The composite recipe lineage is invalid.');
+          verifyStrictMapping(composite.mapping, source.width, source.height, composite.recipe);
+          await verifyCopyLayer(composite.recipe, composite.copyLayer);
           await verifyStrictPng(composite.blob, selection.assetSha256);
           const rendered = await renderStrictComposite({ source: original.blob, mask: mask.blob, scene: scene.blob,
-            sourceWidth: source.width, sourceHeight: source.height, signal: cancellation });
-          verifyStrictMapping(rendered.mapping, source.width, source.height);
+            sourceWidth: source.width, sourceHeight: source.height, signal: cancellation, recipe: composite.recipe, copyLayer: composite.copyLayer });
+          verifyStrictMapping(rendered.mapping, source.width, source.height, composite.recipe);
+          if (Boolean(rendered.ad) !== Boolean(composite.ad)) throw new Error('The ad lineage is invalid.');
+          if (rendered.ad && composite.ad) {
+            if (!composite.adSha256) throw new Error('The ad hash is missing.');
+            await verifyStrictPng(composite.ad, composite.adSha256);
+            await compareCompositePixels(rendered.ad, composite.ad, cancellation);
+          }
           await compareCompositePixels(rendered.blob, composite.blob, cancellation);
           const provenance: VisualProvenance = { assetSha256: composite.sha256, sourceSha256: source.sha256,
             maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId,
-            sceneSha256: scene.sha256, productSha256 };
-          const history = checkedVisualHistory(reviews, productId, attempt.attemptId, selection.assetId, provenance);
+            sceneSha256: scene.sha256, productSha256,
+            ...(composite.recipeSha256 ? { recipeSha256: composite.recipeSha256 } : {}), ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) };
+          const history = checkedVisualHistory(reviews, productId, attempt.attemptId, selection.assetId, provenance, composite.recipe?.styleId);
           const entries = (await Promise.all((reviews as Array<VisualReviewRecord | StoredVisualDecision>)
             .map(async (row) => `${row.qaId}:${await sha256(new TextEncoder().encode(JSON.stringify(row)))}`))).sort();
           const headKey = `visual-review-head:${selection.assetId}`;
@@ -1780,13 +1944,16 @@ async function approvedExportTransaction(productId: string, selections: Approved
               !decision || !decision.current || decision.decision !== 'APPROVED' || decision.reportId !== review.qaId) {
             throw new Error('The selected output is not currently approved.');
           }
-          result.push({ selection, blob: composite.blob, provenance: {
+          result.push({ selection, blob: composite.blob, ...(composite.ad ? { ad: composite.ad } : {}), ...(composite.copyLayer ? { copyLayer: composite.copyLayer } : {}), provenance: {
             attemptId: attempt.attemptId, jobId: attempt.jobId, model: attempt.model, promptVersion: attempt.promptVersion,
             prompt: attempt.prompt, promptSha256: job.promptSha256, styleId: job.styleId, quality: job.quality, size: job.size,
             usage, estimatedUSD: attempt.estimatedUSD, observedUSD: attempt.observedUSD,
             pricingSnapshot: attempt.pricingSnapshot ?? null, createdAt: composite.createdAt, submittedAt,
             reviewId: review.qaId, reviewedAt: review.createdAt, decisionId: decision.qaId, decidedAt: decision.createdAt,
             sourceAssetId: source.assetId, ...provenance,
+            ...(attempt.styleId ? { presetVersion: attempt.presetVersion, sceneContext: attempt.sceneContext, selectedFactIds: attempt.selectedFactIds,
+              productSnapshotFingerprint: attempt.productSnapshotFingerprint, recipe: composite.recipe, recipeSha256: composite.recipeSha256, mapping: { ...composite.mapping }, ...(attempt.topViewConfirmed ? { topViewConfirmed: true as const } : {}),
+              ...(composite.adSha256 ? { adSha256: composite.adSha256 } : {}) } : {}),
           } });
         }
         checkCompositeCancellation(cancellation);
@@ -1849,11 +2016,12 @@ export async function listApprovedExportCandidates(productId: string, signal?: A
   const product = checkedProduct(snapshot.product);
   validateBackupReferences(product);
   const productSha256 = await sha256(new TextEncoder().encode(JSON.stringify(product)));
+  const versionedProductSha256 = await productSnapshotFingerprint(product);
   const approved: ApprovedExportSelection[] = [];
   for (const selection of snapshot.candidates) {
     checkCompositeCancellation(cancellation);
     if (typeof selection.productSha256 === 'string' && hashPattern.test(selection.productSha256) &&
-        selection.productSha256 !== productSha256) continue;
+        selection.productSha256 !== productSha256 && selection.productSha256 !== versionedProductSha256) continue;
     await loadApprovedExportBatch(productId, [selection], cancellation);
     approved.push(selection);
   }

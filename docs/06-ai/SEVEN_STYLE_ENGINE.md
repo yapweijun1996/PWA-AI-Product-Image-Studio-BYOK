@@ -2,6 +2,10 @@
 
 **Canonical IDs & full English add-on prompts:** [`contracts/style-presets.json`](../../contracts/style-presets.json). For comparison, source product, lock mode, chosen ratio, quality and model are held fixed where feasible; styles change scene and perspective only within evidence bounds. One selected style is one job with independently controlled attempts.
 
+The local implementation constructs bounded versioned scene-only prompts for the seven IDs rather than sending the master template below verbatim. It sends the explicitly selected confirmed facts, product name and category as quoted prompt data; the original source and mask remain local. The user authorizes each potentially billable attempt separately and sees the call count and estimates. One failed or ambiguous attempt stops the remaining queue; no automatic retry is made. Only synthetic provider evidence is available.
+
+Local STRICT composition uses verified original pixels and an immutable mask. Macro uses a user-selected source crop and can resample it to 1024×1024; absent or unreadable required labels remain unverifiable. A true overhead flat lay requires a current TOP source and explicit user confirmation; OTHER is labelled source-angle-inspired and UNKNOWN is blocked. Billboard placement requires a user-inspected front-facing rectangle, a locally assembled complete ad, and optional exact user-supplied copy. The copy is frozen as a verified image layer for reproducible later review, not a generated claim. Human review remains mandatory for every composite and conversion.
+
 ## Style table
 
 | ID | Style | Use | Source/quality limitations |
