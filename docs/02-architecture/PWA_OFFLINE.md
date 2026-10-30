@@ -15,7 +15,7 @@
 
 ## Service Worker contract
 
-- Change build identity for every release; worker revalidation must discover updates. A controlled navigation uses its active worker's cached HTML so it cannot mix a newer shell with older hashed assets while an update waits. Precache only static app shell, never `/api/*`, Images API, source images or seller-authenticated material.
+- Change build identity for every release; worker revalidation must discover updates. A controlled navigation normally uses its active worker's cached HTML to keep the shell with its hashed assets while an update waits; if that cache entry is missing, the current worker falls back to the network. The local development gateway snapshots one completed build at startup and requires a restart to serve another; this is not a production deployment guarantee. Precache only static app shell, never `/api/*`, Images API, source images or seller-authenticated material.
 - N to N+1: new worker waits; app shows visible `New version available`; user chooses `Update now`; save local drafts/masks and pending transactions; show loader; message `SKIP_WAITING` to waiting worker; await controllerchange; reload after activation; error/timeout recovery visible. Recheck unsaved state before activation and again before reload: if a draft appears while activation is in flight, retain it and offer an explicit reload when ready.
 - Do not automatically force reload while user edits a mask. Test update from two actual builds, not by clicking simulated button.
 - Clean old versioned caches on activation; keep HTML and hashed assets from the same active build; exclude sensitive routes.

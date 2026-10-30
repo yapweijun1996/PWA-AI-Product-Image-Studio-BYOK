@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile, readdir, lstat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open, readdir } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from './studio-policy.mjs';
@@ -20,6 +21,7 @@ const MAX_IMAGE_BODY = 65536;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const PUBLIC_ASSET = /^\/(?:index\.html|sw\.js|manifest\.webmanifest|icons\/icon(?:\.svg|-(?:180|192|512)\.png)|assets\/[A-Za-z0-9_-]+\.(?:js|css))$/;
 
 function digest(value) { return createHash('sha256').update(value).digest('hex'); }
 function token() { return randomBytes(32).toString('base64url'); }
@@ -71,6 +73,17 @@ async function readJson(request, limit = MAX_BODY) {
   } catch { throw new Error('json'); }
 }
 
+async function readStaticFile(path) {
+  if (typeof constants.O_NOFOLLOW !== 'number') throw new Error('Safe static file reads are unavailable on this platform.');
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    if (!(await file.stat()).isFile()) throw new Error('The static build must contain regular files.');
+    return await file.readFile();
+  } finally {
+    await file.close();
+  }
+}
+
 async function staticFiles(directory) {
   const files = new Map();
   async function visit(folder, relative = '') {
@@ -78,7 +91,7 @@ async function staticFiles(directory) {
       const path = join(folder, entry.name), name = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) throw new Error('The static build must not contain symbolic links.');
       if (entry.isDirectory()) await visit(path, name);
-      else if (entry.isFile()) files.set(`/${name}`, path);
+      else if (entry.isFile() && PUBLIC_ASSET.test(`/${name}`)) files.set(`/${name}`, await readStaticFile(path));
     }
   }
   await visit(directory);
@@ -368,11 +381,10 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
       if (request.method !== 'GET' && request.method !== 'HEAD') return error(response, 404, 'NOT_FOUND', 'Resource not found.');
       const pathname = path?.split('?')[0] ?? '';
       const route = /^\/(?:|settings|help|import|products\/(?:new|[0-9a-f-]{36}))$/i.test(pathname);
-      const publicAsset = /^\/(?:index\.html|sw\.js|manifest\.webmanifest|icons\/icon(?:\.svg|-(?:180|192|512)\.png)|assets\/[A-Za-z0-9_-]+\.(?:js|css))$/.test(pathname);
-      const filename = (publicAsset ? files.get(pathname) : null) ?? (route ? files.get('/index.html') : null);
-      if (!filename || !(await lstat(filename)).isFile()) return error(response, 404, 'NOT_FOUND', 'Resource not found.');
-      const content = await readFile(filename);
-      response.writeHead(200, { 'Content-Type': TYPES[extname(filename)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache', 'Content-Length': content.length });
+      const asset = PUBLIC_ASSET.test(pathname) ? pathname : route ? '/index.html' : null;
+      const content = asset && files.get(asset);
+      if (!content) return error(response, 404, 'NOT_FOUND', 'Resource not found.');
+      response.writeHead(200, { 'Content-Type': TYPES[extname(asset)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache', 'Content-Length': content.length });
       response.end(request.method === 'HEAD' ? undefined : content);
     } catch {
       if (!response.headersSent) error(response, 500, 'INTERNAL_ERROR', 'The request could not be completed.');

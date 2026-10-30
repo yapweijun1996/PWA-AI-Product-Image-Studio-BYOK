@@ -172,8 +172,8 @@
     },
     {
       "path": "docs/02-architecture/PWA_OFFLINE.md",
-      "bytes": 3268,
-      "sha256": "45cde0944e0e5adfb7c9f1058d0cb3ec50275ee4b3cec12363203d6431572757"
+      "bytes": 3499,
+      "sha256": "632a1ba46880e164bf88a9a847aa71b5c679fd00ab2cf75261e7249560613349"
     },
     {
       "path": "docs/02-architecture/SYSTEM_ARCHITECTURE.md",
@@ -277,8 +277,8 @@
     },
     {
       "path": "docs/08-delivery/DEV_OPERATIONS.md",
-      "bytes": 2406,
-      "sha256": "1629d2488e3feac37ac7df70bda311afd40d8d221123362ed1f7b97ff0a412e8"
+      "bytes": 3192,
+      "sha256": "6ce4224c3dbc540c69034232091ea9b9969f30175cb77d60f82c4ebca9a48cf5"
     },
     {
       "path": "docs/08-delivery/EPIC.md",
@@ -292,8 +292,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 84305,
-      "sha256": "18696f2f680fe9d6e4fbb000697c38fc27e2b32ada39808fdbc3283ff702b30d"
+      "bytes": 86894,
+      "sha256": "097d4047bef71fa26568d337c666feb066c6baf1ba729e3d9cd58cb1057cb5ce"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

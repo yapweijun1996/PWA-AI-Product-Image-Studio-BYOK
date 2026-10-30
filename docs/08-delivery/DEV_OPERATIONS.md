@@ -5,6 +5,8 @@
 - Before coding, capture repo HEAD, flags, environment, docs version; do not guess versions installed in nonexistent code.
 - Suggested stack: React + TypeScript + Vite; Tailwind CSS; IndexedDB/Dexie; Canvas/Web Worker; Vite PWA/Workbox; Cloudflare Worker Gateway. Pin dependencies and run `npm audit`/lockfile review as appropriate.
 - Use strict TS and stable contracts; never build against assumed provider output. Implement stubs before live provider connection.
+- Complete the static build before starting the local gateway. It snapshots the allowlisted build files in memory at startup; rebuilding its directory does not update the running process. To adopt a completed new build, wait for in-flight attempts to settle, preserve UNKNOWN outcomes and the journal, then restart the gateway. Restart invalidates local app/provider sessions; reconnect explicitly. Do not rebuild the static directory concurrently with gateway startup.
+- The local snapshot requires Node's `O_NOFOLLOW` support and fails to start when it is unavailable. Only the final path component is protected this way; the configured build tree and its ancestors must be trusted and stable during startup. This does not provide isolation against a hostile local filesystem writer.
 
 ## CI gates
 

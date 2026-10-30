@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { get, request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -191,6 +193,64 @@ test('static serving cannot follow symlinks or expose arbitrary paths', async (t
   t.after(() => rm(dir, { recursive: true, force: true }));
   await writeFile(join(dir, 'index.html'), 'fixture'); await symlink(join(dir, 'index.html'), join(dir, 'escape'));
   await assert.rejects(createGateway({ authTokenHash, providerConfigured: false, staticDirectory: dir }), /symbolic links/i);
+});
+
+test('static startup rejects an allowlisted file swapped to a symlink before opening', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'studio-gateway-link-race-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(join(dir, 'index.html'), 'public');
+  await writeFile(join(dir, 'private.txt'), 'synthetic secret');
+  const originalOpen = fs.open;
+  let swapped = false;
+  fs.open = async (path, ...args) => {
+    if (!swapped && path === join(dir, 'index.html')) {
+      swapped = true;
+      await rm(path);
+      await symlink(join(dir, 'private.txt'), path);
+    }
+    return originalOpen(path, ...args);
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(createGateway({ authTokenHash, providerConfigured: false, staticDirectory: dir }), { code: 'ELOOP' });
+    assert.equal(swapped, true);
+  } finally {
+    fs.open = originalOpen;
+    syncBuiltinESMExports();
+  }
+});
+
+test('a running gateway serves one static build even if its directory is replaced', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'studio-gateway-build-'));
+  await mkdir(join(dir, 'assets'));
+  await writeFile(join(dir, 'index.html'), '<script src="/assets/a.js"></script>');
+  await writeFile(join(dir, 'sw.js'), 'worker A');
+  await writeFile(join(dir, 'assets', 'a.js'), 'script A');
+  let server;
+  t.after(async () => {
+    if (server?.listening) await new Promise((resolve) => server.close(resolve));
+    await rm(dir, { recursive: true, force: true });
+  });
+  async function start() {
+    server = await createGateway({ authTokenHash, providerConfigured: false, staticDirectory: dir });
+    await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
+    return `http://127.0.0.1:${server.address().port}`;
+  }
+  const first = await start();
+  await rm(join(dir, 'assets', 'a.js'));
+  await writeFile(join(dir, 'assets', 'b.js'), 'script B');
+  await writeFile(join(dir, 'index.html'), '<script src="/assets/b.js"></script>');
+  await writeFile(join(dir, 'sw.js'), 'worker B');
+  assert.equal(await (await fetch(first + '/')).text(), '<script src="/assets/a.js"></script>');
+  assert.equal(await (await fetch(first + '/assets/a.js')).text(), 'script A');
+  assert.equal(await (await fetch(first + '/sw.js')).text(), 'worker A');
+  assert.equal((await fetch(first + '/assets/b.js')).status, 404);
+  await new Promise((resolve) => server.close(resolve));
+  const second = await start();
+  assert.equal(await (await fetch(second + '/')).text(), '<script src="/assets/b.js"></script>');
+  assert.equal(await (await fetch(second + '/assets/b.js')).text(), 'script B');
+  assert.equal(await (await fetch(second + '/sw.js')).text(), 'worker B');
+  assert.equal((await fetch(second + '/assets/a.js')).status, 404);
 });
 
 test('gateway responses conform to the canonical OpenAPI schemas', async (t) => {
