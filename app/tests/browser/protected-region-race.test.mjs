@@ -183,6 +183,18 @@ test('protected mask gestures and approved export bundle remain consistent', { t
       assert.ok(controls.length===2 && controls.every(c=>c.grouped && c.height>=44),`Coordinate labels and inputs stay grouped at ${width}px.`);
     }
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client, `(() => {const z=document.querySelector('#mask-zoom');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(z,'300');z.dispatchEvent(new Event('input',{bubbles:true}));const v=document.querySelector('.mask-viewport');v.scrollIntoView({block:'center'});v.scrollLeft=0;v.focus()})()`);
+    await until(()=>evaluate(client, `document.querySelector('.mask-surface').style.width==='300%'`),'300 percent mask zoom');
+    for(let i=0;i<30;i++) {
+      await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+      await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+      await new Promise(resolve=>setTimeout(resolve,30));
+    }
+    await until(()=>evaluate(client, `(() => {const v=document.querySelector('.mask-viewport'),r=v.getBoundingClientRect(),b=[...document.querySelectorAll('.mask-region-outline span')].find(e=>e.textContent==='2').getBoundingClientRect();return v.scrollLeft>0 && b.left>=r.left && b.right<=r.right && b.top>=r.top && b.bottom<=r.bottom})()`),'keyboard scrolled to edge area at 300 percent');
+    assert.equal(await evaluate(client, `document.documentElement.scrollWidth<=innerWidth`),true,'Zoomed mask keeps horizontal scrolling inside its viewport.');
+    assert.equal(await evaluate(client, `document.activeElement===document.querySelector('[role=region][aria-label="Mask viewport"]')`),true,'The labelled mask viewport retains keyboard focus.');
+    await evaluate(client, `(() => {const z=document.querySelector('#mask-zoom');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(z,'100');z.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+    await until(()=>evaluate(client, `document.querySelector('.mask-surface').style.width==='100%'`),'mask zoom restored');
     await evaluate(client, `(() => {const fields=document.querySelectorAll('.mask-region')[1].querySelectorAll('input');for(const field of [fields[0],fields[1]]){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,'0');field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
     await evaluate(client, `(() => {const tool=document.querySelector('#mask-tool');tool.value='erase';tool.dispatchEvent(new Event('change',{bubbles:true}));for(const id of ['mask-x','mask-y']){const input=document.getElementById(id);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'0');input.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('.mask-stamp button').click()})()`);
     await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Review mask').click()`);

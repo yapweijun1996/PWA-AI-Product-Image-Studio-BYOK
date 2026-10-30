@@ -361,7 +361,7 @@ This register tracks verified defects and their remediation. Application source 
 
 - **Status:** IMPLEMENTED_UNVERIFIED — synthetic viewport and screenshot checks passed; physical-device acceptance remains open. **Priority:** P2. **Related tasks:** T-050, T-052 and T-080.
 - **Finding:** A 1 × 1 protected area at the source image's bottom-right placed its number outside the image. This made the visual marker harder to relate to the selected pixels; the area and coverage data were unaffected.
-- **Remediation:** Area numbers anchor inward based on their position in the image. A synthetic browser assertion failed before the change and passed at 320, 390 and 1280 px afterward; mobile and desktop screenshots were inspected. Edge cases with overlapping areas and physical devices remain open.
+- **Remediation:** Area numbers anchor inward based on their position in the image. A synthetic browser assertion failed before the change and passed at 320, 390 and 1280 px afterward; mobile and desktop screenshots were inspected. At 300% application zoom in a 320 px synthetic browser, keyboard ArrowRight scrolling reached the edge marker while the document stayed within the viewport. Edge cases with overlapping areas, actual browser zoom and physical devices remain open.
 
 ## BUG-045 — Mask coordinate labels can wrap away from their inputs
 

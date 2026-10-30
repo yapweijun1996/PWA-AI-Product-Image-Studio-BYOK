@@ -1264,3 +1264,10 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Finding and fix:** A 1 × 1 area at the bottom-right displayed its number outside the image, and the desktop mask-coordinate label could wrap away from its input. Area numbers now anchor inward and each coordinate label contains its input. See [BUG-044 and BUG-045](../../BUG.md).
 - **Verification:** A pre-fix 320 px browser assertion reproduced the edge overflow. The synthetic Chromium test now checks marker containment and grouped inputs at 320, 390 and 1280 px; mobile and desktop before/after screenshots were inspected. The focused test, four-test browser suite, production build and documentation validation passed. Existing correction and approved-export flows remained exercised.
 - **Limits and rollback:** This does not cover all overlapping regions, actual browser zoom, screen readers or physical devices. T-050/T-052/T-080 and BUG-044/045 remain open. Revert layout changes only with equivalent marker containment and label association; preserve coordinates, masks and coverage enforcement.
+
+
+## T-050 / T-052 / T-080 / BUG-044 zoomed edge-marker keyboard check — 2026-10-31
+
+- **Evidence:** In a synthetic 320 px Chromium session, the mask editor's own zoom was set to 300% with a 1 × 1 protected area at the bottom-right. Focus remained on the named mask viewport; repeated ArrowRight key events scrolled its content until the numbered marker was visible within the viewport. The document itself did not overflow horizontally. The test restored 100% editor zoom and continued through mask correction, approval and export.
+- **Verification:** The focused browser test, four-test browser suite and documentation validator passed; no application behavior changed in this follow-up.
+- **Limits and rollback:** This tests the editor zoom control, not actual browser/page zoom, a screen reader, physical keyboard or physical touch device. It covers one edge marker and does not resolve overlapping markers or label readability. T-050/T-052/T-080 and BUG-044 remain open. Remove the synthetic assertions without modifying user masks or protection rules if needed.
