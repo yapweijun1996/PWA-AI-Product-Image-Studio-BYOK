@@ -34,11 +34,15 @@ export function ApprovedExportPanel({ productId, productVersion, disabled }: { p
     mounted.current = true;
     const controller = new AbortController();
     operation.current?.abort(); operation.current = null;
+    const discardedWork = refreshDiscardedWork.current;
     setBusy(false); setCandidates(null); setSelected([]); setPreviews(null); setConfirmed(false); setLoadedVersion(null); setError('');
-    setNotice(refreshDiscardedWork.current ? 'Approvals are being rechecked because the app was reactivated or the project changed. Select images and prepare previews again.' : '');
+    setNotice(discardedWork ? 'Approvals are being rechecked because the app was reactivated or the project changed. Select images and prepare previews again.' : '');
     refreshDiscardedWork.current = false;
     void listApprovedExportCandidates(productId, controller.signal).then((items) => {
-      if (!controller.signal.aborted && mounted.current) { setCandidates(items); setLoadedVersion(productVersion); }
+      if (!controller.signal.aborted && mounted.current) {
+        setCandidates(items); setLoadedVersion(productVersion);
+        if (discardedWork && items.length === 0) setNotice('Your selection and previews were cleared. No current approved composites are available; review and approve an updated composite before exporting.');
+      }
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted && mounted.current) setError(reason instanceof Error ? reason.message : 'Approved images could not be checked.');
     });

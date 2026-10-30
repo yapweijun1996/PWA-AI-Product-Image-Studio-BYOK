@@ -521,6 +521,21 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     const secondDownload=await completedDownload(client,generatedDownloadEvents,userDir,'generated approved ZIP');
     const secondZip=new ZipReader(new Uint8ArrayReader(await readFile(join(userDir,secondDownload))));
     try {const entries=await secondZip.getEntries();const proof=entries.find(e=>e.filename===`provenance/${generatedComposite}.json`), output=entries.find(e=>e.filename===`outputs/${generatedComposite}.png`);assert.ok(proof&&output,'Generated composite and provenance are in the ZIP.');const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter())));const bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.attemptId,generated.attemptId);assert.equal(receipt.sceneSha256,generated.scene);assert.equal(receipt.sourceSha256,originalHash);assert.equal(receipt.reviewId,generatedDecision.reviewId);assert.equal(receipt.decisionId,generatedDecision.decisionId);assert.equal(createHash('sha256').update(bytes).digest('hex'),receipt.outputSha256);} finally {await secondZip.close();}
+    await evaluate(client, `(() => {const p=document.querySelector('.approved-export');const box=[...p.querySelectorAll('label')].find(l=>l.innerText.includes(${JSON.stringify(generatedComposite)})).querySelector('input');if(!box.checked)box.click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click()})()`);
+    await until(()=>evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),'preview before another tab changes a fact');
+    const {targetId: mutationTargetId}=await client.call('Target.createTarget',{url:`${origin}/help`,background:true});
+    const mutationTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(item=>item.id===mutationTargetId),'mutation tab');
+    otherClient=await connect(mutationTarget.webSocketDebuggerUrl);
+    await until(()=>evaluate(otherClient, `location.pathname==='/help' && document.readyState==='complete'`),'mutation tab ready');
+    assert.equal(await evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),true,'The original preview remains before the mutation.');
+    const downloadEventsBeforeMutation=client.events.filter(event=>event.method==='Page.downloadWillBegin').length;
+    await evaluate(otherClient, `(async()=>{const p=await import('/src/products.ts');await p.addConfirmedFact(${JSON.stringify(productId)},'Synthetic test fact','Changed in another tab')})()`);
+    await until(()=>evaluate(client, `!document.querySelector('.approved-export .strict-comparison') && document.querySelector('.approved-export')?.innerText.includes('No current approved composites are available.')`),'stale approval removed after cross-tab mutation');
+    assert.equal(await evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('review and approve an updated composite before exporting')`),true,'The user is told how to recover when no current approval remains.');
+    assert.equal(await evaluate(client, `(async()=>{const p=await import('/src/products.ts');return (await p.listApprovedExportCandidates(${JSON.stringify(productId)})).some(x=>x.assetId===${JSON.stringify(generatedComposite)})})()`),false,'The changed facts invalidate the prior approval.');
+    assert.equal(client.events.filter(event=>event.method==='Page.downloadWillBegin').length,downloadEventsBeforeMutation,'The stale preview does not initiate another download.');
+    otherClient.close(); otherClient=null;
+    await client.call('Target.closeTarget',{targetId:mutationTargetId});
     assert.equal(providerCalls,1,'Composition, review and export do not resend the provider request.');
     await client.call('Page.addScriptToEvaluateOnNewDocument',{source:`window.__apiRequests=[];const originalFetch=window.fetch;window.fetch=function(input,...args){const url=typeof input==='string'?input:input.url;if(String(url).includes('/api/v2'))window.__apiRequests.push(url);return originalFetch.call(this,input,...args)}`});
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
