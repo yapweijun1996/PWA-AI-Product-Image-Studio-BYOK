@@ -68,6 +68,13 @@ export async function withStudioReviewLock<T>(attempt: StudioAttempt, locks: Loc
   return withStudioAttemptLock(attempt.attemptId, locks, action);
 }
 
+export function interruptedReviewUnavailable(attempt: StudioAttempt, locks: LockManager | undefined): string | null {
+  if (attempt.status !== 'SUBMITTED') return null;
+  if (attempt.recoveryLockVersion !== 1) return 'This interrupted submission cannot be reviewed safely because its recovery lock version is missing or unsupported. Preserve its history for owner review.';
+  if (!locks || typeof locks.request !== 'function') return 'This interrupted submission requires Web Locks for safe review. Use a supported browser with the same local history.';
+  return null;
+}
+
 export function cleanupPending(headers: Headers): boolean {
   return headers.has('X-Studio-Cleanup-Pending');
 }
@@ -631,7 +638,8 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       </div> : <p>This imported record remains untrusted. Any local uncertainty review did not contact the gateway or change the original outcome. Same-job retry is unavailable; a new job needs fresh authorization and may still be blocked by the gateway.</p>) : (attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED' || attempt.cleanupPending !== undefined) && (studioAttemptBlocks(attempt) ? <div>
         <p>{attempt.cleanupPending === true ? `The gateway requires review before clearing its active marker after recording ${attempt.status}. The saved outcome is unchanged. Review provider billing and rate limits externally before acknowledging; this does not send an image request.` : attempt.cleanupPending !== undefined ? 'Invalid cleanup metadata. Generation remains blocked; preserve the saved records for owner review.' : 'A charge may have occurred. Review provider billing and rate limits externally before proceeding. An interrupted submission may still be active; the gateway will refuse review while active or without a reviewable result. This acknowledgement does not resolve the original outcome or send an image request.'}</p>
         <label className="checkbox-label"><input type="checkbox" checked={Boolean(reviewConfirmed[attempt.attemptId])} onChange={(event) => { const checked = event.target.checked; setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: checked })); }} disabled={busy} /><span>I have reviewed provider billing and rate limits externally and acknowledge the previous attempt may have incurred a charge.</span></label>
-        <button className="secondary-button" type="button" disabled={busy || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true)} onClick={() => void review(attempt)}>Record review of this attempt</button>
+        {interruptedReviewUnavailable(attempt, navigator.locks) && <p>{interruptedReviewUnavailable(attempt, navigator.locks)}</p>}
+        <button className="secondary-button" type="button" disabled={busy || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || Boolean(interruptedReviewUnavailable(attempt, navigator.locks)) || (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true)} onClick={() => void review(attempt)}>Record review of this attempt</button>
       </div> : <p>Reviewed at {attempt.acknowledgedAt}; gateway recorded outcome: {attempt.recordedOutcome}. Local outcome remains {attempt.cleanupPending === true ? attempt.status : 'UNKNOWN'}. A new attempt requires separate authorization.</p>)}
       {attempt.status === 'DEFINITIVE_SUCCESS' && (asset ? <><p>Original product photograph compared with the unapproved generated empty scene. The scene alone is not the product; the original product must be composed and reviewed locally.</p><div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Original product photograph</figcaption><Original product={product} attempt={attempt} /></figure><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved generated empty scene</figcaption><Scene asset={asset} /></figure></div><StrictCompositePanel productId={product.productId} productVersion={JSON.stringify(product)} attemptId={attempt.attemptId} scene={asset} disabled={busy} /></> : <p className="error-message">Saved scene is missing.</p>)}</li>)}</ul>}
   </section>;

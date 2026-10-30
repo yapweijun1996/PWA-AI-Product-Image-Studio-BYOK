@@ -385,6 +385,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 interrupted-review availability feedback — 2026-10-30
+
+- **Change and evidence:** [BUG-004](../../BUG.md) records why interrupted `SUBMITTED` reviews now show a specific explanation and disable their action when recovery-lock metadata is unsupported or Web Locks are unavailable. Eleven focused client tests and the production build passed. Isolated Chromium with synthetic history showed both messages; an emulated 390 px page had no document-width overflow.
+- **Limits:** The synthetic browser had no gateway, so it did not exercise an enabled acknowledgement or real billing review. Installed devices, screen readers and complete responsive state coverage remain open; the underlying locking and gateway checks still enforce safety. T-041 remains IMPLEMENTED_UNVERIFIED and BUG-001 remains IN_PROGRESS.
+- **Rollback:** Revert the feedback and its regression together, preserving all attempt and journal data.
+
 ## T-041 process termination during proof publication — 2026-10-30
 
 - **Evidence:** A separate synthetic Node process was paused after linking its elapsed-wait proof and before directory sync, then terminated with SIGKILL. Its journal lock remained; another open failed closed after the bounded lock wait, and no subsequent attempt reservation was present. In the disposable test journal only, after confirming worker exit, the test removed the stale lock; reopening synchronized the directory, validated the retained proof and allowed a separately requested reservation. The focused journal suite passed 10 tests.

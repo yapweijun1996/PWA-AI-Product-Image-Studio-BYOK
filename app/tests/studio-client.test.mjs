@@ -7,7 +7,15 @@ import { build } from 'vite';
 const result = await build({ configFile: 'vite.config.ts', logLevel: 'silent', build: { write: false, minify: false, lib: { entry: 'src/StudioPanel.tsx', formats: ['es'], fileName: 'studio' } } });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { decodeScene, decodeAcknowledgement, decodeReviewRevision, withStudioAttemptLock, withStudioReviewLock, sceneFailure, approvalFailure, cleanupPending } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { decodeScene, decodeAcknowledgement, decodeReviewRevision, withStudioAttemptLock, withStudioReviewLock, interruptedReviewUnavailable, sceneFailure, approvalFailure, cleanupPending } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+
+test('review availability explains missing interrupted-submission locking without blocking other outcomes', () => {
+  assert.match(interruptedReviewUnavailable({ status: 'SUBMITTED' }, undefined), /lock version/);
+  assert.match(interruptedReviewUnavailable({ status: 'SUBMITTED', recoveryLockVersion: 1 }, undefined), /Web Locks/);
+  assert.equal(interruptedReviewUnavailable({ status: 'SUBMITTED', recoveryLockVersion: 1 }, { request() {} }), null);
+  assert.equal(interruptedReviewUnavailable({ status: 'UNKNOWN' }, undefined), null);
+  assert.equal(interruptedReviewUnavailable({ status: 'DEFINITIVE_FAILURE' }, undefined), null);
+});
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 globalThis.createImageBitmap = async () => ({ width: 1024, height: 1024, close() {} });
 
