@@ -731,6 +731,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
 - **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
 
+## T-052 pending approval/export regression — 2026-10-30
+
+- **Change:** Added a TODO acceptance test in `app/tests/approved-export-storage.test.mjs` using the synthetic two-pixel source, partially transparent mask, all-MATCH maximum-score review and approved export. The expected behavior is a protected-region-related rejection before export; the present implementation instead reaches export. The test reports `Missing expected rejection` and must not be counted as passing because Node does not fail the suite for TODO tests.
+- **Checks and remaining work:** The focused storage test file ran 11 tests: 10 passed and the new TODO reported the expected missing rejection. Implement and verify the complete source-bound selection, crop/output coverage, persistence, legacy/import and concurrent transaction protections described by [BUG-007](../../BUG.md). Replace this missing-evidence fixture with explicit selected-region cases and remove the TODO only when rejection and valid-region acceptance are proven; retain browser and real-SKU gates.
+- **Rollback:** Remove the TODO acceptance test and its fixture parameter together with this record; no application data or runtime behavior changes.
+
 ## T-052 approval and export diagnostic — 2026-10-30
 
 - **Evidence:** At `5d8e9a9`, a disposable synthetic storage-test variant saved a composite with one of two red source pixels erased by a transparent mask over black. A maximum-score, all-MATCH review was approved and `loadApprovedExportBatch` returned the composite; decoded output showed the retained pixel red and erased pixel black. The diagnostic asserted current unsafe behavior and was removed, so this is defect reproduction, not acceptance. See [BUG-007](../../BUG.md).

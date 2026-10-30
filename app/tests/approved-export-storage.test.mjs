@@ -94,18 +94,18 @@ const { createProduct, saveSource, saveMask, addConfirmedFact, createStudioAttem
   createVisualReview, recordVisualDecision, listVisualReviews, listApprovedExportCandidates, loadApprovedExportBatch, commitApprovedExportBatch } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
-async function fixture() {
+async function fixture(maskBytes = sourceBytes) {
   const product = await createProduct({ sku: randomUUID(), name: 'Synthetic product', category: 'Test', rightsAcknowledged: true });
   const source = { assetId: randomUUID(), sha256: hash(sourceBytes), mimeType: 'image/png', width: 2, height: 1, cameraView: 'FRONT', filename: 'source.png' };
   await saveSource(product.productId, { file: blob(sourceBytes), metadata: source, exifOrientation: 1, previewUrl: '' }, 'FRONT');
-  const maskId = randomUUID(), maskSha256 = hash(sourceBytes);
+  const maskId = randomUUID(), maskSha256 = hash(maskBytes);
   const db = await new Promise((resolve, reject) => { const request = indexedDB.open('product-image-studio'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
   await new Promise((resolve, reject) => {
     const tx = db.transaction(['products', 'masks'], 'readwrite'), products = tx.objectStore('products');
     const request = products.get(product.productId);
     request.onsuccess = () => { const value = request.result; value.brandLock.maskAssetId = maskId; products.put(value); };
     tx.objectStore('masks').add({ maskId, productId: product.productId, sourceAssetId: source.assetId, sourceSha256: source.sha256,
-      width: 2, height: 1, sha256: maskSha256, version: 1, blob: blob(sourceBytes) });
+      width: 2, height: 1, sha256: maskSha256, version: 1, blob: blob(maskBytes) });
     tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
   });
   const attempt = { attemptId: randomUUID(), jobId: randomUUID(), productId: product.productId, sourceAssetId: source.assetId,
@@ -174,6 +174,26 @@ async function approved(f) {
   return { f, selection: { attemptId: f.attemptId, assetId: f.composite.assetId, productSha256: report.productSha256,
     assetSha256: report.assetSha256, reviewId: report.qaId, decisionId: receipt.qaId } };
 }
+
+// BUG-007: enable this acceptance test when the protected-region lifecycle exists.
+// A TODO failure documents the current gap; it is not a passing safety gate.
+test('STRICT rejects an uncovered source region before approved export', { todo: 'BUG-007: protected-region evidence is not yet enforced' }, async () => {
+  const maskBytes = png(2, 1, Uint8Array.from([255, 255, 255, 255, 255, 255, 255, 0]));
+  const f = await fixture(maskBytes);
+  const canvas = new TestCanvas(); canvas.width = 1024; canvas.height = 1024;
+  const ctx = canvas.getContext('2d'), scene = await createImageBitmap(blob(sceneBytes)), source = await createImageBitmap(blob(sourceBytes));
+  ctx.drawImage(scene, 0, 0, 1024, 1024);
+  source.pixels[7] = 0;
+  ctx.drawImage(source, mapping.x, mapping.y, mapping.width, mapping.height);
+  const image = await new Promise((resolve) => canvas.toBlob(resolve));
+  await assert.rejects(async () => {
+    f.composite = await save(f, await load(f), image);
+    const report = await review(f), receipt = await decision(f, report);
+    const selection = { attemptId: f.attemptId, assetId: f.composite.assetId, productSha256: report.productSha256,
+      assetSha256: report.assetSha256, reviewId: report.qaId, decisionId: receipt.qaId };
+    await loadApprovedExportBatch(f.productId, [selection]);
+  }, /protect|coverage|region/i);
+});
 
 test('only the latest explicit matching approval is discoverable and exported with allowlisted provenance', async () => {
   const { f, selection } = await approved();
