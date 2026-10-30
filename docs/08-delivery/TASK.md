@@ -880,3 +880,9 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Checks:** Production build passed with its existing large-chunk warning; the full application suite passed 271/271. Full documentation validator passed and its six regression tests passed.
 - **Remaining:** BUG-012 remains IMPLEMENTED_UNVERIFIED pending scenario-specific backup/restore, import barrier, missing/corrupt current inputs, cross-tab races, keyboard, and physical mobile acceptance. T-060 remains IMPLEMENTED_UNVERIFIED and T-052 remains IN_PROGRESS.
 - **Rollback:** Revert the historical-view code, preserving records and the approval/export gate; do not downgrade storage or bypass protected evidence.
+
+## T-060 / BUG-012 acceptance expansion — 2026-10-30
+
+- Synthetic tests exercised a full archive and isolated restore after an active-mask change, verifying both masks, original review and decision, import trust barrier and rejection of stale export. Missing or corrupt original source, historical mask and current active mask reject history. A deliberately paused read transaction prevented a concurrent mask save until its consistent historical snapshot completed.
+- In isolated Chromium at 320 px, keyboard Enter opened the composite and review-history disclosures; the historical rejection was visible and document width did not overflow. This is an emulated browser test using synthetic data, not an installed physical-device or screen-reader test.
+- Full application regression passed 274/274; the final transaction-queue assertion also passed in a targeted rerun. Full documentation validation passed. BUG-012 remains IMPLEMENTED_UNVERIFIED pending physical mobile, installed-device and independent security acceptance. No paid request or real seller data was used. Roll back the added tests and documentation together; preserve all existing records and safety gates.

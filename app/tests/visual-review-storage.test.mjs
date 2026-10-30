@@ -588,3 +588,80 @@ test('legacy mask changes preserve verified read-only review history and reject 
     await assert.rejects(history(f), /hash|mask/i);
   }
 });
+
+test('historical legacy review survives archive restore but remains untrusted and unexportable', async () => {
+  const f = await ready(), report = await review(f), receipt = await decision(f, report);
+  await saveMask(f.productId, f.source, blob(sourceBytes), f.maskId, [{ x: 0, y: 0, width: 1, height: 1 }]);
+  const backupBuilt = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
+    build: { write: false, minify: false, lib: { entry: 'src/backup.ts', formats: ['es'], fileName: 'backup' } } });
+  const output = Array.isArray(backupBuilt) ? backupBuilt[0] : backupBuilt;
+  const backupCode = output.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
+  const { createBackup, inspectBackup } = await import(`data:text/javascript;base64,${Buffer.from(backupCode).toString('base64')}#legacy-archive`);
+  const signal = new AbortController().signal;
+  const archive = await createBackup(f.productId, signal, () => {});
+  const preview = await inspectBackup(new File([archive], 'historical.zip'), signal, () => {});
+  assert.equal(preview.masks.length, 2);
+  assert.ok(preview.history.reviews.some((row) => row.qaId === report.qaId));
+  assert.ok(preview.history.reviews.some((row) => row.qaId === receipt.qaId));
+  const originalIndexedDB = globalThis.indexedDB;
+  try {
+    globalThis.indexedDB = new IDBFactory();
+    const isolated = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}#isolated-legacy-history`);
+    await isolated.restoreProduct(preview.product, preview.sources, preview.masks, preview.history);
+    const restored = await isolated.listVisualReviews(f.productId, f.attemptId, f.composite.assetId);
+    assert.equal(restored.historicalOnly, true);
+    assert.equal(restored.importedReviewRequired, true);
+    assert.equal(restored.reviews[0].qaId, report.qaId);
+    assert.equal(restored.decisions[0].qaId, receipt.qaId);
+    assert.equal(restored.decisions[0].current, false);
+    const selection = { attemptId: f.attemptId, assetId: f.composite.assetId, productSha256: report.productSha256, assetSha256: report.assetSha256, reviewId: report.qaId, decisionId: receipt.qaId };
+    await assert.rejects(isolated.loadApprovedExportBatch(f.productId, [selection]));
+    assert.deepEqual(await isolated.listApprovedExportCandidates(f.productId), []);
+  } finally { globalThis.indexedDB = originalIndexedDB; }
+});
+
+test('historical legacy view rejects missing or corrupt original and active inputs', async () => {
+  for (const scenario of ['missing source', 'corrupt source', 'missing old mask', 'missing active mask', 'corrupt active mask']) {
+    const f = await ready(); await review(f);
+    const product = await saveMask(f.productId, f.source, blob(sourceBytes), f.maskId, [{ x: 0, y: 0, width: 1, height: 1 }]);
+    const activeId = product.brandLock.maskAssetId;
+    if (scenario === 'missing source') await remove(f.db, 'sourceAssets', f.source.assetId);
+    if (scenario === 'corrupt source') await mutate(f.db, 'sourceAssets', f.source.assetId, (row) => ({ ...row, blob: blob(sceneBytes) }));
+    if (scenario === 'missing old mask') await remove(f.db, 'masks', f.maskId);
+    if (scenario === 'missing active mask') await remove(f.db, 'masks', activeId);
+    if (scenario === 'corrupt active mask') await mutate(f.db, 'masks', activeId, (row) => ({ ...row, blob: blob(sceneBytes) }));
+    await assert.rejects(history(f), undefined, scenario);
+  }
+});
+
+test('historical review snapshot serializes against a concurrent active-mask save', async () => {
+  const f = await ready(), report = await review(f); await decision(f, report);
+  const next = await saveMask(f.productId, f.source, blob(sourceBytes), f.maskId, [{ x: 0, y: 0, width: 1, height: 1 }]);
+  const original = globalThis.createImageBitmap;
+  let entered, release;
+  const waiting = new Promise((resolve) => { entered = resolve; });
+  const blocked = new Promise((resolve) => { release = resolve; });
+  let held = false;
+  globalThis.createImageBitmap = async (...args) => { if (!held) { held = true; entered(); await blocked; } return original(...args); };
+  const databasePrototype = Object.getPrototypeOf(f.db), originalTransaction = databasePrototype.transaction;
+  let saveQueued;
+  const queued = new Promise((resolve) => { saveQueued = resolve; });
+  try {
+    const pendingHistory = history(f); await waiting;
+    databasePrototype.transaction = function (...args) { const tx = originalTransaction.apply(this, args); saveQueued(); return tx; };
+    let committed = false;
+    const pendingSave = saveMask(f.productId, f.source, blob(sourceBytes), next.brandLock.maskAssetId, [{ x: 1, y: 0, width: 1, height: 1 }]).then((value) => { committed = true; return value; });
+    await queued;
+    assert.equal(committed, false);
+    release();
+    const snapshot = await pendingHistory;
+    assert.equal(snapshot.historicalOnly, true);
+    assert.equal(snapshot.product.brandLock.maskAssetId, next.brandLock.maskAssetId);
+    assert.equal(snapshot.decisions[0].current, false);
+    await pendingSave;
+    const after = await history(f);
+    assert.notEqual(after.product.brandLock.maskAssetId, next.brandLock.maskAssetId);
+    assert.equal(after.historicalOnly, true);
+    assert.equal(after.decisions[0].current, false);
+  } finally { release(); globalThis.createImageBitmap = original; databasePrototype.transaction = originalTransaction; }
+});
