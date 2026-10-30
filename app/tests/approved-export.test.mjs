@@ -123,6 +123,24 @@ async function styledFixture(style = 'studio') {
   return entry;
 }
 
+test('exports only a valid immediate retry parent and accepts historical provenance without it', async () => {
+  for (const makeEntry of [fixture, styledFixture]) {
+    const entry = await makeEntry(), product = randomUUID(), path = `provenance/${entry.selection.assetId}.json`;
+    const historical = await unpack(await packageApprovedOutputs(product, [entry], signal()));
+    assert.equal(Object.hasOwn(historical[path], 'retryOf'), false);
+
+    const retryOf = randomUUID();
+    entry.provenance.retryOf = retryOf;
+    const contents = await unpack(await packageApprovedOutputs(product, [entry], signal()));
+    assert.equal(contents[path].retryOf, retryOf);
+    assert.equal(JSON.stringify(contents).split(retryOf).length - 1, 1);
+
+    for (const value of [undefined, null, '', 'not-a-uuid', 42, { id: retryOf }, entry.selection.attemptId]) {
+      await assert.rejects(packageApprovedOutputs(product, [{ ...entry, provenance: { ...entry.provenance, retryOf: value } }], signal()), /provenance/i);
+    }
+  }
+});
+
 test('versioned provenance is retained; incomplete and altered scene or recipe are rejected', async () => {
   const entry = await styledFixture(), product = randomUUID();
   const contents = await unpack(await packageApprovedOutputs(product, [entry], signal()));

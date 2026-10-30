@@ -129,6 +129,11 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .studio-history { list-style: none; padding: 0; }
 .studio-history li { border-top: 1px solid var(--border); padding: 12px 0; }
 .studio-scene { display: block; max-width: min(100%, 420px); height: auto; }
+.studio-composite-comparison label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; width: min(100%, 420px); }
+.studio-compare-results { display: flex; flex-wrap: wrap; gap: 16px; }
+.studio-compare-results figure { flex: 1 1 16rem; min-width: 0; margin: 0; }
+.studio-compare-results figcaption { overflow-wrap: anywhere; }
+.studio-compare-results img { display: block; max-width: min(100%, 420px); height: auto; }
 .strict-composite { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--border); }
 .strict-composite h4, .strict-composite h5 { margin: 12px 0; }
 .strict-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }

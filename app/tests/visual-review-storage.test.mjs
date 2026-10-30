@@ -325,6 +325,7 @@ test('changed rights, source, mask, scene, composite or attempt prevent decision
     if (which === 'attempt') await mutate(f.db, 'attempts', f.attemptId, (row) => ({ ...row, status: 'UNKNOWN' }));
     await assert.rejects(decision(f, report), undefined, which);
     await assert.rejects(history(f), undefined, which);
+    if (which === 'attempt') await mutate(f.db, 'attempts', f.attemptId, (row) => ({ ...row, status: 'DEFINITIVE_SUCCESS' }));
   }
 });
 

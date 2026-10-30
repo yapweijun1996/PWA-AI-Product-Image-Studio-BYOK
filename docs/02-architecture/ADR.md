@@ -94,6 +94,14 @@ The owner selected a **self-hosted gateway with server-configured provider key**
 - **Queue and recovery:** Requests are sequential, never automatically retried, and stop on a failed or ambiguous attempt or closed workspace. Unsent prepared records are closed where possible; interrupted records can be closed explicitly without sending. A persisted submission whose outcome is uncertain stays UNKNOWN and may have incurred a charge. Estimates are not provider invoices.
 - **Rollback:** Disable image generation and revert the gateway, queue, renderer and contract together. Preserve source images, masks, jobs, attempts, scenes, frozen copy layers, composites, QA and journal records; older versions may not understand the newer records and must not silently discard them.
 
+## ADR-011 — Explicit per-style retry lineage
+
+- **State:** Local development implementation only; real-provider, device and independent security acceptance remain open. No real credential or paid request is authorized by this decision.
+- **Decision:** A same-input retry appends a new attempt UUID to the existing job and records the immediately preceding attempt as `retryOf`. Earlier attempt outcomes, sources, scenes, QA and approvals are retained. A changed source, mask, product snapshot, fact selection, preset or prompt requires a new job. Legacy Studio prompts unsupported by the current gateway can start a new job, not an implicit same-job retry.
+- **Billing:** Retry preparation makes no provider request. Each later submission requires fresh explicit consent and a new one-use gateway authorization. A prior UNKNOWN remains UNKNOWN after the required explicit external-billing review. A bounded `Retry-After` is retained and checked for subsequent local attempts; it is a minimum delay, not a promise of success or provider-wide enforcement. Browser-local controls do not cover other profiles or clients.
+- **Compatibility and recovery:** Jobs may now contain multiple ordered attempts, with optional `retryOf`, categorized failure and retry-delay metadata. Existing single-attempt jobs remain readable by the new build; older builds may not understand new records and must not be used to rewrite them. Output-only provenance includes the immediate retry parent when present. Full backup of job and QA records remains unsupported.
+- **Rollback:** Disable generation, retain all local records and journals, and restore the matching pre-retry client only after a reviewed migration or recovery plan. Do not delete records to bypass an ambiguous charge or rate delay.
+
 ## ADR amendment template
 
 `ADR-ID | Title | Author | Date | State | Scope | Options | Decision + user approval evidence | Security/Data impact | Migration | Test evidence | Rollback | Supersedes`.

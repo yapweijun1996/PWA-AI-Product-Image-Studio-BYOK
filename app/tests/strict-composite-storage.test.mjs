@@ -245,6 +245,7 @@ test('scene must be the unique successful attempt scene and valid PNG', async ()
   const h = await fixture();
   await mutate(h.db, 'attempts', h.attemptId, (row) => ({ ...row, status: 'UNKNOWN', recordedOutcome: 'DEFINITIVE_SUCCESS' }));
   await assert.rejects(load(h), /definitive successful/);
+  await mutate(h.db, 'attempts', h.attemptId, ({ recordedOutcome, ...row }) => ({ ...row, status: 'DEFINITIVE_SUCCESS' }));
 });
 
 test('equivalent pixels with different PNG encoding are accepted', async () => {

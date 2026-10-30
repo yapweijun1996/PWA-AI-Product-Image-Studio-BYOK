@@ -1,12 +1,14 @@
 # PWA-AI-Product-Image-Studio-BYOK
 
-**Version:** 4.0.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
+**Version:** 4.1.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
 **Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 
 > The `app/` directory provides local SKU projects, confirmed facts, immutable source-image upload, manual masks, subset backup, an offline/update worker and a loopback-only development gateway. A default-disabled seven-style queue can produce separately authorized, unapproved scenes and locally composite protected source pixels. The displayed prompt sends the product name, category and selected confirmed facts to the provider; original images and masks remain local. Human style-specific review and a separate decision are required before conversion and output-only ZIP export; this is not a full project backup. Synthetic tests do not establish real-SKU fidelity, production security or installed-device acceptance. Do not enable billable generation or use a real key before the required isolation and security reviews. Jobs, outputs, QA and receipts cannot yet be backed up; the app refuses backup rather than omitting them. Eligible UNKNOWN attempts can be acknowledged without rewriting their outcome; generation and interrupted-submission review require browser Web Locks.
 
 The style queue displays the number of potentially billable calls and supports estimate-only per-attempt and browser-tab session soft limits with separate one-attempt overrides. Synthetic responses can record sanitized usage and a snapshot-based estimate; these are not the provider invoice or an account-wide spending cap.
+
+Per-style retry preserves the previous attempt and uses a fresh consent, UUID and gateway approval; a reviewed UNKNOWN is not rewritten as success. The history can compare same-style scenes and saved local composites, and approved output provenance includes the immediate retry parent. A recorded rate-limit delay is enforced only within the same browser profile; it is not a provider-wide cap.
 
 ## Start here
 

@@ -226,6 +226,12 @@
               "null"
             ],
             "maxLength": 80
+          },
+          "retryAfterSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "description": "Bounded provider or gateway delay guidance, not an automatic retry."
           }
         }
       }

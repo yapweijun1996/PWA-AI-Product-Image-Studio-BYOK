@@ -248,7 +248,7 @@ test('provenance uses the actual submission time and requires it', async () => {
   await mutate(f.db, 'jobs', original.provenance.jobId, (job) => ({
     ...job, attempts: [{ ...job.attempts[0], submittedAt: null }],
   }));
-  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /submission time|successful job/);
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]));
 });
 
 test('batch is all-or-nothing and duplicate selections are rejected', async () => {

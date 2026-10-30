@@ -32,6 +32,8 @@ CANCELLED --> [*]
 
 No automatic `UNKNOWN→SUBMITTING` transition. Retry from FAILED/REJECTED/UNKNOWN creates *another Attempt* only after user authorization with a new idempotency key; it may still generate an additional charge if the first request was processed.
 
+The local implementation appends an ordered attempt to the original job only when the predecessor is the latest eligible terminal attempt and source, mask, product snapshot, selected facts, style, preset and prompt are unchanged. It retains each earlier entry and separately revalidates the selected attempt for composition and export. `retryOf` records the immediate predecessor. A changed input or unsupported legacy prompt starts a new job instead. Preparing a retry does not dispatch; every new attempt needs fresh authorization. Locally recorded bounded rate delays block subsequent attempts in the same browser profile until the minimum time passes; other clients and provider billing remain outside this guard.
+
 ## Idempotency boundaries
 
 - For `/images/generate`, the owner selected the same UUID for `X-Client-Request-Id` and `clientAttemptId`; other endpoint correlation IDs are unaffected. The header is also the pre-submit reservation identifier. See [ADR-008](ADR.md) and [OPEN-008](../00-governance/DECISION_REGISTER.md) for outstanding journal and security review.

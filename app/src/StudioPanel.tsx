@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, STUDIO_MAX_PNG_BYTES, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD, type StudioStyleId, type StudioSceneContext } from '../studio-policy.mjs';
-import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, listStyleInputs, productSnapshotFingerprint, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
+import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, listStrictComposites, listStyleInputs, loadOriginalSource, productSnapshotFingerprint, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StrictComposite, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
 import { inspectImageHeader } from './imageHeader';
 import { sha256 } from './prepareSource';
 import { useUnsavedChanges } from './useUnsavedChanges';
 import { StrictCompositePanel } from './StrictCompositePanel';
+import { LocalImage } from './LocalImage';
 
 type Entry = { attempt: StudioAttempt; asset: StudioAsset | null };
 type Gateway = { csrf: string; reviewRevision: number } | 'checking' | 'unavailable' | 'signed-out' | 'disconnected';
@@ -79,6 +80,43 @@ function rateLimitMessage(status: number, envelope: Record<string, unknown>): st
     ? `${guidance} Wait at least ${seconds} seconds before separately authorizing a new attempt; no automatic retry will occur.`
     : `${guidance} A new attempt requires separate authorization; no automatic retry will occur.`;
 }
+export function sanitizedStudioFailure(status: number, envelope: Record<string, unknown>, preSend = false): NonNullable<StudioAttempt['failure']> {
+  if (status === 429 && envelope.outcome === 'DEFINITIVE_FAILURE' && (envelope.code === 'RATE_LIMITED' || envelope.code === 'PROVIDER_LIMIT')) {
+    const seconds = envelope.retryAfterSeconds;
+    return { category: envelope.code === 'RATE_LIMITED' ? 'rate_limited' : 'provider_limit',
+      ...(typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= 86400 ? { retryAfterSeconds: seconds } : {}) };
+  }
+  if (preSend) return { category: 'pre_send' };
+  if (envelope.outcome === 'DEFINITIVE_FAILURE' && ((status === 409 && (envelope.code === 'ATTEMPT_BUSY' || envelope.code === 'APPROVAL_STALE')) ||
+      (status === 503 && envelope.code === 'RECOVERY_REQUIRED'))) return { category: 'pre_send' };
+  return { category: sceneFailure(status, envelope).definitive ? 'rejected' : 'unknown' };
+}
+
+export function retryableStudioAttempt(attempt: StudioAttempt, attempts: StudioAttempt[]): boolean {
+  if (!attempt.styleId || !attempt.sceneContext || !attempt.selectedFactIds || !attempt.productSnapshotFingerprint ||
+      attempt.presetVersion !== STUDIO_PRESET_VERSION || attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION ||
+      attempt.model !== STUDIO_MODEL || attempt.quality !== STUDIO_QUALITY || attempt.size !== STUDIO_SIZE ||
+      studioAttemptBlocks(attempt) ||
+      !['DEFINITIVE_FAILURE', 'DEFINITIVE_SUCCESS', 'UNKNOWN'].includes(attempt.status)) return false;
+  const job = attempts.filter((item) => item.jobId === attempt.jobId);
+  if (!job.length || new Set(job.map((item) => item.attemptId)).size !== job.length) return false;
+  const parents = new Set(job.map((item) => item.retryOf).filter(Boolean));
+  const leaves = job.filter((item) => !parents.has(item.attemptId));
+  return leaves.length === 1 && leaves[0].attemptId === attempt.attemptId;
+}
+
+function failureText(attempt: StudioAttempt): string {
+  if (attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') {
+    const seconds = attempt.failure?.retryAfterSeconds;
+    const delay = typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= 86400 ? ` A recorded minimum wait of ${seconds} seconds applies after completion.` : '';
+    return `Outcome unknown or still in progress; a charge may have occurred.${delay} No automatic retry.`;
+  }
+  const failure = attempt.failure;
+  if (!failure) return 'No categorized reason was recorded for this historical attempt.';
+  const labels = { pre_send: 'The image request was not sent.', rejected: 'The image request failed definitively.', rate_limited: 'Local rate limit reached.', provider_limit: 'Provider limit reached; check provider quota and billing.', unknown: 'Outcome unknown; a charge may have occurred.' };
+  const text = Object.hasOwn(labels, failure.category) ? labels[failure.category] : 'The failure reason is unavailable.';
+  return `${text}${(failure.category === 'rate_limited' || failure.category === 'provider_limit') && Number.isInteger(failure.retryAfterSeconds) && failure.retryAfterSeconds! >= 1 && failure.retryAfterSeconds! <= 86400 ? ` Minimum wait after completion: ${failure.retryAfterSeconds} seconds; waiting does not guarantee success.` : ''} No automatic retry.`;
+}
 export async function decodeScene(value: unknown, attemptId: string): Promise<{ blob: Blob; hash: string; usage: Record<string, unknown> | null; observedUSD: string | null; pricingSnapshot?: string }> {
   const result = record(value), image = record(result.image);
   if (result.clientAttemptId !== attemptId || result.outcome !== 'DEFINITIVE_SUCCESS' || result.model !== STUDIO_MODEL || image.mimeType !== 'image/png' || image.width !== 1024 || image.height !== 1024 || typeof image.dataBase64 !== 'string' || image.dataBase64.length > Math.ceil(STUDIO_MAX_PNG_BYTES / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.dataBase64) || !image.dataBase64.length || (result.usage !== null && (typeof result.usage !== 'object' || Array.isArray(result.usage))) || (result.observedUSD !== null && (typeof result.observedUSD !== 'string' || !/^\d+\.\d{1,6}$/.test(result.observedUSD)))) throw new Error('The returned scene response is invalid.');
@@ -98,6 +136,49 @@ function Scene({ asset }: { asset: StudioAsset }) {
   const [url, setUrl] = useState('');
   useEffect(() => { const next = URL.createObjectURL(asset.blob); setUrl(next); return () => URL.revokeObjectURL(next); }, [asset]);
   return url ? <img className="studio-scene" src={url} alt="Unapproved generated empty scene" /> : null;
+}
+
+function Original({ product, attempt }: { product: Product; attempt: StudioAttempt }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    let active = true, objectUrl = '';
+    setUrl('');
+    const source = product.sourceAssets.find((item) => item.assetId === attempt.sourceAssetId && item.sha256 === attempt.sourceSha256);
+    if (source) void loadOriginalSource(product.productId, source).then((blob) => {
+      if (active) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); }
+    }).catch(() => { if (active) setUrl(''); });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [product, attempt.sourceAssetId, attempt.sourceSha256]);
+  return url ? <img className="studio-scene" src={url} alt="Original product photograph" /> : <p>Original source unavailable or no longer matches this attempt.</p>;
+}
+
+function CompositeComparison({ productId, productVersion, leftAttempt, rightAttempt }: { productId: string; productVersion: string; leftAttempt: string; rightAttempt: string }) {
+  const [outputs, setOutputs] = useState<[StrictComposite[], StrictComposite[]] | null>(null);
+  const [left, setLeft] = useState('');
+  const [right, setRight] = useState('');
+  const [version, setVersion] = useState(0);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    setOutputs(null); setLeft(''); setRight(''); setError('');
+    void Promise.all([listStrictComposites(productId, leftAttempt), listStrictComposites(productId, rightAttempt)])
+      .then(([a, b]) => { if (active) { setOutputs([a, b]); setLeft(a[0]?.assetId ?? ''); setRight(b[0]?.assetId ?? ''); } })
+      .catch(() => { if (active) setError('Saved composites could not be verified. Reload or review their history.'); });
+    return () => { active = false; };
+  }, [productId, productVersion, leftAttempt, rightAttempt, version]);
+  const selected = outputs && [outputs[0].find((item) => item.assetId === left), outputs[1].find((item) => item.assetId === right)];
+  return <div className="studio-composite-comparison"><h4>Compare saved product composites</h4>
+    <p>These are saved snapshots, not approval decisions. Review each original, mask, labels and current QA separately before export.</p>
+    <button type="button" className="secondary-button" onClick={() => setVersion((value) => value + 1)}>Refresh saved composites</button>
+    {error ? <p className="error-message" role="alert">{error}</p> : !outputs ? <p role="status">Checking saved composites…</p> : <>
+      {outputs.map((items, index) => <label key={index}>{index === 0 ? 'First' : 'Second'} saved composite
+        <select value={index === 0 ? left : right} onChange={(event) => index === 0 ? setLeft(event.target.value) : setRight(event.target.value)}>
+          {!items.length && <option value="">No saved composite for this attempt</option>}
+          {items.map((item) => <option key={item.assetId} value={item.assetId}>{item.assetId} · {item.sha256.slice(0, 12)}</option>)}
+        </select></label>)}
+      {selected && selected[0] && selected[1] && <div className="studio-compare-results">{selected.map((item) => <figure key={item!.assetId}><figcaption>Saved STRICT composite · {item!.assetId} · SHA-256 {item!.sha256}</figcaption><LocalImage blob={item!.blob} alt={`Saved product composite ${item!.assetId}`} /></figure>)}</div>}
+    </>}
+  </div>;
 }
 function initialBudgetSession(): string | null {
   try {
@@ -132,6 +213,9 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const [selectedStyles, setSelectedStyles] = useState<StudioStyleId[]>(['studio']);
   const [sourceByStyle, setSourceByStyle] = useState<Partial<Record<StudioStyleId, string>>>({});
   const [selectedFacts, setSelectedFacts] = useState<string[]>(() => product.facts.filter((fact) => fact.confirmed).map((fact) => fact.factId));
+  const [retry, setRetry] = useState<StudioAttempt | null>(null);
+  const [compareLeft, setCompareLeft] = useState('');
+  const [compareRight, setCompareRight] = useState('');
   const [styleConsent, setStyleConsent] = useState<Partial<Record<StudioStyleId, boolean>>>({});
   const [attemptOverrides, setAttemptOverrides] = useState<Partial<Record<StudioStyleId, boolean>>>({});
   const [sessionOverrides, setSessionOverrides] = useState<Partial<Record<StudioStyleId, boolean>>>({});
@@ -166,6 +250,14 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
         prior += moneyUnits(estimate);
         return plan;
       });
+    }
+    if (retry && (plans.length !== 1 || !retryableStudioAttempt(retry, entries?.map((entry) => entry.attempt) ?? []) ||
+        plans[0].styleId !== retry.styleId || plans[0].input.source.assetId !== retry.sourceAssetId ||
+        plans[0].input.source.sha256 !== retry.sourceSha256 || plans[0].input.maskId !== retry.maskId ||
+        plans[0].input.maskSha256 !== retry.maskSha256 || plans[0].prompt !== retry.prompt ||
+        JSON.stringify(plans[0].context) !== JSON.stringify(retry.sceneContext) ||
+        JSON.stringify(selectedFacts) !== JSON.stringify(retry.selectedFactIds))) {
+      throw new Error('The original retry inputs or history changed. Start a new job instead.');
     }
   } catch (reason) { plans = []; planError = reason instanceof Error ? reason.message : 'The style selection is invalid.'; }
   const plannedTotal = moneyString(plans.reduce((sum, plan) => sum + moneyUnits(plan.estimate), 0n));
@@ -252,6 +344,31 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     }
   }
 
+  async function prepareRetry(previous: StudioAttempt) {
+    if (running.current || busy) return;
+    running.current = true; setBusy(true); onBusyChange(true); setError(''); setNotice(''); clearQueueConsent(); setRetry(null);
+    try {
+      const [history, input, hash] = await Promise.all([
+        listStudioAttempts(product.productId), studioInput(product.productId, previous.sourceAssetId), productSnapshotFingerprint(product),
+      ]);
+      const current = history.find((entry) => entry.attempt.attemptId === previous.attemptId)?.attempt;
+      if (!current || !retryableStudioAttempt(current, history.map((entry) => entry.attempt)) ||
+          hash !== current.productSnapshotFingerprint || input.source.sha256 !== current.sourceSha256 ||
+          input.maskId !== current.maskId || input.maskSha256 !== current.maskSha256 ||
+          !current.styleId || !current.selectedFactIds ||
+          JSON.stringify(studioSceneContext(product, input.source, current.selectedFactIds)) !== JSON.stringify(current.sceneContext) ||
+          studioBuildPrompt(current.styleId, current.sceneContext!) !== current.prompt) {
+        throw new Error('This retry is no longer eligible or its original inputs have changed. Start a new job instead.');
+      }
+      setEntries(history); setSelectedStyles([current.styleId]); setSourceByStyle({ [current.styleId]: current.sourceAssetId });
+      setSelectedFacts([...current.selectedFactIds]); setRetry(current);
+      setNotice('Retry loaded for review only. No request has been sent; fresh consent and gateway approval are required.');
+    } catch {
+      setError('This retry is no longer eligible or its original inputs are unavailable or changed. Start a new job instead.');
+      try { await refreshEntries(); } catch { setEntries(null); }
+    } finally { running.current = false; setBusy(false); onBusyChange(false); }
+  }
+
   async function generate(event: FormEvent) {
     event.preventDefault();
     if (running.current || unresolved || !ready || planError || entries === null || typeof gateway !== 'object' ||
@@ -267,6 +384,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       if (!gatewayAvailable()) throw new Error('Offline or local gateway unavailable. No request was sent.');
       if (await studioSessionEstimate(budgetSessionId) !== initialTotal) throw new Error('The session estimate changed. Review the updated total and authorize again.');
       const productHash = await productSnapshotFingerprint(product);
+      if (retry && productHash !== retry.productSnapshotFingerprint) throw new Error('Product or facts changed. Start a new job instead.');
       for (const plan of chosen) {
         ensureOpen();
         const input = await studioInput(product.productId, plan.input.source.assetId);
@@ -274,7 +392,8 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
           throw new Error('A source or mask changed. Review the queue again; no image request was sent.');
         }
         const attempt: StudioAttempt = {
-          attemptId: crypto.randomUUID(), jobId: crypto.randomUUID(), productId: product.productId,
+          attemptId: crypto.randomUUID(), jobId: retry?.jobId ?? crypto.randomUUID(), productId: product.productId,
+          ...(retry ? { retryOf: retry.attemptId } : {}),
           sourceAssetId: input.source.assetId, sourceSha256: input.source.sha256, maskId: input.maskId, maskSha256: input.maskSha256,
           styleId: plan.styleId, presetVersion: STUDIO_PRESET_VERSION, sceneContext: plan.context,
           productSnapshotFingerprint: productHash, selectedFactIds: factIds,
@@ -295,9 +414,12 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       for (let index = 0; index < prepared.length; index++) {
         ensureOpen();
         let attempt = prepared[index], submitted = false, savedOutcome = false, savedSuccess = false;
+        let failureDetail: NonNullable<StudioAttempt['failure']> = { category: 'pre_send' };
         const plan = chosen[index], id = attempt.attemptId;
-        setNotice(`Submitting ${STYLE_LABELS[plan.styleId]} (${index + 1} of ${prepared.length}); later styles remain prepared.`);
-        await withStudioAttemptLock(id, navigator.locks, async () => {
+        setNotice(`Waiting for the local image-request lock for ${STYLE_LABELS[plan.styleId]} (${index + 1} of ${prepared.length}); later styles remain prepared.`);
+        await navigator.locks.request('studio-origin-dispatch-v1', { mode: 'exclusive' }, () => withStudioAttemptLock(id, navigator.locks, async () => {
+          ensureOpen();
+          setNotice(`Submitting ${STYLE_LABELS[plan.styleId]} (${index + 1} of ${prepared.length}); later styles remain prepared.`);
           try {
             const body = { clientAttemptId: id, productId: product.productId, styleId: plan.styleId, lockMode: 'STRICT', operation: 'generate_scene',
               model: STUDIO_MODEL, quality: STUDIO_QUALITY, size: STUDIO_SIZE, prompt: plan.prompt, promptVersion: STUDIO_SCENE_PROMPT_VERSION,
@@ -311,7 +433,9 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
             if (!approvalResponse.ok) {
               let message: string | null = null;
               try {
-                const failure = approvalFailure(approvalResponse.status, record(record(await json(approvalResponse)).error));
+                const envelope = record(record(await json(approvalResponse)).error);
+                const failure = approvalFailure(approvalResponse.status, envelope);
+                failureDetail = sanitizedStudioFailure(approvalResponse.status, envelope, true);
                 if (failure.stale) { gatewayCheck.current++; setGateway('unavailable'); }
                 message = failure.message;
               } catch { /* use safe generic message */ }
@@ -327,7 +451,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
             await updateStudioAttempt(attempt, undefined, fingerprint, expectedTotal);
             pending.delete(id);
             if (!mounted.current) {
-              attempt = { ...attempt, status: 'DEFINITIVE_FAILURE' };
+              attempt = { ...attempt, status: 'DEFINITIVE_FAILURE', failure: { category: 'pre_send' } };
               await updateStudioAttempt(attempt);
               savedOutcome = true;
               throw new Error('The workspace was closed before the image request was sent.');
@@ -339,9 +463,10 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
               try {
                 const envelope = record(record(await json(response)).error);
                 failure = sceneFailure(response.status, envelope);
+                failureDetail = sanitizedStudioFailure(response.status, envelope);
                 if (response.status === 409 && envelope.code === 'APPROVAL_STALE' && failure.definitive) { gatewayCheck.current++; setGateway('unavailable'); }
               } catch { /* malformed failure is ambiguous */ }
-              attempt = { ...attempt, status: failure.definitive ? 'DEFINITIVE_FAILURE' : 'UNKNOWN',
+              attempt = { ...attempt, status: failure.definitive ? 'DEFINITIVE_FAILURE' : 'UNKNOWN', failure: failure.definitive ? failureDetail : { category: 'unknown' },
                 ...(failure.definitive && cleanupPending(response.headers) ? { cleanupPending: true as const } : {}) };
               await updateStudioAttempt(attempt);
               savedOutcome = true;
@@ -357,23 +482,26 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
           } catch (reason) {
             if (!savedSuccess && !savedOutcome) {
               const { pricingSnapshot: _pricing, cleanupPending: _cleanup, ...base } = attempt;
-              attempt = { ...base, status: submitted ? 'UNKNOWN' : 'DEFINITIVE_FAILURE', usage: null, observedUSD: null };
+              const knownDelay = (failureDetail.category === 'rate_limited' || failureDetail.category === 'provider_limit') ? failureDetail.retryAfterSeconds : undefined;
+              attempt = { ...base, status: submitted ? 'UNKNOWN' : 'DEFINITIVE_FAILURE', failure: submitted ? { category: 'unknown', ...(knownDelay === undefined ? {} : { retryAfterSeconds: knownDelay }) } : failureDetail, usage: null, observedUSD: null };
               try { await updateStudioAttempt(attempt); pending.delete(id); } catch { /* preserve interrupted evidence; never resend */ }
             }
             if (submitted && attempt.status === 'UNKNOWN') throw new Error('The outcome is UNKNOWN or could not be saved. A charge may have occurred; the remaining queue was not sent and no automatic retry will occur.');
             throw reason;
           }
-        });
+        }));
         await refreshEntries();
       }
       setNotice(`${prepared.length} independent scene attempts completed. Each result remains unapproved until local composition and human review.`);
     } catch (reason) {
+      setNotice('');
       setError(`${reason instanceof Error ? reason.message : 'The queue could not continue.'} Remaining prepared styles were not automatically sent.`);
     } finally {
       for (const item of pending.values()) {
-        try { await updateStudioAttempt({ ...item, status: 'DEFINITIVE_FAILURE' }); } catch { /* Keep unresolved local evidence for manual review. */ }
+        try { await updateStudioAttempt({ ...item, status: 'DEFINITIVE_FAILURE', failure: { category: 'pre_send' } }); } catch { /* Keep unresolved local evidence for manual review. */ }
       }
       clearQueueConsent();
+      if (prepared.length) setRetry(null);
       try { await refreshEntries(); } catch { setEntries(null); setError('Local attempt history could not be read. Generation is disabled.'); }
       running.current = false; onBusyChange(false); setBusy(false);
     }
@@ -383,7 +511,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     if (busy || attempt.status !== 'PREPARED' || !navigator.locks) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      await withStudioAttemptLock(attempt.attemptId, navigator.locks, () => updateStudioAttempt({ ...attempt, status: 'DEFINITIVE_FAILURE' }));
+      await withStudioAttemptLock(attempt.attemptId, navigator.locks, () => updateStudioAttempt({ ...attempt, status: 'DEFINITIVE_FAILURE', failure: { category: 'pre_send' } }));
       await refreshEntries();
       setNotice('The prepared attempt was closed without sending an image request. A new attempt requires separate authorization.');
     } catch {
@@ -391,6 +519,10 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       setError('The attempt could not be closed; its state may have changed in another tab. Review the history before proceeding.');
     } finally { setBusy(false); }
   }
+  const scenes = (entries ?? []).filter((entry) => entry.attempt.styleId && entry.attempt.status === 'DEFINITIVE_SUCCESS' && entry.asset);
+  const leftScene = scenes.find((entry) => entry.attempt.attemptId === compareLeft);
+  const rightScene = scenes.find((entry) => entry.attempt.attemptId === compareRight && entry.attempt.styleId === leftScene?.attempt.styleId && entry.attempt.attemptId !== compareLeft);
+
 
   return <section className="product-section studio-panel" aria-labelledby="studio-heading">
     <span className="section-kicker">STRICT STYLE QUEUE</span><h2 id="studio-heading">Generate style scenes</h2>
@@ -401,12 +533,13 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
     <button className="secondary-button" type="button" disabled={busy} onClick={() => void refreshGateway()}>Check gateway</button>
     <form onSubmit={generate}>
+      {retry && <div><p><strong>Retry of attempt {retry.attemptId}</strong> · job {retry.jobId}. Previous outcome: {retry.status}; a previous charge may have occurred, including for a reviewed UNKNOWN. The current estimate is {planError || !plans.length ? 'unavailable' : `$${plans[0].estimate} USD`}; this is a separate potentially billable call. No automatic retry occurs.</p><p>Original source, mask, facts, style and prompt are locked. To change inputs or preset, start a new job.</p><button type="button" className="secondary-button" disabled={busy} onClick={() => { setRetry(null); clearQueueConsent(); }}>Start a new job instead</button></div>}
       <p>Session estimate so far: {sessionTotal === null ? 'unavailable' : `$${sessionTotal} USD`}. Includes prepared and failed attempts in this browser-tab session; it is not provider spend or a hard cap.</p>
       <label htmlFor="studio-session-limit">Optional session estimated USD soft limit</label><input id="studio-session-limit" value={sessionLimit} onChange={(event) => { const value = event.target.value; setSessionLimit(value); clearQueueConsent(); try { sessionStorage.setItem('studio-session-limit', value); } catch { setBudgetSessionId(null); setError('Session settings are unavailable. Generation is disabled.'); } }} placeholder="e.g. 0.050000" disabled={busy} inputMode="decimal" />
       <label htmlFor="studio-limit">Optional per-attempt estimated USD soft limit</label><input id="studio-limit" value={max} onChange={(event) => { const value = event.target.value; setMax(value); clearQueueConsent(); try { sessionStorage.setItem('studio-attempt-limit', value); } catch { setBudgetSessionId(null); setError('Session settings are unavailable. Generation is disabled.'); } }} placeholder="e.g. 0.010000" disabled={busy} inputMode="decimal" />
-      <fieldset disabled={busy}><legend>Confirmed facts to include in each provider prompt</legend><p>Only selected confirmed facts are sent. Names and category are also included; review every prompt before authorizing.</p>{product.facts.filter((fact) => fact.confirmed).map((fact) => <label className="checkbox-label" key={fact.factId}><input type="checkbox" checked={selectedFacts.includes(fact.factId)} onChange={(event) => { const checked = event.target.checked; setSelectedFacts((old) => checked ? [...old, fact.factId] : old.filter((id) => id !== fact.factId)); clearQueueConsent(); }} /><span>{fact.name}: {fact.value}</span></label>)}</fieldset>
-      <fieldset disabled={busy}><legend>Choose styles</legend>{STUDIO_STYLE_IDS.map((styleId) => <label className="checkbox-label" key={styleId}><input type="checkbox" checked={selectedStyles.includes(styleId)} onChange={(event) => { const checked = event.target.checked; setSelectedStyles((old) => checked ? [...old, styleId] : old.filter((id) => id !== styleId)); clearQueueConsent(); }} /><span>{STYLE_LABELS[styleId]}</span></label>)}</fieldset>
-      {sources === null ? <p role="status">Checking source masks…</p> : sources.length === 0 ? <p>Save a verified mask for a source before generation.</p> : selectedStyles.map((styleId) => <label key={styleId}>{STYLE_LABELS[styleId]} source<select value={sourceByStyle[styleId] ?? sources[0].source.assetId} disabled={busy} onChange={(event) => { const value = event.target.value; setSourceByStyle((old) => ({ ...old, [styleId]: value })); clearQueueConsent(); }}>{sources.map((item) => <option key={item.source.assetId} value={item.source.assetId}>{item.source.filename} · {item.source.cameraView}</option>)}</select></label>)}
+      <fieldset disabled={busy || Boolean(retry)}><legend>Confirmed facts to include in each provider prompt</legend><p>Only selected confirmed facts are sent. Names and category are also included; review every prompt before authorizing.</p>{product.facts.filter((fact) => fact.confirmed).map((fact) => <label className="checkbox-label" key={fact.factId}><input type="checkbox" checked={selectedFacts.includes(fact.factId)} onChange={(event) => { const checked = event.target.checked; setSelectedFacts((old) => checked ? [...old, fact.factId] : old.filter((id) => id !== fact.factId)); clearQueueConsent(); }} /><span>{fact.name}: {fact.value}</span></label>)}</fieldset>
+      <fieldset disabled={busy || Boolean(retry)}><legend>Choose styles</legend>{STUDIO_STYLE_IDS.map((styleId) => <label className="checkbox-label" key={styleId}><input type="checkbox" checked={selectedStyles.includes(styleId)} onChange={(event) => { const checked = event.target.checked; setSelectedStyles((old) => checked ? [...old, styleId] : old.filter((id) => id !== styleId)); clearQueueConsent(); }} /><span>{STYLE_LABELS[styleId]}</span></label>)}</fieldset>
+      {sources === null ? <p role="status">Checking source masks…</p> : sources.length === 0 ? <p>Save a verified mask for a source before generation.</p> : selectedStyles.map((styleId) => <label key={styleId}>{STYLE_LABELS[styleId]} source<select value={sourceByStyle[styleId] ?? sources[0].source.assetId} disabled={busy || Boolean(retry)} onChange={(event) => { const value = event.target.value; setSourceByStyle((old) => ({ ...old, [styleId]: value })); clearQueueConsent(); }}>{sources.map((item) => <option key={item.source.assetId} value={item.source.assetId}>{item.source.filename} · {item.source.cameraView}</option>)}</select></label>)}
       {planError && <p className="error-message" role="alert">{planError}</p>}
       {plans.map((plan) => <section className="style-plan" key={plan.styleId}><h3>{STYLE_LABELS[plan.styleId]}</h3><p>Source {plan.input.source.filename} · {plan.input.source.cameraView}; one planned call, estimated ${plan.estimate} USD. {plan.styleId === 'flat_lay' && (plan.context.sourceView === 'TOP' ? 'True overhead requires your confirmation below.' : 'This is a source-angle-inspired scene, not true overhead.')}{plan.styleId === 'macro' && ' Select and review an actual source crop during composition.'}{plan.styleId === 'billboard' && ' Compose and inspect the complete ad locally; no advertising copy is generated.'}</p><details><summary>Review exact provider prompt</summary><p>{plan.prompt}</p></details>
         {plan.styleId === 'flat_lay' && plan.context.sourceView === 'TOP' && <label className="checkbox-label"><input type="checkbox" checked={topConfirmed} disabled={busy} onChange={(event) => { setTopConfirmed(event.target.checked); setStyleConsent({}); }} /><span>I confirm this source is compatible with a true 90-degree overhead view.</span></label>}
@@ -416,14 +549,26 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       <button className="primary-button" type="submit" disabled={busy || unresolved || !ready || Boolean(planError) || entries === null || !navigator.locks || !budgetSessionId || sessionTotal === null || reviewFingerprint === null || typeof gateway !== 'object'}>{busy ? 'Working…' : 'Authorize and generate selected scenes'}</button>
     </form>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
+    <section aria-labelledby="studio-comparison-heading">
+      <h3 id="studio-comparison-heading">Compare generated scenes</h3>
+      <p>Choose two attempts of the same style. These are unapproved empty backgrounds, not product photographs; inspect the original and the locally composed product separately.</p>
+      <label>First attempt<select value={compareLeft} onChange={(event) => { setCompareLeft(event.target.value); setCompareRight(''); }}><option value="">Choose an attempt</option>{scenes.map(({ attempt }) => <option key={attempt.attemptId} value={attempt.attemptId}>{STYLE_LABELS[attempt.styleId!]} · {attempt.attemptId}</option>)}</select></label>
+      <label>Second attempt<select value={rightScene?.attempt.attemptId ?? ''} onChange={(event) => setCompareRight(event.target.value)} disabled={!leftScene}><option value="">Choose another attempt of the same style</option>{scenes.filter(({ attempt }) => attempt.styleId === leftScene?.attempt.styleId && attempt.attemptId !== compareLeft).map(({ attempt }) => <option key={attempt.attemptId} value={attempt.attemptId}>{attempt.attemptId}</option>)}</select></label>
+      {leftScene && rightScene && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>{[leftScene, rightScene].map(({ attempt, asset }) => <figure key={attempt.attemptId} style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved {STYLE_LABELS[attempt.styleId!]} scene · {attempt.attemptId}</figcaption><Scene asset={asset!} /></figure>)}</div>}
+      {leftScene && rightScene && <CompositeComparison productId={product.productId} productVersion={productVersion} leftAttempt={leftScene.attempt.attemptId} rightAttempt={rightScene.attempt.attemptId} />}
+    </section>
     <h3>Local attempt history</h3>{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset }) => <li key={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attempt.status === 'SUBMITTED' ? 'UNKNOWN (interrupted or in progress)' : attempt.status === 'PREPARED' ? 'Prepared; no image send recorded' : attempt.status}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
+      {attempt.retryOf && <p>Retry of attempt {attempt.retryOf} · job {attempt.jobId}.</p>}
+      {(attempt.status === 'DEFINITIVE_FAILURE' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') && <p>{failureText(attempt)}</p>}
+      {(!attempt.styleId || !attempt.sceneContext || !attempt.selectedFactIds || !attempt.productSnapshotFingerprint || attempt.presetVersion !== STUDIO_PRESET_VERSION || attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION) && <p>This historical attempt cannot be retried with the current preset. Start a new job and give separate fresh consent instead; the original record remains unchanged.</p>}
+      {retryableStudioAttempt(attempt, entries.map((entry) => entry.attempt)) && <button className="secondary-button" type="button" disabled={busy || unresolved} onClick={() => void prepareRetry(attempt)}>Prepare retry for {attempt.styleId && STYLE_LABELS[attempt.styleId]} · {attempt.attemptId}</button>}
       {attempt.status === 'PREPARED' && <button className="secondary-button" type="button" disabled={busy || !navigator.locks} onClick={() => void closePrepared(attempt)}>Close unsent prepared attempt</button>}
       {attempt.usage !== null && <p>Provider-reported token usage: {Object.entries(attempt.usage).map(([key, value]) => `${key}: ${typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}`).join(' · ')}. Provider invoice remains authoritative.</p>}
       {(attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED' || attempt.cleanupPending !== undefined) && (studioAttemptBlocks(attempt) ? <div>
-        <p>{attempt.cleanupPending === true ? `The gateway could not clear its active marker after recording ${attempt.status}. The saved outcome is unchanged. Review provider billing externally before acknowledging; this does not send an image request.` : attempt.cleanupPending !== undefined ? 'Invalid cleanup metadata. Generation remains blocked; preserve the saved records for owner review.' : 'A charge may have occurred. Review provider billing externally before proceeding. An interrupted submission may still be active; the gateway will refuse review while active or without a reviewable result. This acknowledgement does not resolve the original outcome or send an image request.'}</p>
-        <label className="checkbox-label"><input type="checkbox" checked={Boolean(reviewConfirmed[attempt.attemptId])} onChange={(event) => setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: event.target.checked }))} disabled={busy} /><span>I have reviewed provider billing externally and acknowledge the previous attempt may have incurred a charge.</span></label>
+        <p>{attempt.cleanupPending === true ? `The gateway could not clear its active marker after recording ${attempt.status}. The saved outcome is unchanged. Review provider billing and rate limits externally before acknowledging; this does not send an image request.` : attempt.cleanupPending !== undefined ? 'Invalid cleanup metadata. Generation remains blocked; preserve the saved records for owner review.' : 'A charge may have occurred. Review provider billing and rate limits externally before proceeding. An interrupted submission may still be active; the gateway will refuse review while active or without a reviewable result. This acknowledgement does not resolve the original outcome or send an image request.'}</p>
+        <label className="checkbox-label"><input type="checkbox" checked={Boolean(reviewConfirmed[attempt.attemptId])} onChange={(event) => { const checked = event.target.checked; setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: checked })); }} disabled={busy} /><span>I have reviewed provider billing and rate limits externally and acknowledge the previous attempt may have incurred a charge.</span></label>
         <button className="secondary-button" type="button" disabled={busy || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true)} onClick={() => void review(attempt)}>Record review of this attempt</button>
       </div> : <p>Reviewed at {attempt.acknowledgedAt}; gateway recorded outcome: {attempt.recordedOutcome}. Local outcome remains {attempt.cleanupPending === true ? attempt.status : 'UNKNOWN'}. A new attempt requires separate authorization.</p>)}
-      {attempt.status === 'DEFINITIVE_SUCCESS' && (asset ? <><p>Unapproved generated background</p><Scene asset={asset} /><StrictCompositePanel productId={product.productId} productVersion={JSON.stringify(product)} attemptId={attempt.attemptId} scene={asset} disabled={busy} /></> : <p className="error-message">Saved scene is missing.</p>)}</li>)}</ul>}
+      {attempt.status === 'DEFINITIVE_SUCCESS' && (asset ? <><p>Original product photograph compared with the unapproved generated empty scene. The scene alone is not the product; the original product must be composed and reviewed locally.</p><div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Original product photograph</figcaption><Original product={product} attempt={attempt} /></figure><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved generated empty scene</figcaption><Scene asset={asset} /></figure></div><StrictCompositePanel productId={product.productId} productVersion={JSON.stringify(product)} attemptId={attempt.attemptId} scene={asset} disabled={busy} /></> : <p className="error-message">Saved scene is missing.</p>)}</li>)}</ul>}
   </section>;
 }

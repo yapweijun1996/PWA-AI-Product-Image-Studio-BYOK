@@ -714,6 +714,7 @@ function validateAttemptContext(attempt: StudioAttempt, product: Product, requir
 
 export type StudioAttempt = {
   attemptId: string; jobId: string; productId: string; sourceAssetId: string;
+  retryOf?: string;
   sourceSha256: string; maskId: string; maskSha256: string;
   prompt: string; promptVersion: string; model: string; quality: string; size: string;
   styleId?: StudioStyleId; presetVersion?: string; sceneContext?: StudioSceneContext; selectedFactIds?: string[]; productSnapshotFingerprint?: string; topViewConfirmed?: true;
@@ -721,10 +722,12 @@ export type StudioAttempt = {
   budgetSessionId?: string; sessionPriorUSD?: string; sessionLimitUSD?: string; sessionLimitOverride?: true;
   status: 'PREPARED' | 'SUBMITTED' | 'DEFINITIVE_FAILURE' | 'UNKNOWN' | 'DEFINITIVE_SUCCESS';
   usage: Record<string, unknown> | null; observedUSD: string | null; pricingSnapshot?: string;
+  failure?: StudioFailure;
   acknowledgedAt?: string; recordedOutcome?: StudioRecordedOutcome;
   cleanupPending?: true;
   recoveryLockVersion?: 1;
 };
+export type StudioFailure = { category: 'pre_send' | 'rejected' | 'rate_limited' | 'provider_limit' | 'unknown'; retryAfterSeconds?: number };
 export type StudioRecordedOutcome = 'UNKNOWN' | 'DEFINITIVE_SUCCESS' | 'DEFINITIVE_FAILURE';
 
 export function validStudioAcknowledgement(acknowledgedAt: unknown, recordedOutcome: unknown): acknowledgedAt is string {
@@ -767,10 +770,22 @@ export async function globalStudioReviewFingerprint(): Promise<string> {
 export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt: string, recordedOutcome: StudioRecordedOutcome): Promise<void> {
   if (!validStudioAcknowledgement(acknowledgedAt, recordedOutcome)) throw new Error('Invalid acknowledgement receipt.');
   const db = await openDatabase();
+  const snapshot = await new Promise<StudioAttempt[]>((resolve, reject) => {
+    const tx = db.transaction('attempts', 'readonly'), request = tx.objectStore('attempts').getAll();
+    tx.oncomplete = () => resolve(request.result as StudioAttempt[]);
+    tx.onabort = () => reject(transactionError(tx));
+  });
+  const promptHashes = new Map(await Promise.all(snapshot
+    .filter((row) => row.attemptId === attemptId || row.status === 'PREPARED')
+    .map(async (row) => {
+      if (typeof row.prompt !== 'string') throw new Error('The saved attempt prompt is invalid.');
+      return [row.attemptId, { prompt: row.prompt, hash: await sha256(new TextEncoder().encode(row.prompt)) }] as const;
+    })));
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(['attempts', 'jobs'], 'readwrite');
     const attempts = tx.objectStore('attempts');
     const request = attempts.get(attemptId);
+    const initial = attempts.getAll();
     let failure: Error | undefined;
     request.onsuccess = () => {
       const attempt = request.result as StudioAttempt | undefined;
@@ -784,11 +799,11 @@ export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt
           if (terminal && recordedOutcome !== attempt.status) throw new Error('The acknowledgement outcome conflicts with the saved terminal outcome.');
           if (attempt.cleanupPending !== undefined && attempt.cleanupPending !== true) throw new Error('Invalid cleanup metadata.');
           const job = jobRequest.result as StudioJob | undefined;
-          const entry = job?.attempts?.[0];
-          if (!job || !entry || !validateGenerationJob(job) ||
-              JSON.stringify(job) !== JSON.stringify(studioJob(attempt, job.promptSha256, entry.submittedAt, entry.completedAt))) {
-            throw new Error('The saved job does not match its attempt.');
-          }
+          const entry = job?.attempts.find((item) => item.attemptId === attempt.attemptId);
+          if (!job || !entry) throw new Error('The saved job does not match its attempt.');
+          const savedPrompt = promptHashes.get(attempt.attemptId);
+          if (!savedPrompt || savedPrompt.prompt !== attempt.prompt) throw new Error('The saved attempt changed during review.');
+          verifyStudioLineage(job, initial.result as StudioAttempt[], savedPrompt.hash);
           if (validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome)) {
             if ((attempt.status !== 'UNKNOWN' && !terminal) || attempt.acknowledgedAt !== acknowledgedAt || attempt.recordedOutcome !== recordedOutcome) {
               throw new Error('The saved acknowledgement conflicts with this receipt.');
@@ -797,7 +812,7 @@ export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt
           }
           const reviewed: StudioAttempt = { ...attempt, status: terminal ? attempt.status : 'UNKNOWN', acknowledgedAt, recordedOutcome };
           if (attempt.status === 'SUBMITTED') {
-            tx.objectStore('jobs').put(checkedStudioJob(studioJob(reviewed, job.promptSha256, entry.submittedAt, acknowledgedAt)));
+            tx.objectStore('jobs').put(replaceStudioJobEntry(job, reviewed, entry.submittedAt, acknowledgedAt));
           }
           attempts.put(reviewed);
           const all = attempts.getAll();
@@ -808,13 +823,13 @@ export async function acknowledgeStudioAttempt(attemptId: string, acknowledgedAt
               pendingJobRequest.onsuccess = () => {
                 try {
                   const pendingJob = pendingJobRequest.result as StudioJob | undefined;
-                  const pendingEntry = pendingJob?.attempts?.[0];
-                  if (!pendingJob || !pendingEntry || !validateGenerationJob(pendingJob) ||
-                      JSON.stringify(pendingJob) !== JSON.stringify(studioJob(pending, pendingJob.promptSha256, pendingEntry.submittedAt, pendingEntry.completedAt))) {
-                    throw new Error('A prepared job does not match its attempt.');
-                  }
+                  const pendingEntry = pendingJob?.attempts.find((item) => item.attemptId === pending.attemptId);
+                  if (!pendingJob || !pendingEntry) throw new Error('A prepared job does not match its attempt.');
+                  const savedPrompt = promptHashes.get(pending.attemptId);
+                  if (!savedPrompt || savedPrompt.prompt !== pending.prompt) throw new Error('A prepared attempt changed during review.');
+                  verifyStudioLineage(pendingJob, all.result as StudioAttempt[], savedPrompt.hash);
                   const invalidated: StudioAttempt = { ...pending, status: 'DEFINITIVE_FAILURE' };
-                  tx.objectStore('jobs').put(checkedStudioJob(studioJob(invalidated, pendingJob.promptSha256, pendingEntry.submittedAt, new Date().toISOString())));
+                  tx.objectStore('jobs').put(replaceStudioJobEntry(pendingJob, invalidated, pendingEntry.submittedAt, new Date().toISOString()));
                   attempts.put(invalidated);
                 } catch (error) {
                   failure = error instanceof Error ? error : new Error('Could not invalidate a prepared attempt.'); tx.abort();
@@ -847,7 +862,8 @@ type StudioJob = {
   status: string; createdAt: string;
   attempts: Array<{ attemptId: string; state: string; createdAt: string; submittedAt: string | null;
     completedAt: string | null; estimatedUSD: string; observedUSD: string | null;
-    providerRequestId: null; usage: Record<string, unknown> | null; pricingSnapshot?: string; outcome?: string }>;
+    providerRequestId: null; usage: Record<string, unknown> | null; pricingSnapshot?: string; outcome?: string;
+    retryOf?: string; errorCode?: StudioFailure['category']; retryAfterSeconds?: number }>;
 };
 
 function studioJob(attempt: StudioAttempt, promptHash: string, sentAt: string | null, completedAt: string | null): StudioJob {
@@ -867,13 +883,124 @@ function studioJob(attempt: StudioAttempt, promptHash: string, sentAt: string | 
     quality: attempt.quality, size: attempt.size, status: status[0], createdAt: attempt.submittedAt,
     attempts: [{ attemptId: attempt.attemptId, state: status[1], createdAt: attempt.submittedAt,
       submittedAt: sentAt, completedAt, estimatedUSD: attempt.estimatedUSD, observedUSD: attempt.observedUSD,
-      providerRequestId: null, usage: attempt.usage, ...(attempt.pricingSnapshot === undefined ? {} : { pricingSnapshot: attempt.pricingSnapshot }), ...(outcome ? { outcome } : {}) }],
+      providerRequestId: null, usage: attempt.usage, ...(attempt.pricingSnapshot === undefined ? {} : { pricingSnapshot: attempt.pricingSnapshot }), ...(outcome ? { outcome } : {}),
+      ...(attempt.retryOf === undefined ? {} : { retryOf: attempt.retryOf }),
+      ...(attempt.failure === undefined ? {} : { errorCode: attempt.failure.category, ...(attempt.failure.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: attempt.failure.retryAfterSeconds }) }) }],
   };
 }
 
 function checkedStudioJob(job: StudioJob): StudioJob {
   if (!validateGenerationJob(job)) throw new Error('The generation job is invalid. No changes were saved.');
   return job;
+}
+
+function validateStudioFailure(attempt: StudioAttempt): void {
+  const failure = attempt.failure;
+  if (failure === undefined) return;
+  if (!failure || typeof failure !== 'object' || Array.isArray(failure) ||
+      Object.keys(failure).some((key) => key !== 'category' && key !== 'retryAfterSeconds') ||
+      !['pre_send', 'rejected', 'rate_limited', 'provider_limit', 'unknown'].includes(failure.category) ||
+      (attempt.status !== 'DEFINITIVE_FAILURE' && attempt.status !== 'UNKNOWN') ||
+      (attempt.status === 'UNKNOWN' && failure.category !== 'unknown') ||
+      (attempt.status === 'DEFINITIVE_FAILURE' && failure.category === 'unknown') ||
+      (failure.retryAfterSeconds !== undefined &&
+        (!['rate_limited', 'provider_limit', 'unknown'].includes(failure.category) || !Number.isInteger(failure.retryAfterSeconds) ||
+         failure.retryAfterSeconds < 1 || failure.retryAfterSeconds > 86400))) {
+    throw new Error('The attempt failure metadata is invalid.');
+  }
+}
+
+const retryInputKeys: Array<keyof StudioAttempt> = [
+  'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion',
+  'model', 'quality', 'size', 'styleId', 'presetVersion', 'sceneContext', 'selectedFactIds',
+  'productSnapshotFingerprint', 'topViewConfirmed', 'estimatedUSD',
+];
+function sameRetryInputs(a: StudioAttempt, b: StudioAttempt): boolean {
+  return retryInputKeys.every((key) => JSON.stringify(a[key]) === JSON.stringify(b[key]));
+}
+function retryEligible(attempt: StudioAttempt): boolean {
+  return !studioAttemptBlocks(attempt) &&
+    (attempt.status === 'DEFINITIVE_SUCCESS' || attempt.status === 'DEFINITIVE_FAILURE' ||
+      (attempt.status === 'UNKNOWN' && validStudioAcknowledgement(attempt.acknowledgedAt, attempt.recordedOutcome)));
+}
+
+function enforceRetryDelay(entry: StudioJob['attempts'][number]): void {
+  if (entry.retryAfterSeconds === undefined) return;
+  if (!validStudioAcknowledgement(entry.completedAt, 'UNKNOWN') ||
+      Date.now() < Date.parse(entry.completedAt) + entry.retryAfterSeconds * 1000) {
+    throw new Error('The retry delay has not elapsed or its completion time is invalid. Wait before retrying.');
+  }
+}
+
+// Validate the complete ordered lineage, not merely the selected attempt. The job's
+// status belongs to its latest entry; older outputs remain independently addressable.
+function verifyStudioLineage(job: StudioJob, records: StudioAttempt[], promptHash: string): void {
+  if (!validateGenerationJob(job) || !job.attempts.length) throw new Error('The saved job is invalid.');
+  const rows = records.filter((row) => row.jobId === job.jobId);
+  if (rows.length !== job.attempts.length || new Set(job.attempts.map((entry) => entry.attemptId)).size !== job.attempts.length) {
+    throw new Error('The saved job lineage does not match its attempts.');
+  }
+  const ordered = job.attempts.map((entry) => rows.find((row) => row.attemptId === entry.attemptId));
+  if (ordered.some((row) => !row)) throw new Error('The saved job lineage is incomplete.');
+  const first = ordered[0]!;
+  for (let index = 0; index < ordered.length; index++) {
+    const row = ordered[index]!, entry = job.attempts[index];
+    validateStudioFailure(row);
+    if (!uuidPattern.test(row.attemptId) || row.productId !== job.productId ||
+        !sameRetryInputs(first, row) || row.retryOf !== (index === 0 ? undefined : ordered[index - 1]!.attemptId) ||
+        (index > 0 && !retryEligible(ordered[index - 1]!))) {
+      throw new Error('The saved job retry lineage is invalid.');
+    }
+    if ((row.status === 'PREPARED' && (entry.submittedAt !== null || entry.completedAt !== null)) ||
+        (row.status === 'SUBMITTED' && (entry.submittedAt === null || entry.completedAt !== null)) ||
+        ((row.status === 'DEFINITIVE_SUCCESS' || row.status === 'UNKNOWN') && (entry.submittedAt === null || entry.completedAt === null)) ||
+        (row.status === 'DEFINITIVE_FAILURE' && entry.completedAt === null)) {
+      throw new Error('The saved job submission time or completion time is invalid.');
+    }
+    const expected = studioJob(row, promptHash, entry.submittedAt, entry.completedAt);
+    if (JSON.stringify(entry) !== JSON.stringify(expected.attempts[0])) throw new Error('The saved job does not match its attempt.');
+    const { status: ignoredStatus, createdAt: ignoredCreatedAt, attempts: ignoredAttempts, ...shared } = expected;
+    const { status: jobStatus, createdAt: jobCreatedAt, attempts: jobAttempts, ...actualShared } = job;
+    if (JSON.stringify(shared) !== JSON.stringify(actualShared) ||
+        jobCreatedAt !== first.submittedAt || (index === ordered.length - 1 && jobStatus !== expected.status)) {
+      throw new Error('The saved job does not match its attempt.');
+    }
+  }
+}
+
+// Persisted wait guidance applies to every local submission, including a new job
+// or another product. Verify both sides before trusting any stored delay.
+function enforceLocalRetryDelays(jobs: StudioJob[], attempts: StudioAttempt[]): void {
+  const affected = new Set<string>();
+  for (const attempt of attempts) {
+    const failure = attempt.failure;
+    if (failure !== undefined && (failure?.category === 'rate_limited' || failure?.category === 'provider_limit' ||
+        failure?.retryAfterSeconds !== undefined)) {
+      validateStudioFailure(attempt);
+      affected.add(attempt.jobId);
+    }
+  }
+  for (const job of jobs) {
+    if (Array.isArray(job.attempts) && job.attempts.some((entry) =>
+      entry.errorCode === 'rate_limited' || entry.errorCode === 'provider_limit' || entry.retryAfterSeconds !== undefined)) {
+      affected.add(job.jobId);
+    }
+  }
+  for (const jobId of affected) {
+    const job = jobs.find((row) => row.jobId === jobId);
+    if (!job) throw new Error('The saved rate-limit job is missing. Generation is disabled.');
+    verifyStudioLineage(job, attempts, job.promptSha256);
+    for (const entry of job.attempts) enforceRetryDelay(entry);
+  }
+}
+
+function replaceStudioJobEntry(job: StudioJob, attempt: StudioAttempt, sentAt: string | null, completedAt: string | null): StudioJob {
+  const index = job.attempts.findIndex((entry) => entry.attemptId === attempt.attemptId);
+  if (index < 0) throw new Error('The saved job does not match its attempt.');
+  const next = studioJob(attempt, job.promptSha256, sentAt, completedAt);
+  const attempts = job.attempts.slice();
+  attempts[index] = next.attempts[0];
+  return checkedStudioJob({ ...job, attempts, status: index === attempts.length - 1 ? next.status : job.status });
 }
 function studioMoney(value: string): bigint {
   if (!/^\d{1,9}\.\d{1,6}$/.test(value)) throw new Error('Invalid saved session estimate. Generation is disabled.');
@@ -963,7 +1090,8 @@ export async function studioInput(productId: string, sourceAssetId?: string): Pr
 }
 
 export async function createStudioAttempt(attempt: StudioAttempt, consentReviewFingerprint: string): Promise<void> {
-  if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null || attempt.pricingSnapshot !== undefined || attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined || attempt.cleanupPending !== undefined || (attempt.recoveryLockVersion !== undefined && attempt.recoveryLockVersion !== 1)) throw new Error('A new attempt must be prepared without a result and with a valid recovery lock version.');
+  if (attempt.status !== 'PREPARED' || attempt.usage !== null || attempt.observedUSD !== null || attempt.pricingSnapshot !== undefined || attempt.failure !== undefined || attempt.acknowledgedAt !== undefined || attempt.recordedOutcome !== undefined || attempt.cleanupPending !== undefined || (attempt.recoveryLockVersion !== undefined && attempt.recoveryLockVersion !== 1) ||
+      !uuidPattern.test(attempt.attemptId) || (attempt.retryOf !== undefined && (!uuidPattern.test(attempt.retryOf) || attempt.retryOf === attempt.attemptId))) throw new Error('A new attempt must be prepared without a result and with valid identity and recovery metadata.');
   const snapshot = await getProduct(attempt.productId);
   if (!snapshot) throw new Error('The project no longer exists.');
   validateAttemptContext(attempt, snapshot);
@@ -977,6 +1105,8 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
     const mask = tx.objectStore('masks').get(attempt.maskId);
     const source = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
     const versions = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
+    const existingJob = tx.objectStore('jobs').get(attempt.jobId);
+    const allJobs = tx.objectStore('jobs').getAll();
     const attempts = tx.objectStore('attempts').getAll();
     let failure: Error | undefined;
     attempts.onsuccess = () => {
@@ -986,8 +1116,11 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
         const s = source.result as Record<string, unknown> | undefined;
         if (attempt.productSnapshotFingerprint !== undefined && productSnapshot(p) !== productSnapshot(snapshot)) throw new Error('The product changed since consent.');
         validateAttemptContext(attempt, p);
-        if ((attempts.result as StudioAttempt[]).some((entry) => entry.productId === attempt.productId && studioAttemptBlocks(entry))) {
-          throw new Error('Another attempt for this product is in progress or UNKNOWN. Review its history before generating.');
+        enforceLocalRetryDelays(allJobs.result as StudioJob[], attempts.result as StudioAttempt[]);
+        if ((attempts.result as StudioAttempt[]).some((entry) => studioAttemptBlocks(entry) ||
+            (entry.productId === attempt.productId && entry.status === 'PREPARED' &&
+              (attempt.retryOf !== undefined || entry.retryOf !== undefined)))) {
+          throw new Error('Another local attempt is in progress or UNKNOWN. Review its history before generating.');
         }
         if (studioReviewFingerprint(attempts.result as StudioAttempt[]) !== consentReviewFingerprint) {
           throw new Error('A review changed the attempt history after consent. Review the history and authorize a new attempt.');
@@ -1001,7 +1134,24 @@ export async function createStudioAttempt(attempt: StudioAttempt, consentReviewF
             !m || m.productId !== attempt.productId || m.sourceAssetId !== attempt.sourceAssetId || m.sourceSha256 !== attempt.sourceSha256 || m.sha256 !== attempt.maskSha256 ||
             !s || s.productId !== attempt.productId || s.sha256 !== attempt.sourceSha256 ||
             (versions.result as MaskMetadata[]).some((row) => row.version > (m.version as number))) throw new Error('The source or mask version changed. Review it again before generating.');
-        tx.objectStore('jobs').add(job);
+        if (attempt.retryOf !== undefined) {
+          if (attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION || !attempt.styleId || !attempt.presetVersion) {
+            throw new Error('Legacy jobs cannot be retried. Start a new versioned job instead.');
+          }
+          const saved = existingJob.result as StudioJob | undefined;
+          if (!saved) throw new Error('The retry job is missing.');
+          verifyStudioLineage(saved, attempts.result as StudioAttempt[], promptHash);
+          const latest = saved.attempts[saved.attempts.length - 1];
+          const predecessor = (attempts.result as StudioAttempt[]).find((row) => row.attemptId === latest.attemptId);
+          if (!predecessor || latest.attemptId !== attempt.retryOf || !retryEligible(predecessor) ||
+              !sameRetryInputs(predecessor, attempt) || saved.attempts.length >= 100) {
+            throw new Error('The retry predecessor is stale, ineligible, or its job inputs changed.');
+          }
+          enforceRetryDelay(latest);
+          tx.objectStore('jobs').put(checkedStudioJob({ ...saved, status: job.status, attempts: [...saved.attempts, job.attempts[0]] }));
+        } else {
+          tx.objectStore('jobs').add(job);
+        }
         tx.objectStore('attempts').add(attempt);
       } catch (error) { failure = error instanceof Error ? error : new Error('Could not save the attempt.'); tx.abort(); }
     };
@@ -1027,6 +1177,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
     const maskRequest = tx.objectStore('masks').get(attempt.maskId);
     const sourceRequest = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
     const versionsRequest = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
+    const allJobs = tx.objectStore('jobs').getAll();
     const allAttempts = tx.objectStore('attempts').getAll();
     let failure: Error | undefined;
     allAttempts.onsuccess = () => {
@@ -1034,14 +1185,17 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
         const previous = previousRequest.result as StudioAttempt | undefined;
         const job = jobRequest.result as StudioJob | undefined;
         if (!previous || !job || !validateGenerationJob(job)) throw new Error('The saved attempt or job is missing or invalid.');
-        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion', 'styleId', 'presetVersion', 'productSnapshotFingerprint', 'topViewConfirmed'];
+        const immutable: Array<keyof StudioAttempt> = ['attemptId', 'retryOf', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'submittedAt', 'acknowledgedAt', 'recordedOutcome', 'recoveryLockVersion', 'styleId', 'presetVersion', 'productSnapshotFingerprint', 'topViewConfirmed'];
         if (immutable.some((key) => previous[key] !== attempt[key]) || JSON.stringify(previous.sceneContext) !== JSON.stringify(attempt.sceneContext) || JSON.stringify(previous.selectedFactIds) !== JSON.stringify(attempt.selectedFactIds)) throw new Error('Attempt identity or input changed.');
         const allowed = previous.status === 'PREPARED' ? ['SUBMITTED', 'DEFINITIVE_FAILURE'] : previous.status === 'SUBMITTED' ? ['DEFINITIVE_FAILURE', 'DEFINITIVE_SUCCESS', 'UNKNOWN'] : [];
         if (attempt.status === 'SUBMITTED' && (allAttempts.result as StudioAttempt[]).some((entry) =>
-          entry.productId === attempt.productId && entry.attemptId !== attempt.attemptId && studioAttemptBlocks(entry))) {
-          throw new Error('Another attempt for this product is in progress or UNKNOWN. Review its history before generating.');
+          entry.attemptId !== attempt.attemptId && (studioAttemptBlocks(entry) ||
+            (entry.productId === attempt.productId && entry.status === 'PREPARED' &&
+              (entry.retryOf !== undefined || attempt.retryOf !== undefined))))) {
+          throw new Error('Another local attempt is in progress or UNKNOWN. Review its history before generating.');
         }
         if (!allowed.includes(attempt.status)) throw new Error('Invalid or repeated attempt transition.');
+        validateStudioFailure(attempt);
         if (previous.cleanupPending !== undefined || (attempt.cleanupPending !== undefined &&
             (attempt.cleanupPending !== true || previous.status !== 'SUBMITTED' ||
              (attempt.status !== 'DEFINITIVE_SUCCESS' && attempt.status !== 'DEFINITIVE_FAILURE')))) throw new Error('Invalid cleanup metadata.');
@@ -1054,6 +1208,7 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
           throw new Error('The session estimate changed after consent. Review the updated total before sending.');
         }
         if (attempt.status === 'SUBMITTED') {
+          enforceLocalRetryDelays(allJobs.result as StudioJob[], allAttempts.result as StudioAttempt[]);
           const product = checkedProduct(productRequest.result);
           const mask = maskRequest.result as Record<string, unknown> | undefined;
           const source = sourceRequest.result as Record<string, unknown> | undefined;
@@ -1072,12 +1227,18 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
             (asset && (asset.attemptId !== attempt.attemptId || asset.productId !== attempt.productId || !(asset.blob instanceof Blob) || !hashPattern.test(asset.sha256))) ||
             (attempt.status !== 'DEFINITIVE_SUCCESS' && (attempt.usage !== null || attempt.observedUSD !== null || attempt.pricingSnapshot !== undefined)) ||
             ((attempt.observedUSD === null) !== (attempt.pricingSnapshot === undefined))) throw new Error('Attempt outcome and asset do not match.');
-        const oldEntry = job.attempts[0];
-        if (!oldEntry || JSON.stringify(job) !== JSON.stringify(studioJob(previous, promptHash, oldEntry.submittedAt, oldEntry.completedAt))) throw new Error('The saved job does not match its attempt.');
+        verifyStudioLineage(job, allAttempts.result as StudioAttempt[], promptHash);
+        const oldEntry = job.attempts.find((entry) => entry.attemptId === attempt.attemptId);
+        if (!oldEntry || job.attempts[job.attempts.length - 1].attemptId !== attempt.attemptId) throw new Error('The saved job does not match its latest attempt.');
+        if (attempt.status === 'SUBMITTED' && attempt.retryOf !== undefined) {
+          const predecessorEntry = job.attempts[job.attempts.length - 2];
+          if (!predecessorEntry || predecessorEntry.attemptId !== attempt.retryOf) throw new Error('The retry predecessor is invalid.');
+          enforceRetryDelay(predecessorEntry);
+        }
         const now = new Date().toISOString();
         const sentAt = attempt.status === 'SUBMITTED' ? now : oldEntry.submittedAt;
         const completedAt = attempt.status === 'SUBMITTED' ? null : now;
-        const next = checkedStudioJob(studioJob(attempt, promptHash, sentAt, completedAt));
+        const next = replaceStudioJobEntry(job, attempt, sentAt, completedAt);
         tx.objectStore('jobs').put(next);
         tx.objectStore('attempts').put(attempt);
         if (asset) tx.objectStore('generatedAssets').add(asset);
@@ -1351,6 +1512,7 @@ async function strictCompositeTransaction(
         const maskRequest = tx.objectStore('masks').get(attempt.maskId);
         const versionsRequest = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
         const jobRequest = tx.objectStore('jobs').get(attempt.jobId);
+        const lineageRequest = tx.objectStore('attempts').index('jobId').getAll(attempt.jobId);
         const scenesRequest = assets.index('attemptId').getAll(attemptId);
         scenesRequest.onsuccess = () => {
           void (async () => {
@@ -1365,12 +1527,10 @@ async function strictCompositeTransaction(
               if (!source || source.sha256 !== attempt.sourceSha256) throw new Error('The attempt source no longer belongs to this project.');
               ownedSource(product, source);
               const job = jobRequest.result as StudioJob | undefined;
-              if (!job || !validateGenerationJob(job) || job.productId !== productId || job.jobId !== attempt.jobId ||
-                  !job.attempts[0] || typeof attempt.prompt !== 'string' ||
-                  JSON.stringify(job) !== JSON.stringify(studioJob(attempt, await sha256(new TextEncoder().encode(attempt.prompt)),
-                    job.attempts[0].submittedAt, job.attempts[0].completedAt))) {
+              if (!job || job.productId !== productId || job.jobId !== attempt.jobId || typeof attempt.prompt !== 'string') {
                 throw new Error('The successful generation job does not match its attempt.');
               }
+              verifyStudioLineage(job, lineageRequest.result as StudioAttempt[], await sha256(new TextEncoder().encode(attempt.prompt)));
               if (!verifying) return;
               const scenes = (scenesRequest.result as unknown[]).filter(isStudioScene);
               const scene = scenes[0];
@@ -1712,7 +1872,7 @@ export type ApprovedExportSelection = {
   attemptId: string; assetId: string; productSha256: string; assetSha256: string; reviewId: string; decisionId: string;
 };
 export type ApprovedExportProvenance = {
-  attemptId: string; jobId: string; model: string; promptVersion: string; prompt: string; promptSha256: string;
+  attemptId: string; retryOf?: string; jobId: string; model: string; promptVersion: string; prompt: string; promptSha256: string;
   styleId: StudioStyleId; quality: string; size: string;
   usage: Record<string, unknown> | null; estimatedUSD: string; observedUSD: string | null; pricingSnapshot: string | null;
   createdAt: string; submittedAt: string; reviewId: string; reviewedAt: string; decisionId: string; decidedAt: string;
@@ -1759,10 +1919,10 @@ function checkedExportUsage(value: unknown): Record<string, unknown> | null {
 }
 
 function checkedExportAttempt(attempt: StudioAttempt): Record<string, unknown> | null {
-  const allowed = ['attemptId', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256',
+  const allowed = ['attemptId', 'retryOf', 'jobId', 'productId', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256',
     'prompt', 'promptVersion', 'model', 'quality', 'size', 'estimatedUSD', 'maxEstimatedUSD', 'softLimitOverride',
     'submittedAt', 'budgetSessionId', 'sessionPriorUSD', 'sessionLimitUSD', 'sessionLimitOverride', 'status',
-    'usage', 'observedUSD', 'pricingSnapshot', 'acknowledgedAt', 'recordedOutcome', 'cleanupPending', 'recoveryLockVersion',
+    'usage', 'observedUSD', 'pricingSnapshot', 'failure', 'acknowledgedAt', 'recordedOutcome', 'cleanupPending', 'recoveryLockVersion',
     'styleId', 'presetVersion', 'sceneContext', 'selectedFactIds', 'productSnapshotFingerprint', 'topViewConfirmed'];
   if (Object.keys(attempt).some((key) => !allowed.includes(key)) ||
       (!attempt.styleId && (attempt.prompt !== STUDIO_PROMPT || attempt.promptVersion !== STUDIO_PROMPT_VERSION || attempt.estimatedUSD !== studioEstimateUSD())) ||
@@ -1861,22 +2021,22 @@ async function approvedExportTransaction(productId: string, selections: Approved
           if (attempt.styleId === undefined && product.brandLock.maskAssetId !== attempt.maskId) throw new Error('The active mask changed.');
           if (!source || source.sha256 !== attempt.sourceSha256) throw new Error('The attempt source changed.');
           ownedSource(product, source);
-          const [sourceRow, maskRow, versions, job, rows, composite, reviews, head] = await Promise.all([
+          const [sourceRow, maskRow, versions, job, lineage, rows, composite, reviews, head] = await Promise.all([
             exportRequest(tx.objectStore('sourceAssets').get(attempt.sourceAssetId)),
             exportRequest(tx.objectStore('masks').get(attempt.maskId)),
             exportRequest(tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId)),
             exportRequest(tx.objectStore('jobs').get(attempt.jobId)) as Promise<StudioJob | undefined>,
+            exportRequest(tx.objectStore('attempts').index('jobId').getAll(attempt.jobId)) as Promise<StudioAttempt[]>,
             exportRequest(assets.index('attemptId').getAll(attempt.attemptId)) as Promise<unknown[]>,
             exportRequest(assets.get(selection.assetId)) as Promise<StrictComposite | undefined>,
             exportRequest(tx.objectStore('qaReports').index('assetId').getAll(selection.assetId)) as Promise<unknown[]>,
             exportRequest(tx.objectStore('userSettings').get(`visual-review-head:${selection.assetId}`)),
           ]);
-          if (!job || !validateGenerationJob(job) || job.productId !== productId || job.jobId !== attempt.jobId ||
-              !job.attempts[0] || JSON.stringify(job) !== JSON.stringify(studioJob(attempt,
-                await sha256(new TextEncoder().encode(attempt.prompt)), job.attempts[0].submittedAt, job.attempts[0].completedAt))) {
+          if (!job || job.productId !== productId || job.jobId !== attempt.jobId) {
             throw new Error('The successful job does not match its attempt.');
           }
-          const submittedAt = job.attempts[0].submittedAt;
+          verifyStudioLineage(job, lineage, await sha256(new TextEncoder().encode(attempt.prompt)));
+          const submittedAt = job.attempts.find((entry) => entry.attemptId === attempt.attemptId)?.submittedAt;
           if (typeof submittedAt !== 'string' || !Number.isFinite(Date.parse(submittedAt))) {
             throw new Error('The successful job has no valid submission time.');
           }
@@ -1946,6 +2106,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
           }
           result.push({ selection, blob: composite.blob, ...(composite.ad ? { ad: composite.ad } : {}), ...(composite.copyLayer ? { copyLayer: composite.copyLayer } : {}), provenance: {
             attemptId: attempt.attemptId, jobId: attempt.jobId, model: attempt.model, promptVersion: attempt.promptVersion,
+            ...(attempt.retryOf === undefined ? {} : { retryOf: attempt.retryOf }),
             prompt: attempt.prompt, promptSha256: job.promptSha256, styleId: job.styleId, quality: job.quality, size: job.size,
             usage, estimatedUSD: attempt.estimatedUSD, observedUSD: attempt.observedUSD,
             pricingSnapshot: attempt.pricingSnapshot ?? null, createdAt: composite.createdAt, submittedAt,
