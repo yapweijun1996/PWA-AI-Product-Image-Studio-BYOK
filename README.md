@@ -1,6 +1,6 @@
 # PWA-AI-Product-Image-Studio-BYOK
 
-**Version:** 4.2.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
+**Version:** 5.0.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
 **Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 

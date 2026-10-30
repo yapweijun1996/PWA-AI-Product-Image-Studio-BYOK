@@ -319,7 +319,11 @@ async function verifyMask(product: Product, value: unknown): Promise<BackupMask>
   return { metadata: metadata as MaskMetadata, blob: blob as Blob };
 }
 
-async function verifyMaskAlpha(source: BackupSource, mask: BackupMask): Promise<void> {
+function checkBackupCancellation(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException('Backup validation was cancelled.', 'AbortError');
+}
+
+async function verifyMaskAlpha(source: BackupSource, mask: BackupMask, signal?: AbortSignal): Promise<void> {
   async function decode(blob: Blob): Promise<{ image: CanvasImageSource; width: number; height: number; release: () => void }> {
     if (typeof createImageBitmap === 'function') {
       const image = await createImageBitmap(blob, { imageOrientation: 'from-image' });
@@ -336,10 +340,13 @@ async function verifyMaskAlpha(source: BackupSource, mask: BackupMask): Promise<
       return { image, width: image.naturalWidth, height: image.naturalHeight, release: () => URL.revokeObjectURL(url) };
     } catch (error) { URL.revokeObjectURL(url); throw error; }
   }
+  checkBackupCancellation(signal);
   const original = await decode(source.blob);
   try {
+    checkBackupCancellation(signal);
     const selection = await decode(mask.blob);
     try {
+      checkBackupCancellation(signal);
       const { width, height } = source.metadata;
       if (original.width !== width || original.height !== height || selection.width !== width || selection.height !== height) {
         throw new Error('The browser could not decode the oriented source and mask consistently.');
@@ -360,6 +367,10 @@ async function verifyMaskAlpha(source: BackupSource, mask: BackupMask): Promise<
         for (let offset = 3; offset < maskPixels.length; offset += 4) {
           if (maskPixels[offset] > sourcePixels[offset]) throw new Error('The mask alpha exceeds the original source alpha.');
           if (maskPixels[offset] > 0) selected = true;
+        }
+        if (signal) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          checkBackupCancellation(signal);
         }
       }
       if (!selected) throw new Error('The mask must select at least one visible source pixel.');
@@ -383,16 +394,51 @@ function validateMaskReferences(product: Product, masks: BackupMask[]): void {
   }
 }
 
-export async function validateBackupMasks(product: Product, masks: BackupMask[], sources: BackupSource[]): Promise<BackupMask[]> {
+// Weighted decoded-pixel work, not archive bytes or browser memory usage.
+// Limit each full validation pass before decoding or rendering any mask/output.
+const MAX_BACKUP_PIXEL_WORK = 256 * 1024 * 1024;
+const BACKUP_OUTPUT_PIXELS = 1024 * 1024;
+export function checkBackupPixelWork(product: Product, maskSources: unknown[], assets: Array<StudioAsset | StrictComposite> = []): void {
+  const sources = new Map(product.sourceAssets.map((source) => [source.assetId, source]));
+  let work = 0;
+  const add = (amount: number) => {
+    if (!Number.isSafeInteger(amount) || amount < 0 || (work += amount) > MAX_BACKUP_PIXEL_WORK) {
+      throw new Error('The project exceeds the backup image validation work limit. No data was omitted or imported.');
+    }
+  };
+  const pixels = (id: unknown) => {
+    const source = typeof id === 'string' ? sources.get(id) : undefined;
+    if (!source || !Number.isSafeInteger(source.width) || !Number.isSafeInteger(source.height) || source.width < 1 || source.height < 1) {
+      throw new Error('A backup image references an invalid source.');
+    }
+    return source.width * source.height;
+  };
+  for (const source of product.sourceAssets) add(pixels(source.assetId));
+  for (const id of maskSources) add(2 * pixels(id));
+  for (const asset of assets) {
+    if (!asset || typeof asset !== 'object') throw new Error('A backup output is invalid.');
+    add(BACKUP_OUTPUT_PIXELS);
+    if ('kind' in asset && asset.kind === 'strict-composite') {
+      add(2 * pixels(asset.sourceAssetId) + 3 * BACKUP_OUTPUT_PIXELS);
+      if (asset.ad) add(2 * BACKUP_OUTPUT_PIXELS);
+      if (asset.copyLayer) add(BACKUP_OUTPUT_PIXELS);
+    }
+  }
+}
+
+export async function validateBackupMasks(product: Product, masks: BackupMask[], sources: BackupSource[], signal?: AbortSignal): Promise<BackupMask[]> {
+  checkBackupCancellation(signal);
+  checkBackupPixelWork(product, masks.map((mask) => mask?.metadata?.sourceAssetId));
   const verified: BackupMask[] = [];
   for (const mask of masks) {
+    checkBackupCancellation(signal);
     if (!mask.metadata || typeof mask.metadata !== 'object' || Object.keys(mask.metadata).length !== 8 || Object.hasOwn(mask.metadata, 'blob')) {
       throw new Error('Mask metadata contains unsupported fields.');
     }
     const checked = await verifyMask(product, { ...mask.metadata, blob: mask.blob });
     const source = sources.find((item) => item.metadata.assetId === checked.metadata.sourceAssetId);
     if (!source) throw new Error('The mask source is missing.');
-    await verifyMaskAlpha(source, checked);
+    await verifyMaskAlpha(source, checked, signal);
     verified.push(checked);
   }
   if (verified.length && product.brandLock.maskAssetId === null) throw new Error('The active mask pointer is missing.');
@@ -580,7 +626,8 @@ const emptyBackupHistory = (): BackupHistory => ({ jobs: [], attempts: [], asset
 const importAttemptKey = (id: string) => `backup-import-unresolved:${id}`;
 const importReviewKey = (id: string) => `backup-import-review:${id}`;
 
-export async function getBackupSnapshot(productId: string): Promise<{ product: Product; sources: BackupSource[]; masks: BackupMask[]; history: BackupHistory }> {
+export async function getBackupSnapshot(productId: string, signal?: AbortSignal): Promise<{ product: Product; sources: BackupSource[]; masks: BackupMask[]; history: BackupHistory }> {
+  checkBackupCancellation(signal);
   const db = await openDatabase();
   const snapshot = await new Promise<{ product: Product; rows: unknown[]; masks: unknown[]; history: BackupHistory }>((resolve, reject) => {
     const tx = db.transaction(['products', 'sourceAssets', 'masks', 'jobs', 'attempts', 'generatedAssets', 'qaReports', 'userSettings'], 'readonly');
@@ -611,12 +658,15 @@ export async function getBackupSnapshot(productId: string): Promise<{ product: P
     };
     tx.onabort = () => reject(transactionError(tx));
   });
+  checkBackupCancellation(signal);
+  checkBackupPixelWork(snapshot.product, snapshot.masks.map((row) => (row as MaskMetadata)?.sourceAssetId), snapshot.history.assets);
   if (snapshot.rows.length !== snapshot.product.sourceAssets.length) {
     throw new Error('The source records do not match the project. Backup was not created.');
   }
   const sources: BackupSource[] = [];
   const sourceFields: Record<string, true> = { assetId: true, sha256: true, mimeType: true, width: true, height: true, cameraView: true, filename: true, productId: true, exifOrientation: true, blob: true };
   for (const metadata of snapshot.product.sourceAssets) {
+    checkBackupCancellation(signal);
     const row = snapshot.rows.find((value) => value && typeof value === 'object' && (value as Record<string, unknown>).assetId === metadata.assetId);
     if (!row || typeof row !== 'object' || Object.keys(row).some((key) => !Object.hasOwn(sourceFields, key))) {
       throw new Error('A source contains unsupported fields. Backup was not created.');
@@ -624,9 +674,12 @@ export async function getBackupSnapshot(productId: string): Promise<{ product: P
     sources.push(await verifyStoredSource(productId, metadata, row));
   }
   const masks: BackupMask[] = [];
-  for (const row of snapshot.masks) masks.push(await verifyMask(snapshot.product, row));
-  const verifiedMasks = await validateBackupMasks(snapshot.product, masks, sources);
-  await validateBackupHistory(snapshot.product, sources, verifiedMasks, snapshot.history);
+  for (const row of snapshot.masks) {
+    checkBackupCancellation(signal);
+    masks.push(await verifyMask(snapshot.product, row));
+  }
+  const verifiedMasks = await validateBackupMasks(snapshot.product, masks, sources, signal);
+  await validateBackupHistory(snapshot.product, sources, verifiedMasks, snapshot.history, signal);
   return { product: snapshot.product, sources, masks: verifiedMasks, history: snapshot.history };
 }
 
@@ -683,16 +736,19 @@ export async function restoreProduct(product: Product, sources: BackupSource[], 
   history = structuredClone(history);
   if (signal?.aborted) throw new DOMException('Import was cancelled.', 'AbortError');
   validateBackupProduct(product);
+  if (!Array.isArray(masks) || !history || !Array.isArray(history.assets)) throw new Error('Backup history is malformed.');
+  checkBackupPixelWork(product, masks.map((mask) => mask?.metadata?.sourceAssetId), history.assets);
   if (sources.length !== product.sourceAssets.length) throw new Error('The backup has missing or extra sources.');
   const ids = new Set(sources.map((source) => source.metadata.assetId));
   if (ids.size !== sources.length) throw new Error('The backup contains duplicate source IDs.');
   for (const metadata of product.sourceAssets) {
+    checkBackupCancellation(signal);
     const source = sources.find((item) => item.metadata.assetId === metadata.assetId);
     if (!source || JSON.stringify(source.metadata) !== JSON.stringify(metadata)) throw new Error('The backup is missing an original source or its metadata differs.');
     await verifyStoredSource(product.productId, metadata, { ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
   }
-  const verifiedMasks = await validateBackupMasks(product, masks, sources);
-  await validateBackupHistory(product, sources, verifiedMasks, history);
+  const verifiedMasks = await validateBackupMasks(product, masks, sources, signal);
+  await validateBackupHistory(product, sources, verifiedMasks, history, signal);
   if (signal?.aborted) throw new DOMException('Import was cancelled.', 'AbortError');
   const db = await openDatabase();
   if (signal?.aborted) throw new DOMException('Import was cancelled.', 'AbortError');
@@ -1596,18 +1652,22 @@ function checkedVisualHistory(rows: unknown[], productId: string, attemptId: str
     current: decision.reportId === latest?.qaId && sameProvenance(decision, current) })) };
 }
 
-export async function validateBackupHistory(product: Product, sources: BackupSource[], masks: BackupMask[], history: BackupHistory): Promise<void> {
+export async function validateBackupHistory(product: Product, sources: BackupSource[], masks: BackupMask[], history: BackupHistory, signal?: AbortSignal): Promise<void> {
+  checkBackupCancellation(signal);
   if (!history || typeof history !== 'object' || !exactKeys(history, ['jobs', 'attempts', 'assets', 'reviews', 'heads']) ||
       ![history.jobs, history.attempts, history.assets, history.reviews, history.heads].every(Array.isArray)) throw new Error('Backup history is malformed.');
   validateBackupProduct(product);
+  checkBackupPixelWork(product, masks.map((mask) => mask?.metadata?.sourceAssetId), history.assets);
+  const renderSignal = signal ?? new AbortController().signal;
   if (!Array.isArray(sources) || sources.length !== product.sourceAssets.length ||
       new Set(sources.map((row) => row.metadata.assetId)).size !== sources.length) throw new Error('Backup sources are incomplete or duplicated.');
   for (const metadata of product.sourceAssets) {
+    checkBackupCancellation(signal);
     const source = sources.find((row) => row.metadata.assetId === metadata.assetId);
     if (!source || JSON.stringify(source.metadata) !== JSON.stringify(metadata)) throw new Error('Backup source metadata does not match.');
     await verifyStoredSource(product.productId, metadata, { ...source.metadata, productId: product.productId, blob: source.blob, exifOrientation: source.exifOrientation });
   }
-  await validateBackupMasks(product, masks, sources);
+  await validateBackupMasks(product, masks, sources, signal);
   const unique = (values: string[]) => values.every((id) => typeof id === 'string' && uuidPattern.test(id)) && new Set(values).size === values.length;
   if (!unique(history.jobs.map((row) => row?.jobId)) || !unique(history.attempts.map((row) => row?.attemptId)) ||
       !unique(history.assets.map((row) => row?.assetId)) || !unique(history.reviews.map((row) => row?.qaId))) throw new Error('Backup history has duplicate or invalid IDs.');
@@ -1642,6 +1702,7 @@ export async function validateBackupHistory(product: Product, sources: BackupSou
     verifyStudioLineage(job, history.attempts, await sha256(new TextEncoder().encode(first.prompt)));
   }
   for (const asset of history.assets) {
+    checkBackupCancellation(signal);
     const attempt = attempts.get(asset.attemptId);
     if (!attempt || attempt.status !== 'DEFINITIVE_SUCCESS' || asset.productId !== product.productId ||
         typeof asset.sha256 !== 'string' || !hashPattern.test(asset.sha256)) throw new Error('An output has invalid attempt ownership or hash.');
@@ -1669,10 +1730,11 @@ export async function validateBackupHistory(product: Product, sources: BackupSou
       await verifyStrictPng(composite.ad, composite.adSha256);
     }
     const rendered = await renderStrictComposite({ source: source.blob, mask: mask.blob, scene: scene.blob,
-      sourceWidth: source.metadata.width, sourceHeight: source.metadata.height, signal: new AbortController().signal, recipe: composite.recipe, copyLayer: composite.copyLayer });
+      sourceWidth: source.metadata.width, sourceHeight: source.metadata.height, signal: renderSignal, recipe: composite.recipe, copyLayer: composite.copyLayer })
+      .catch((error: unknown) => { checkBackupCancellation(signal); throw error; });
     if (Boolean(rendered.ad) !== Boolean(composite.ad)) throw new Error('A composite advertisement is missing.');
-    if (rendered.ad && composite.ad) await compareCompositePixels(rendered.ad, composite.ad, new AbortController().signal);
-    await compareCompositePixels(rendered.blob, composite.blob, new AbortController().signal);
+    if (rendered.ad && composite.ad) await compareCompositePixels(rendered.ad, composite.ad, renderSignal);
+    await compareCompositePixels(rendered.blob, composite.blob, renderSignal);
   }
   for (const attempt of history.attempts) {
     const scenes = history.assets.filter((row) => row.attemptId === attempt.attemptId && isStudioScene(row));

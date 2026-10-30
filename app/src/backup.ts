@@ -1,6 +1,6 @@
 import { BlobReader, BlobWriter, Uint8ArrayReader, ZipReader, ZipWriter, configure, type FileEntry } from '@zip.js/zip.js/lib/zip-core-native.js';
 import validateManifest from 'virtual:export-manifest-validator';
-import { getBackupSnapshot, hasImportConflict, validateBackupHistory, validateBackupMasks, validateBackupProduct, type BackupHistory, type BackupMask, type BackupSource, type MaskMetadata, type Product } from './products';
+import { checkBackupPixelWork, getBackupSnapshot, hasImportConflict, validateBackupHistory, validateBackupProduct, type BackupHistory, type BackupMask, type BackupSource, type MaskMetadata, type Product } from './products';
 import { prepareSource, sha256 } from './prepareSource';
 
 configure({ useWebWorkers: false });
@@ -42,7 +42,7 @@ function maskPath(maskId: string, extension: 'json' | 'png'): string {
 
 export async function createBackup(productId: string, signal: AbortSignal, progress: Progress): Promise<Blob> {
   progress('Checking the project and original files…');
-  const snapshot = await getBackupSnapshot(productId);
+  const snapshot = await getBackupSnapshot(productId, signal);
   cancelled(signal);
   const files: ManifestFile[] = [];
   const contents: Array<{ path: string; data: Blob | Uint8Array<ArrayBuffer> }> = [];
@@ -185,6 +185,7 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
     const product = validateBackupProduct(rawProduct);
     assertNoSecrets(product);
     if (product.productId !== manifest.productId) throw new Error('The project and manifest do not match.');
+    checkBackupPixelWork(product, []);
     const sources: BackupSource[] = [];
     for (let index = 0; index < product.sourceAssets.length; index++) {
       cancelled(signal);
@@ -226,7 +227,6 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
       masks.push({ metadata, blob: await readEntry(pngEntry, MAX_IMAGE, signal) });
     }
     if (masks.length * 2 !== maskInfos.length) throw new Error('The backup has missing or extra mask entries.');
-    const verifiedMasks = await validateBackupMasks(product, masks, sources);
     const history: BackupHistory = { jobs: [], attempts: [], assets: [], reviews: [], heads: [] };
     const consumed = new Set(['project.json', ...product.sourceAssets.map(sourcePath), ...maskInfos.map((item) => item.path)]);
     async function historyFile(path: string, role: ManifestFile['role'], attemptId?: string, qaId?: string): Promise<Blob> {
@@ -279,9 +279,9 @@ export async function inspectBackup(file: File, signal: AbortSignal, progress: P
       }
     }
     if (consumed.size !== declared.size) throw new Error('The backup contains missing or extra records.');
-    await validateBackupHistory(product, sources, verifiedMasks, history);
+    await validateBackupHistory(product, sources, masks, history, signal);
     cancelled(signal);
-    return { product, sources, masks: verifiedMasks, history, totalBytes, conflict: await hasImportConflict(product, verifiedMasks, history) };
+    return { product, sources, masks, history, totalBytes, conflict: await hasImportConflict(product, masks, history) };
   } finally {
     await reader.close();
   }

@@ -110,6 +110,13 @@ The owner selected a **self-hosted gateway with server-configured provider key**
 - **Privacy and limits:** Archives are unencrypted and can contain prompts, cost estimates, QA notes, original EXIF and images. Credential-pattern checks do not inspect pixels or detect all secrets. Entries, bytes, MIME, paths, references and compression are bounded; see [the backup contract](../04-data/EXPORT_IMPORT.md).
 - **Rollback:** Stop import/export and use a compatible prior client only after a reviewed migration; preserve all originals, masks, jobs, attempts, generated assets, QA, local trust markers and gateway journals. Never delete uncertainty or approval evidence to bypass a safety gate.
 
+## ADR-013 — Bounded archive image validation
+
+- **State:** Local development implementation; physical-device performance and independent production security acceptance remain open.
+- **Decision:** Apply the documented aggregate decoded-pixel work limit before mask/output decoding or rendering, including original images. Check cancellation between validation steps and mask strips; do not silently omit data or partially import. A single browser image decode may not be interruptible.
+- **Compatibility:** Some otherwise valid v1 or v2 backups and large local projects previously accepted by the application now exceed the safety limit and are rejected. This incompatible restriction advances the SSOT baseline to 5.0.0; archive schema versions and gateway request fields are unchanged. No automatic migration, deletion or splitting is performed.
+- **Rollback:** Disable backup import/export or replace the limit with an equivalently reviewed bounded implementation; preserve all source records and archives.
+
 ## ADR amendment template
 
 `ADR-ID | Title | Author | Date | State | Scope | Options | Decision + user approval evidence | Security/Data impact | Migration | Test evidence | Rollback | Supersedes`.
