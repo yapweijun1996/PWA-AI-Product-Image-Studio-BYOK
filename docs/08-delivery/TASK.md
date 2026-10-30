@@ -344,6 +344,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-041 elapsed-time recovery candidate — 2026-10-30
+
+- **Design:** [ADR-015](../02-architecture/ADR.md#adr-015--candidate-elapsed-time-proof-for-provider-retry-waits) proposes versioned duration records, process-local monotonic observation and durable serialized elapsed proofs, with a conservative legacy-review path and a fail-closed version barrier. It records crash, multi-process, old-gateway and rollback boundaries.
+- **Limits:** This is a candidate only: no implementation, simulated-clock proof, live-provider test or independent review has been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
+- **Rollback:** Revert this candidate and matching checksums; preserve all existing journal and product records.
+
 ## T-041 forward clock-jump investigation — 2026-10-30
 
 - **Confirmed defect:** A synthetic gateway received `Retry-After: 86401`, recorded and acknowledged the failure, and was restarted after its injected wall clock jumped forward by 86401 seconds. Without waiting that duration, a separately approved second attempt reached the synthetic transport: two calls occurred. The test completed in under a second. The current format 3 journal compares an absolute wall-clock deadline and cannot distinguish that jump from elapsed time.
