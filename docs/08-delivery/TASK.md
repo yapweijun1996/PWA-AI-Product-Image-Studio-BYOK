@@ -337,6 +337,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** No real key or paid call was used for this change, no provider usage or cost was measured, and no production deployment, independent security approval, OS-level Pi isolation, real-device acceptance, full E2E-007/008 or end-to-end brand fidelity is claimed. Backup refuses projects containing jobs or outputs; users must back up before generating. UNKNOWN and interrupted attempts require review but have no reconciliation workflow yet: preserve their records and do not bypass the block. T-041, T-042, T-051 and T-022 remain open.
 - **Rollback:** Disable the opt-in provider path and revert its gateway, UI, shared policy, tests and contract changes together. Preserve original sources, masks, jobs, attempts, generated scenes and journal records; older versions cannot safely back up the new records.
 
+## T-020 development validator interop and T-041 backup observation — 2026-10-30
+
+- **Defect and fix:** Vite development-mode AJV Unicode-length import was a CommonJS namespace rather than a function, causing `func2 is not a function` during synthetic product creation. The generated virtual validators now normalize direct-function and namespace default exports. See BUG-002.
+- **Evidence:** A Vite development-module probe reproduced the baseline failure. The regression validates all four canonical fixtures and rejects an overlong Unicode name; desktop Chromium created a synthetic product through the actual form after the fix. In a separate isolated browser context, real source/mask and a synthetic definitive 86401-second attempt were archived, inspected and restored into a second isolated context. Both job and attempt retained 86401, the imported record remained untrusted and unresolved, and a reload preserved those results. No provider call, real key or seller data was used.
+- **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
+- **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
+
 ## T-041 extended provider delays — 2026-10-30
 
 - **Change:** A shared policy permits valid `Retry-After` seconds through 2147483647, including HTTP-date values; the gateway journal and local job retain and enforce the full supported delay. Present invalid or out-of-range values retain the explicit review gate. No automatic retry is introduced.

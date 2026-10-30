@@ -32,7 +32,8 @@ function contractValidators(): Plugin {
       if (source.includes('require(') || source.includes('new Function')) {
         throw new Error('Unexpected generated contract validator dependency');
       }
-      return `import ucs2lengthModule from 'ajv/dist/runtime/ucs2length.js';\n` +
+      return `import ucs2lengthImport from 'ajv/dist/runtime/ucs2length.js';\n` +
+        `const ucs2lengthModule = typeof ucs2lengthImport === 'function' ? ucs2lengthImport : ucs2lengthImport.default;\n` +
         `import { fullFormats } from 'ajv-formats/dist/formats.js';\n${source}`;
     },
   };
