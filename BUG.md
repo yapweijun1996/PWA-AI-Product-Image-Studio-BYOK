@@ -368,3 +368,10 @@ This register tracks verified defects and their remediation. Application source 
 - **Status:** IMPLEMENTED_UNVERIFIED — synthetic viewport and screenshot checks passed; accessibility acceptance remains open. **Priority:** P2. **Related tasks:** T-050 and T-080.
 - **Finding:** At a 1280 px viewport, the vertical-position label stayed at the end of one row while its input wrapped to the next, obscuring their relationship.
 - **Remediation:** Each coordinate input is grouped with its label and the explanatory text has its own row. Synthetic checks at 320, 390 and 1280 px confirm both input groups remain together with 44 px minimum input height; mobile and desktop screenshots were inspected. Screen-reader, actual zoom and physical-device acceptance remain open.
+
+## BUG-046 — Long attempt histories make pending reviews difficult to find
+
+- **Status:** IMPLEMENTED_UNVERIFIED — synthetic browser and keyboard checks passed; physical-device and accessibility acceptance remain open. **Priority:** P2. **Related tasks:** T-041, T-071 and T-080.
+- **Finding:** Imported or interrupted projects can contain many historical attempts. On narrow screens, finding the records that currently need local attention required scrolling through all history, even after some records were reviewed.
+- **Remediation:** A toggle filters the displayed history to records flagged by the existing local attention check, displays the number shown and offers an empty state. The full list remains available. When a focused review control disappears after successful review, focus returns to the filter. The filter does not alter data, authorization, gateway checks or retry restrictions.
+- **Evidence and limits:** Synthetic Chromium checks cover a 17-attempt imported history, keyboard toggle, reviewed-record removal, focus return, restoring the full list and an empty filtered view; no extra fake-provider call occurred. Mobile and desktop screenshots were inspected. Actual devices, screen readers, very large histories and all concurrency cases remain open.

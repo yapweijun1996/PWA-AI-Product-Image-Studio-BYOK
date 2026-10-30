@@ -143,6 +143,8 @@ select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(-
 .studio-panel form > label { display: flex; flex-direction: column; gap: 6px; width: min(100%, 420px); }
 .style-plan { width: 100%; min-width: 0; border-top: 1px solid var(--border); padding-top: 12px; overflow-wrap: anywhere; }
 .style-plan summary { cursor: pointer; min-height: 44px; padding: 12px 0; }
+.studio-history-filter { margin-bottom: 8px; }
+.studio-history-filter[aria-pressed="true"] { background: var(--tint); border-color: var(--accent); }
 .studio-history { list-style: none; padding: 0; }
 .studio-scene-disclosure > summary { min-height: 44px; padding: 12px 0; cursor: pointer; }
 .studio-history li { border-top: 1px solid var(--border); padding: 12px 0; }

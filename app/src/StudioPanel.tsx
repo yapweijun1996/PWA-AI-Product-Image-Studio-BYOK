@@ -246,6 +246,9 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const focusedHistoryKey = useRef<string | null>(null);
   const [gateway, setGateway] = useState<Gateway>('checking');
   const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [attentionOnly, setAttentionOnly] = useState(false);
+  const attentionFilter = useRef<HTMLButtonElement>(null);
+  const reviewedFocus = useRef<string | null>(null);
   const [otherBlockers, setOtherBlockers] = useState<Awaited<ReturnType<typeof listOtherStudioBlockers>> | null>(null);
   const [reviewFingerprint, setReviewFingerprint] = useState<string | null>(null);
   const [max, setMax] = useState(() => { try { return sessionStorage.getItem('studio-attempt-limit') ?? ''; } catch { return ''; } });
@@ -275,6 +278,19 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   useUnsavedChanges(busy || topConfirmed || Object.values(styleConsent).some(Boolean) || Object.values(attemptOverrides).some(Boolean) || Object.values(sessionOverrides).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
   const localBlockers = entries?.filter((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? [];
   const unresolved = otherBlockers === null || otherBlockers.length > 0 || localBlockers.length > 0;
+  useEffect(() => {
+    if (busy || reviewedFocus.current === null || entries === null) return;
+    const id = reviewedFocus.current;
+    reviewedFocus.current = null;
+    if (attentionOnly && !localBlockers.some((entry) => entry.attempt.attemptId === id) && document.activeElement === document.body) {
+      attentionFilter.current?.focus();
+    }
+  }, [busy, entries, attentionOnly]);
+  function rememberReviewFocus(id: string) {
+    const active = document.activeElement;
+    reviewedFocus.current = attentionOnly && active instanceof HTMLElement && active.closest('[data-attempt-id]')?.getAttribute('data-attempt-id') === id ? id : null;
+  }
+
   const validMoney = (value: string) => !value || /^\d{1,9}\.\d{1,6}$/.test(value);
   let plans: PlannedStyle[] = [];
   let planError = '';
@@ -389,6 +405,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
 
   async function review(attempt: StudioAttempt) {
     if (running.current || entries?.find((entry) => entry.attempt.attemptId === attempt.attemptId)?.importedUntrusted || !studioAttemptBlocks(attempt) || !reviewConfirmed[attempt.attemptId] || typeof gateway !== 'object' || !((attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') || ((attempt.status === 'DEFINITIVE_SUCCESS' || attempt.status === 'DEFINITIVE_FAILURE') && attempt.cleanupPending === true))) return;
+    rememberReviewFocus(attempt.attemptId);
     gatewayCheck.current++;
     running.current = true; onBusyChange(true); setBusy(true); setError(''); setNotice(''); clearQueueConsent(); setGateway('checking');
     try {
@@ -412,6 +429,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
         setNotice(attempt.cleanupPending === true ? `Review saved. The original outcome remains ${attempt.status}. A new attempt requires separate authorization.` : 'Review saved. The original outcome remains UNKNOWN. A new attempt requires separate authorization.');
       });
     } catch (reason) {
+      reviewedFocus.current = null;
       try { await refreshEntries(); } catch { setEntries(null); }
       setError(reason instanceof Error ? reason.message : 'Review could not be saved. See the current history.');
     } finally {
@@ -423,6 +441,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   async function reviewImported(attempt: StudioAttempt) {
     const entry = entries?.find((item) => item.attempt.attemptId === attempt.attemptId);
     if (running.current || !entry?.importedUnresolved || !reviewConfirmed[attempt.attemptId]) return;
+    rememberReviewFocus(attempt.attemptId);
     running.current = true; onBusyChange(true); setBusy(true); setError(''); setNotice(''); clearQueueConsent();
     try {
       await resolveImportedUncertainty(attempt.attemptId);
@@ -430,6 +449,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       setReviewConfirmed((current) => ({ ...current, [attempt.attemptId]: false }));
       setNotice('Local review recorded. The imported outcome remains unchanged; the gateway was not contacted. A new job still needs separate authorization and may be blocked by its gateway journal.');
     } catch (reason) {
+      reviewedFocus.current = null;
       try { await refreshEntries(); } catch { setEntries(null); }
       setError(reason instanceof Error ? reason.message : 'The imported uncertainty could not be reviewed.');
     } finally { running.current = false; onBusyChange(false); setBusy(false); }
@@ -666,7 +686,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       {leftScene && rightScene && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>{[leftScene, rightScene].map(({ attempt, asset }) => <figure key={attempt.attemptId} style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved {STYLE_LABELS[attempt.styleId!]} scene · {attempt.attemptId}</figcaption><Scene asset={asset!} /></figure>)}</div>}
       {leftScene && rightScene && <CompositeComparison productId={product.productId} productVersion={productVersion} leftAttempt={leftScene.attempt.attemptId} rightAttempt={rightScene.attempt.attemptId} />}
     </section>
-    <h3 id="studio-history-heading" tabIndex={-1}>Local attempt history</h3>{entries?.some((entry) => entry.importedUnresolved) && <p>Each imported attempt needs a fresh local billing and rate-limit review before new generation. Reviews recorded by an earlier app version may need to be repeated.</p>}{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : <ul className="studio-history">{entries.map(({ attempt, asset, importedUntrusted, importedUnresolved }) => <li key={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attemptStatusText(attempt, importedUntrusted)}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
+    <h3 id="studio-history-heading" tabIndex={-1}>Local attempt history</h3>{entries && entries.length > 0 && <><button ref={attentionFilter} className="secondary-button studio-history-filter" type="button" aria-pressed={attentionOnly} disabled={busy} onClick={() => setAttentionOnly((value) => !value)}>Show only attempts needing attention</button><p role="status">Showing {attentionOnly ? localBlockers.length : entries.length} of {entries.length} attempts{attentionOnly ? ' flagged for attention' : ''}.{attentionOnly && ' Gateway and retry restrictions may also apply.'}</p></>}{entries?.some((entry) => entry.importedUnresolved) && <p>Each imported attempt needs a fresh local billing and rate-limit review before new generation. Reviews recorded by an earlier app version may need to be repeated.</p>}{entries === null ? <p>History unavailable or loading.</p> : entries.length === 0 ? <p>No attempts yet.</p> : attentionOnly && localBlockers.length === 0 ? <p>No attempts are flagged for attention in this project. Gateway and retry restrictions may still apply.</p> : <ul className="studio-history">{(attentionOnly ? localBlockers : entries).map(({ attempt, asset, importedUntrusted, importedUnresolved }) => <li key={attempt.attemptId} data-attempt-id={attempt.attemptId}><p><strong>{attempt.styleId ? STYLE_LABELS[attempt.styleId] : 'Studio (legacy)'} · {attemptStatusText(attempt, importedUntrusted)}</strong> · {attempt.attemptId} · {new Date(attempt.submittedAt).toLocaleString()} · pre-call estimate ${attempt.estimatedUSD} USD · usage-based estimate {attempt.observedUSD === null ? 'unavailable' : `$${attempt.observedUSD} USD (${attempt.pricingSnapshot}; not the provider invoice)`}</p>
       {attempt.retryOf && <p>Retry of attempt {attempt.retryOf} · job {attempt.jobId}.</p>}
       {(attempt.status === 'DEFINITIVE_FAILURE' || attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') && <p>{failureText(attempt, importedUntrusted)}</p>}
       {(!attempt.styleId || !attempt.sceneContext || !attempt.selectedFactIds || !attempt.productSnapshotFingerprint || attempt.presetVersion !== STUDIO_PRESET_VERSION || attempt.promptVersion !== STUDIO_SCENE_PROMPT_VERSION) && <p>This historical attempt cannot be retried with the current preset. Start a new job and give separate fresh consent instead; the original record remains unchanged.</p>}
