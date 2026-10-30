@@ -19,9 +19,9 @@ const chrome = process.env.CHROME_BIN || [
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let lastCheckpoint = 'initialization';
-async function until(read, description) {
+async function until(read, description, attempts = 150) {
   lastCheckpoint = description;
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < attempts; i++) {
     const result = await read();
     if (result) return result;
     await delay(100);
@@ -29,9 +29,13 @@ async function until(read, description) {
   throw new Error(`Timed out waiting for ${description}.`);
 }
 
-async function connect(url) {
-  const socket = new WebSocket(url), pending = new Map(), events = []; let next = 0;
-  await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
+async function connect(url, { timeoutMs = 20000, socketFactory = (address) => new WebSocket(address) } = {}) {
+  const socket = socketFactory(url), pending = new Map(), events = []; let next = 0;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { socket.close(); reject(new Error('DevTools connection timed out.')); }, timeoutMs);
+    socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener('error', (error) => { clearTimeout(timer); reject(error); }, { once: true });
+  });
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data), handler = pending.get(message.id);
     if (!handler) { if (['Runtime.consoleAPICalled','Runtime.exceptionThrown','Log.entryAdded'].includes(message.method)) events.push(message); return; }
@@ -42,20 +46,38 @@ async function connect(url) {
   return {
     events,
     call(method, params = {}) {
-      return new Promise((resolve, reject) => { const id = ++next; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
+      return new Promise((resolve, reject) => {
+        const id = ++next;
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error(`DevTools ${method} timed out after ${lastCheckpoint}.`)); }, timeoutMs);
+        pending.set(id, { resolve(value) { clearTimeout(timer); resolve(value); }, reject(error) { clearTimeout(timer); reject(error); } });
+        try { socket.send(JSON.stringify({ id, method, params })); }
+        catch (error) { pending.delete(id); clearTimeout(timer); reject(error); }
+      });
     },
     close() { socket.close(); },
   };
 }
 
 async function evaluate(client, expression) {
-  let timer;
-  const response = await Promise.race([client.call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Browser evaluation timed out after ${lastCheckpoint}.`)), 20000); })]).finally(() => clearTimeout(timer));
+  const response = await client.call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
   if (response.exceptionDetails) throw new Error(response.exceptionDetails.exception?.description || response.exceptionDetails.text);
   return response.result.value;
 }
 
-test('production gateway serves a synthetic creation-to-export journey without origin rewriting', {timeout: 90000}, async () => {
+test('unresponsive DevTools commands time out and closing rejects pending commands', async () => {
+  class SilentSocket extends EventTarget {
+    constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event('open'))); }
+    send() {}
+    close() { this.dispatchEvent(new Event('close')); }
+  }
+  const client = await connect('synthetic', { timeoutMs: 30, socketFactory: () => new SilentSocket() });
+  await assert.rejects(client.call('Page.navigate'), /DevTools Page\.navigate timed out/);
+  const pending = client.call('Runtime.evaluate');
+  client.close();
+  await assert.rejects(pending, /connection closed/);
+});
+
+test('production gateway serves a synthetic creation-to-export journey without origin rewriting', {timeout: 90000}, async (t) => {
   assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable.');
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
@@ -433,7 +455,13 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});await untrustedClient.call('Page.navigate',{url:`${origin}/import`});
     await until(()=>evaluate(untrustedClient, `!!document.querySelector('#backup-file')`),'interrupted backup import');
     await evaluate(untrustedClient, `(() => {const bytes=Uint8Array.from(atob(${JSON.stringify(interruptedBackup)}),c=>c.charCodeAt(0));const d=new DataTransfer();d.items.add(new File([bytes],'interrupted-synthetic.zip',{type:'application/zip'}));const input=document.querySelector('#backup-file');input.files=d.files;input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
-    await until(()=>evaluate(untrustedClient, `!!document.querySelector('.import-preview')`),'interrupted backup preview');
+    const inspectStarted = performance.now();
+    await until(async()=> {
+      const state = await evaluate(untrustedClient, `document.querySelector('.form-card [role=alert]')?.innerText || (document.querySelector('.import-preview') ? 'ready' : '')`);
+      if (state && state !== 'ready') throw new Error(`Interrupted backup inspection failed: ${state}`);
+      return state === 'ready';
+    },'interrupted backup preview',300);
+    t.diagnostic(`Synthetic interrupted backup inspection: ${Math.round(performance.now()-inspectStarted)} ms`);
     await evaluate(untrustedClient, `document.querySelector('.import-preview button').click()`);
     await until(()=>evaluate(untrustedClient, `location.pathname===${JSON.stringify('/products/'+productId)} && document.querySelectorAll('.studio-history > li').length>=17`),'restored interrupted history');
     assert.equal(await evaluate(untrustedClient, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.querySelector('strong')?.innerText.includes('Reported not sent; unverified')&&li.innerText.includes('this has not been verified')})`),true,'Imported unsent claims remain explicitly unverified.');
