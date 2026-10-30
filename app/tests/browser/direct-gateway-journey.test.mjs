@@ -57,7 +57,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client;let providerCalls=0,providerImage='', failNext=false;const providerPrompts=[];
+  let gateway,browser,client,browserClient,restoreClient;let providerCalls=0,providerImage='', failNext=false;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
@@ -231,6 +231,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(await evaluate(client,'document.documentElement.scrollWidth===innerWidth'),true);
     await evaluate(client, `(() => {window.confirm=()=>true;const create=URL.createObjectURL;URL.createObjectURL=function(blob){window.__backup=blob;return create.call(this,blob)};const click=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download.startsWith('product-backup-')){window.__backupUrl=this.href;return}return click.call(this)};[...document.querySelectorAll('button')].find(b=>b.textContent==='Download full backup').click()})()`);
     await until(()=>evaluate(client, `!!window.__backupUrl`),'synthetic backup');
+    const backupData=await evaluate(client, `new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(window.__backup)})`);
     await evaluate(client, `(async()=>{[...document.querySelectorAll('a')].find(a=>a.textContent.includes('All products')).click()})()`);
     await until(()=>evaluate(client, `location.pathname==='/' && [...document.querySelectorAll('a')].some(a=>a.textContent==='Import backup')`),'workspace after backup');
     await evaluate(client, `[...document.querySelectorAll('a')].find(a=>a.textContent==='Import backup').click()`);
@@ -250,8 +251,29 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client, `[...document.querySelectorAll('a')].find(a=>a.textContent.includes('All products')).click()`);
     await until(()=>evaluate(client, `location.pathname==='/' && document.body.innerText.includes('Synthetic direct gateway test')`),'original product remains after discard');
     assert.equal(providerCalls,10,'Backup inspection and discard make no provider calls.');
+    const browserPath=(await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[1];
+    browserClient=await connect(`ws://127.0.0.1:${port}${browserPath}`);
+    const {browserContextId}=await browserClient.call('Target.createBrowserContext');
+    const {targetId}=await browserClient.call('Target.createTarget',{url:'about:blank',browserContextId});
+    const restoreTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===targetId),'isolated restore tab');
+    restoreClient=await connect(restoreTarget.webSocketDebuggerUrl);await restoreClient.call('Runtime.enable');await restoreClient.call('Page.enable');
+    await restoreClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await restoreClient.call('Page.navigate',{url:`${origin}/import`});
+    await until(()=>evaluate(restoreClient, `!!document.querySelector('#backup-file')`),'fresh profile import');
+    await evaluate(restoreClient, `(() => {const bytes=Uint8Array.from(atob(${JSON.stringify(backupData)}),c=>c.charCodeAt(0));const d=new DataTransfer();d.items.add(new File([bytes],'synthetic-backup.zip',{type:'application/zip'}));const input=document.querySelector('#backup-file');input.files=d.files;input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await until(async()=>{const state=await evaluate(restoreClient, `document.querySelector('[role=alert]')?.innerText || (document.querySelector('.import-preview') ? 'ready' : '')`);if(state && state!=='ready') throw new Error('Import error: '+state);return state==='ready'},'fresh profile backup preview');
+    assert.equal(await evaluate(restoreClient, `document.querySelector('.import-preview button').disabled`),false,'A non-conflicting backup can be imported.');
+    await evaluate(restoreClient, `document.querySelector('.import-preview button').click()`);
+    await until(()=>evaluate(restoreClient, `location.pathname===${JSON.stringify('/products/'+productId)} && !!document.querySelector('.studio-history')`),'restored product history');
+    const restored=await evaluate(restoreClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{const rows=await Promise.all(['attempts','sourceAssets'].map(name=>new Promise((resolve,reject)=>{const q=db.transaction(name).objectStore(name).getAll();q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)})));return {attempts:rows[0].map(x=>x.attemptId),sources:await Promise.all(rows[1].map(async x=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',await x.blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join(''))),untrusted:document.body.innerText.includes('untrusted'),overflow:document.documentElement.scrollWidth>innerWidth}}finally{db.close()}})()`);
+    assert.equal(restored.attempts.length,10,'Every synthetic attempt survives the restore.');
+    assert.ok(queueIds.every(id=>restored.attempts.includes(id)),'All seven queue identities survive the restore.');
+    assert.ok(restored.sources.includes(sourceHash),'The restored source bytes retain their original hash.');
+    assert.equal(restored.untrusted,true,'Imported history is identified as untrusted.');
+    assert.equal(restored.overflow,false,'The restored product fits the 320 px viewport.');
+    assert.equal(providerCalls,10,'Restore does not invoke the provider.');
   } finally {
-    client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
     await rm(root,{recursive:true,force:true});
   }
