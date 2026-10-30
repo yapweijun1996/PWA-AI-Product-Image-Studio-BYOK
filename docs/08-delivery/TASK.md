@@ -208,6 +208,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is one Chromium localhost scenario, not real installed iOS or proof of every transaction, crash or cross-tab race. The previously observed older cached-asset mismatch remains unexplained; no reproduction or fix is claimed here. The screenshot operation timed out. No application code or provider request was changed or used.
 - **Rollback:** Revert this evidence record and matching documentation checksums only; preserve all browser product data and existing caches.
 
+## T-011 two-build unsaved-draft observation — 2026-10-30
+
+- **Setup:** In an isolated desktop Chromium context, two actual builds from a disposable source copy served distinct worker IDs and hashed assets; B differed by a synthetic CSS rule. One tab had an unsaved synthetic SKU in the actual new-product form, while another tab remained on the workspace. No provider key or seller data was used.
+- **Evidence:** With B waiting, clicking the update button in the dirty tab retained its SKU and displayed the save-or-discard warning; B remained waiting. Clicking the update button in the clean tab activated B and reloaded that tab to its B script. The dirty tab retained the A script and exact SKU, displayed the new-version-active warning, and another reload-button click left its draft intact. The dirty tab's browser console reported no errors or warnings. These were DOM button clicks through browser evaluation, not physical touch input.
+- **Limits:** This is one synthetic Chromium scenario; it does not prove suspended-tab, mask, in-flight transaction, quota/eviction, loader visibility, installed-iOS or all cross-tab cases. T-011 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence record and documentation hashes only; preserve all product data and caches.
+
 ## T-011 two-build Chromium observation — 2026-10-30
 
 - **Setup:** Two actual production builds from a disposable source copy used distinct generated worker IDs and hashed JS/CSS assets; build B added only a synthetic CSS rule. An isolated Chromium context opened two tabs against a local server switched from build A to B. No real key or seller data was used.
