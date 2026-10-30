@@ -966,4 +966,9 @@ Do not mark production deployed from CI green alone. Human permission required f
 
 - **Finding and fix:** A secondary pointer could terminate a primary mask brush when it ended or was cancelled. The editor now ignores secondary pointer-up and pointer-cancel events. See [BUG-018](../../BUG.md).
 - **Evidence:** At 320 px in headless Chromium, the automated test verifies primary stroke pixels after a synthetic secondary cancellation and again after the secondary touch ends; the recorded pointer events confirm the primary continues moving. The original implementation fails the browser regression. The production build passes with the existing large-chunk warning.
-- **Limits and rollback:** The cancellation is synthetic and the mask check inspects the editor preview, not physical multi-touch or a saved-mask round-trip. T-050 and T-080 remain IMPLEMENTED_UNVERIFIED. Preserve saved masks and revert the guards only with an equivalent pointer-ownership solution.
+- **Limits and rollback:** The original check inspected the editor preview; the subsequent synthetic save and reopen check is recorded below. Physical multi-touch acceptance remains open. T-050 and T-080 remain IMPLEMENTED_UNVERIFIED. Preserve saved masks and revert the guards only with an equivalent pointer-ownership solution.
+
+## T-050 / BUG-018 saved mask round-trip — 2026-10-31
+
+- **Evidence:** The automated 320 px Chromium test saves the synthetic multi-touch brush result through review, decodes the stored mask, reloads the editor and verifies two erased stroke samples, an opaque protected-region sample and the same protected coordinates. The original image bytes retain their initial SHA-256. The browser regression passes without a provider call or real SKU.
+- **Limits and rollback:** The secondary cancellation is synthetic and three sampled pixels cannot prove whole-image fidelity; physical devices, installed mode and assistive technology remain open. T-050, T-080 and BUG-018 remain unverified for their full acceptance scope. Remove the added round-trip assertions if necessary; no application runtime or stored user data was changed.
