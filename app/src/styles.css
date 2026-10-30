@@ -94,6 +94,7 @@ h1 { margin: 12px 0 12px; font-size: clamp(32px, 3.5vw, 44px); letter-spacing: -
 .mask-editor > select { display: block; max-width: 420px; margin: 8px 0 16px; }
 .mask-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin: 16px 0; }
 .mask-controls select { width: auto; min-width: 150px; }
+.mask-controls input[type="range"] { min-height: 44px; }
 .mask-controls .checkbox-label { margin: 0; align-items: center; }
 .mask-viewport { max-height: 70vh; overflow: auto; border: 1px solid var(--border); background: repeating-conic-gradient(#ccc 0% 25%, #eee 0% 50%) 0 / 20px 20px; }
 .mask-surface { position: relative; min-width: 1px; }

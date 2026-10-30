@@ -81,3 +81,10 @@ This register tracks verified defects and their remediation. Application source 
 - **Status:** VERIFIED for the scoped Chromium fix. **Priority:** P2. **Related task:** T-080.
 - **Evidence and fix:** At 320 px the workspace brand link measured 38 px high, below the project's 44 px mobile target. Its mobile link box now has a 44 px minimum height without enlarging the logo artwork. It measured 44 px at 320, 390 and 768 px; clicking it from a synthetic project returned to the workspace. Desktop layout at 1280 px was visually inspected.
 - **Limits:** Measurements use emulation, not physical touch or installed iOS. Desktop remains 42 px high and was outside this mobile fix. Revert the mobile minimum-height rule and record together if needed.
+
+## BUG-010 — Mask slider touch targets are too short on mobile
+
+- **Status:** VERIFIED for the scoped CSS fix in emulated Chromium. **Priority:** P2. **Related tasks:** T-050 and T-080.
+- **Evidence and fix:** At a 320 px mobile viewport, the brush-size and zoom range inputs measured 129 × 16 CSS px. The mask-controls range inputs now have a 44 px minimum height; both measured 129 × 44 px at 320, 390 and 1280 px without document-level horizontal overflow.
+- **Behavior check:** With a synthetic local image, the brush slider accepted an ArrowRight key and changed from 5% to 6%; an erase brush mark could be reviewed and saved after the CSS change. The UI reported local save. Earlier in the same synthetic session the saved source bytes matched their SHA-256 metadata. The production build passed.
+- **Limits:** These checks use emulated Chromium and a synthetic file injected into the upload control, not physical touch, installed iOS, screen-reader coverage or complete E2E acceptance. No real provider request was made. Roll back the range-input rule and this record together; preserve originals and masks.

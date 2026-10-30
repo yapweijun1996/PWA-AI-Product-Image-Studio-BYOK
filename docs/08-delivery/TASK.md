@@ -731,6 +731,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
 - **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
 
+## T-050 / T-080 mobile mask controls — 2026-10-30
+
+- **Evidence and fix:** A synthetic product created through a development module received a synthetic image through the upload control and the original was saved. The mask brush-size and zoom controls initially measured only 16 px high at 320 px; [BUG-010](../../BUG.md) records the 44 px minimum-height fix. Both sliders measured 129 × 44 px with no document-level horizontal overflow at emulated widths 320, 390 and 1280 px. A desktop screenshot was inspected.
+- **Behavior:** At 320 px, keyboard ArrowRight changed brush size from 5% to 6%; the no-drag erase mark, review and save controls completed and reported a local mask save after the fix. Before the fix, source bytes were verified against their recorded SHA-256 after the first mask save. No real provider request was made.
+- **Checks and limits:** The production build and TypeScript check passed, with the existing large-chunk warning. The synthetic file was injected into the real upload input; this is not physical touch, installed iOS, screen-reader, full accessibility or end-to-end release acceptance. T-050 and T-080 retain their open criteria.
+- **Rollback:** Revert the mask range-input CSS rule and associated bug and task records together; retain source images and masks.
+
 ## T-080 scoped offline and accessibility observations — 2026-10-30
 
 - **Environment:** Localhost, synthetic project and Chromium 150 on the development workstation; offline state was browser-emulated after the shell had been cached. This is not an installed iPhone, real network-loss or cross-browser test.
