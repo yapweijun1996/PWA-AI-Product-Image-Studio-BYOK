@@ -186,3 +186,7 @@ The owner selected a **self-hosted gateway with server-configured provider key**
 ### ADR-020 follow-up — historical legacy review access
 
 A legacy attempt whose active mask changed may display its validated source, composite and review history read-only. The original inputs and review history remain subject to integrity checks within the same transaction; prior decisions are marked historical and cannot authorize review writes or export. Current product information is identified as current. This adds no persisted schema or archive version. BUG-012 tracks remaining acceptance and rollback.
+
+### ADR-008 follow-up — observed client disconnection before dispatch
+
+The local gateway treats an observed closed response connection as loss of authorization for a future image dispatch and rechecks it at the journal's final dispatch boundary. This does not prove a disconnected client has cancelled a request whose closure has not yet reached the gateway. Once dispatched, the gateway preserves the provider's definitive outcome or UNKNOWN regardless of the client's connection and never assumes the request was unbilled. No journal schema or public API contract changed; BUG-016 records scoped evidence and remaining security acceptance.

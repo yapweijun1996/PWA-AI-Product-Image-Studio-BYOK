@@ -323,7 +323,9 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
           let body;
           try { body = await readJson(request, MAX_IMAGE_BODY); }
           catch (reason) { const oversized = reason.message === 'size'; return error(response, oversized ? 413 : 400, oversized ? 'PAYLOAD_TOO_LARGE' : 'INVALID_INPUT', 'Invalid request.'); }
-          const active = () => sessions.get(session.id) === current && current.expires > now() && providers.get(providerId) === provider && provider.expires > now();
+          // A disconnected caller cannot authorize a future dispatch. Once submitted,
+          // retain the provider outcome even if the response connection closes.
+          const active = () => !response.destroyed && sessions.get(session.id) === current && current.expires > now() && providers.get(providerId) === provider && provider.expires > now();
           if (!active()) return error(response, 401, 'UNAUTHENTICATED', 'Authorization expired or was revoked.');
           if (!validAttempt(body)) return error(response, 400, 'INVALID_INPUT', 'Invalid Studio attempt or estimate.');
           if (money(body.estimatedUSD) > money(imageConfig.maxEstimatedUSD)) return error(response, 403, 'FORBIDDEN', 'The estimate exceeds the configured estimate guard.');

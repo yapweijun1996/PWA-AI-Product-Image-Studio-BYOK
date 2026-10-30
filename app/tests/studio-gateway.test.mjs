@@ -995,3 +995,76 @@ test('review of markerless pending definitive result preserves another attempt m
   assert.deepEqual(JSON.parse(await readFile(join(f.journal, '.inflight'), 'utf8')), marker);
   assert.equal(await store.begin(principal, attempt().clientAttemptId), 'busy');
 });
+
+test('client disconnect before journal unlock does not dispatch provider request', async (t) => {
+  const f = await fixture(t), session = await f.login(), body = attempt(), id = await approval(f, session, body);
+  const lock = join(f.journal, '.lock'); await mkdir(lock, { mode: 0o700 });
+  let notifyClosed; const closed = new Promise((resolve) => { notifyClosed = resolve; });
+  const received = new Promise((resolve) => f.server.once('request', (req, res) => { req.once('end', resolve); res.once('close', notifyClosed); }));
+  const controller = new AbortController();
+  const pending = fetch(f.origin + '/api/v2/images/generate', { method: 'POST', signal: controller.signal,
+    headers: { Origin: f.origin, 'Content-Type': 'application/json', Cookie: session.cookie, 'X-CSRF-Token': session.csrf,
+      'X-Attempt-Approval': id, 'X-Client-Request-Id': body.clientAttemptId }, body: JSON.stringify(body) });
+  await received; controller.abort(); await assert.rejects(pending, { name: 'AbortError' });
+  await closed;
+  await rmdir(lock);
+  const principal = createHash('sha256').update('studio-local-owner-v1').digest('hex');
+  const resultPath = join(f.journal, `${principal}-${body.clientAttemptId}.result`);
+  let result;
+  for (let i = 0; i < 100; i++) {
+    try { result = JSON.parse(await readFile(resultPath, 'utf8')); break; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.deepEqual(result, { outcome: 'DEFINITIVE_FAILURE', format: 2 });
+  assert.equal(f.calls.length, 0);
+});
+
+test('client disconnect after dispatch retains the provider outcome and does not resend', async (t) => {
+  let release, notifyDispatch; const dispatched = new Promise((resolve) => { notifyDispatch = resolve; });
+  const held = new Promise((resolve) => { release = resolve; }); let calls = 0;
+  const f = await fixture(t, { transport: async () => { calls++; notifyDispatch(); await held; return success(); } });
+  const session = await f.login(), body = attempt(), id = await approval(f, session, body), controller = new AbortController();
+  let notifyClosed; const closed = new Promise((resolve) => { notifyClosed = resolve; });
+  f.server.once('request', (_req, res) => res.once('close', notifyClosed));
+  const pending = fetch(f.origin + '/api/v2/images/generate', { method: 'POST', signal: controller.signal,
+    headers: { Origin: f.origin, 'Content-Type': 'application/json', Cookie: session.cookie, 'X-CSRF-Token': session.csrf,
+      'X-Attempt-Approval': id, 'X-Client-Request-Id': body.clientAttemptId }, body: JSON.stringify(body) });
+  try {
+    await dispatched; controller.abort(); await assert.rejects(pending, { name: 'AbortError' }); await closed;
+    release();
+    const principal = createHash('sha256').update('studio-local-owner-v1').digest('hex');
+    const resultPath = join(f.journal, `${principal}-${body.clientAttemptId}.result`);
+    let result;
+    for (let i = 0; i < 100; i++) {
+      try { result = JSON.parse(await readFile(resultPath, 'utf8')); break; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.deepEqual(result, { outcome: 'DEFINITIVE_SUCCESS', format: 2 });
+    assert.equal(calls, 1);
+  } finally { release(); }
+});
+
+test('client disconnect after dispatch and ambiguous provider failure retains UNKNOWN', async (t) => {
+  let release, notifyDispatch; const dispatched = new Promise((resolve) => { notifyDispatch = resolve; });
+  const held = new Promise((resolve) => { release = resolve; }); let calls = 0;
+  const f = await fixture(t, { transport: async () => { calls++; notifyDispatch(); await held; throw new Error('synthetic network failure'); } });
+  const session = await f.login(), body = attempt(), id = await approval(f, session, body), controller = new AbortController();
+  let notifyClosed; const closed = new Promise((resolve) => { notifyClosed = resolve; });
+  f.server.once('request', (_req, res) => res.once('close', notifyClosed));
+  const pending = fetch(f.origin + '/api/v2/images/generate', { method: 'POST', signal: controller.signal,
+    headers: { Origin: f.origin, 'Content-Type': 'application/json', Cookie: session.cookie, 'X-CSRF-Token': session.csrf,
+      'X-Attempt-Approval': id, 'X-Client-Request-Id': body.clientAttemptId }, body: JSON.stringify(body) });
+  try {
+    await dispatched; controller.abort(); await assert.rejects(pending, { name: 'AbortError' }); await closed; release();
+    const principal = createHash('sha256').update('studio-local-owner-v1').digest('hex');
+    const resultPath = join(f.journal, `${principal}-${body.clientAttemptId}.result`);
+    let result;
+    for (let i = 0; i < 100; i++) {
+      try { result = JSON.parse(await readFile(resultPath, 'utf8')); break; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.deepEqual(result, { outcome: 'UNKNOWN', format: 2 });
+    assert.equal(calls, 1);
+    assert.ok((await readdir(f.journal)).includes('.inflight'));
+  } finally { release(); }
+});
