@@ -1,4 +1,5 @@
 import { inspectImageHeader } from './imageHeader';
+import { sha256 } from './prepareSource';
 
 export type StrictCompositeMapping = { x: number; y: number; width: number; height: number; sourceWidth: number; sourceHeight: number };
 export type StrictRect = { x: number; y: number; width: number; height: number };
@@ -7,7 +8,8 @@ export type StrictRecipe = {
   sourceView: 'TOP' | 'OTHER' | 'UNKNOWN'; topViewConfirmed?: true; crop?: StrictRect;
   display?: StrictRect; displayFrontFacing?: true; copy?: string; copyLayerSha256?: string;
 };
-type Inputs = { source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number; signal: AbortSignal; recipe?: StrictRecipe; copyLayer?: Blob; protectedRegions?: StrictRect[] };
+export type ProtectedEvidence = { version: 1; sourceSha256: string; maskSha256: string; width: number; height: number; regions: StrictRect[] };
+type Inputs = { source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number; signal: AbortSignal; recipe?: StrictRecipe; copyLayer?: Blob; protectedEvidence?: ProtectedEvidence };
 type RenderInputs = Omit<Inputs, 'signal'>;
 type Result = { blob: Blob; mapping: StrictCompositeMapping; ad?: Blob; copyLayer?: Blob };
 const EDGE = 1024;
@@ -149,7 +151,7 @@ async function png(canvas: Canvas): Promise<Blob> {
 // Shared by the worker and the main-thread fallback; allocations and decodes are sequential.
 export async function renderStrictCompositePixels(inputs: RenderInputs, checkCancelled: () => void = () => {}): Promise<Result> {
   const { source, mask, scene, sourceWidth, sourceHeight } = inputs;
-  const protectedRegions = inputs.protectedRegions === undefined ? undefined : structuredClone(inputs.protectedRegions);
+  const protectedEvidence = inputs.protectedEvidence === undefined ? undefined : structuredClone(inputs.protectedEvidence);
   const recipe = inputs.recipe === undefined ? undefined : structuredClone(inputs.recipe);
   if (!Number.isInteger(sourceWidth) || !Number.isInteger(sourceHeight) || sourceWidth < 1 || sourceHeight < 1 || sourceWidth > MAX_DIMENSION || sourceHeight > MAX_DIMENSION || sourceWidth * sourceHeight > MAX_PIXELS) throw new Error('Invalid source dimensions.');
   const sourceHeader = await header(source); checkCancelled();
@@ -159,6 +161,19 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
   const [sw, sh] = oriented(sourceHeader);
   if (sw !== sourceWidth || sh !== sourceHeight) throw new Error('Source dimensions or orientation do not match.');
   if (maskHeader.mimeType !== 'image/png' || maskHeader.orientation !== 1 || maskHeader.width !== sw || maskHeader.height !== sh) throw new Error('Mask dimensions do not match the source.');
+  if (protectedEvidence !== undefined) {
+    const keys = ['version', 'sourceSha256', 'maskSha256', 'width', 'height', 'regions'];
+    if (!protectedEvidence || typeof protectedEvidence !== 'object' || Array.isArray(protectedEvidence) ||
+        Object.keys(protectedEvidence).length !== keys.length || keys.some((key) => !Object.hasOwn(protectedEvidence, key)) ||
+        protectedEvidence.version !== 1 || protectedEvidence.width !== sw || protectedEvidence.height !== sh ||
+        typeof protectedEvidence.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(protectedEvidence.sourceSha256) ||
+        typeof protectedEvidence.maskSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(protectedEvidence.maskSha256)) {
+      throw new Error('Protected-region evidence is missing or invalid.');
+    }
+    const sourceHash = await sha256(new Uint8Array(await source.arrayBuffer())); checkCancelled();
+    const maskHash = await sha256(new Uint8Array(await mask.arrayBuffer())); checkCancelled();
+    if (sourceHash !== protectedEvidence.sourceSha256 || maskHash !== protectedEvidence.maskSha256) throw new Error('Protected-region evidence does not match the source and mask.');
+  }
   const canvases: Canvas[] = [];
   let decoded: Decoded | undefined;
   try {
@@ -173,8 +188,8 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
     if (decoded.width !== sw || decoded.height !== sh) throw new Error('Mask dimensions do not match the source.');
     productContext.drawImage(decoded.image, 0, 0); decoded.release(); decoded = undefined;
     const coverage = productContext.getImageData(0, 0, sw, sh);
-    if (protectedRegions !== undefined) {
-      assertProtectedCoverage(sw, sh, pixels.data, coverage.data, protectedRegions,
+    if (protectedEvidence !== undefined) {
+      assertProtectedCoverage(sw, sh, pixels.data, coverage.data, protectedEvidence.regions,
         recipe?.styleId === 'macro' ? recipe.crop : undefined);
     }
     applyFinalCoverage(pixels.data, coverage.data);

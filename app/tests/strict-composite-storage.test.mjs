@@ -179,13 +179,18 @@ function maskVersion(f, version) {
 test('the renderer rejects a mask that removes an explicitly supplied protected region', async () => {
   const maskBytes = png(2, 1, Uint8Array.from([255, 255, 255, 255, 255, 255, 255, 0]));
   const inputs = { source: blob(sourceBytes), mask: blob(maskBytes), scene: blob(sceneBytes), sourceWidth: 2, sourceHeight: 1 };
-  const intact = await renderStrictCompositePixels({ ...inputs, protectedRegions: [{ x: 0, y: 0, width: 1, height: 1 }] });
+  const evidence = { version: 1, sourceSha256: hash(sourceBytes), maskSha256: hash(maskBytes), width: 2, height: 1, regions: [{ x: 0, y: 0, width: 1, height: 1 }] };
+  const intact = await renderStrictCompositePixels({ ...inputs, protectedEvidence: evidence });
   assert.ok(intact.blob.size > 0);
-  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedRegions: [{ x: 1, y: 0, width: 1, height: 1 }] }), /not fully covered/);
-  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedRegions: [] }), /missing or invalid/);
-  const mutable = [{ x: 0, y: 0, width: 1, height: 1 }];
-  const pending = renderStrictCompositePixels({ ...inputs, protectedRegions: mutable });
-  mutable[0].x = 1;
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedEvidence: { ...evidence, regions: [{ x: 1, y: 0, width: 1, height: 1 }] } }), /not fully covered/);
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedEvidence: { ...evidence, regions: [] } }), /missing or invalid/);
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedEvidence: { ...evidence, sourceSha256: 'a'.repeat(64) } }), /does not match/);
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedEvidence: { ...evidence, maskSha256: 'b'.repeat(64) } }), /does not match/);
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedEvidence: { ...evidence, width: 3 } }), /invalid/);
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedEvidence: { ...evidence, extra: true } }), /invalid/);
+  const mutable = structuredClone(evidence);
+  const pending = renderStrictCompositePixels({ ...inputs, protectedEvidence: mutable });
+  mutable.regions[0].x = 1;
   assert.ok((await pending).blob.size > 0);
   const legacy = await renderStrictCompositePixels(inputs);
   assert.ok(legacy.blob.size > 0);
