@@ -100,7 +100,11 @@ This register tracks verified defects and their remediation. Application source 
 
 ## BUG-012 — Legacy review history becomes inaccessible after active mask changes
 
-- **Status:** PENDING. **Priority:** P2. **Related tasks:** T-052, T-060 and T-022.
+- **Status:** IMPLEMENTED_UNVERIFIED. **Priority:** P2. **Related tasks:** T-052, T-060 and T-022.
 - **Evidence:** In isolated Chromium with a synthetic legacy Studio attempt, a review and rejection were saved. After saving a newer mask and creating another synthetic attempt, opening the prior composite's review showed `The rights or active mask changed since this attempt.` The saved composite remained visible; its review records were not deleted. The current validation ties this legacy review operation to the active mask.
 - **Impact:** The documented recovery path for an unprotected composite can make older legacy review history difficult to inspect in the UI. This does not establish data loss; backups and record preservation must remain intact.
 - **Acceptance:** Provide a clearly historical, read-only view of valid prior reviews and decisions after mask changes without allowing stale approval/export or changing old records. Preserve corruption detection, import trust barriers and cross-tab safety. Test old and new mask versions, rejection and approval histories, missing/corrupt source or mask, backup/restore, keyboard and narrow viewport.
+
+- **Implementation evidence (2026-10-30):** Legacy history now reads the original mask, source and composite through the same verified transaction after a valid active-mask change. It marks prior decisions historical and disables review and decision controls. Synthetic storage tests exercise approval and rejection, stale writes/exports and corrupt old mask; isolated Chromium shows the original, composite and historical rejection at 320px and 390px without page overflow. No provider call was made.
+- **Remaining acceptance:** Verify backup/restore and import trust barriers specifically after an active-mask change, missing/corrupt source and active mask, cross-tab races, keyboard operation and physical mobile devices. Prior automated tests for adjacent paths do not establish these combinations.
+- **Rollback:** Revert this change without altering stored assets or records; older history again becomes inaccessible after a mask change. Keep stale approval/export gates intact.

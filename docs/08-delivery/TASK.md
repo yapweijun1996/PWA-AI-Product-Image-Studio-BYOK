@@ -872,3 +872,11 @@ Next task and owner:
 ```
 
 Do not mark production deployed from CI green alone. Human permission required for release. A task update must carry verified code/test evidence, not generic assistant claims.
+
+## T-060 / BUG-012 historical legacy review follow-up — 2026-10-30
+
+- **Implemented:** Verified history for a legacy attempt can be inspected after its active mask changes. The original source and composite remain visible; previous decisions are historical and review/decision controls are unavailable. All checks for current operations and exports remain in place. Current product details are labeled as current rather than represented as the old review snapshot.
+- **Evidence:** Synthetic storage regression covers approved and rejected history, stale writes and export, and corrupt old mask. Chromium with isolated synthetic data displayed the original, composite, historical rejection and read-only notice at 320px and 390px without page overflow, and at 1280px. A real browser exposed an inactive IndexedDB transaction in an intermediate implementation; moving the lookup into the transaction request phase resolved the observed error. No provider request was made.
+- **Checks:** Production build passed with its existing large-chunk warning; the full application suite passed 271/271. Full documentation validator passed and its six regression tests passed.
+- **Remaining:** BUG-012 remains IMPLEMENTED_UNVERIFIED pending scenario-specific backup/restore, import barrier, missing/corrupt current inputs, cross-tab races, keyboard, and physical mobile acceptance. T-060 remains IMPLEMENTED_UNVERIFIED and T-052 remains IN_PROGRESS.
+- **Rollback:** Revert the historical-view code, preserving records and the approval/export gate; do not downgrade storage or bypass protected evidence.

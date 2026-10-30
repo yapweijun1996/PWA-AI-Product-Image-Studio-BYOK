@@ -93,7 +93,7 @@ const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
 const { createProduct, getProduct, saveSource, saveMask, loadSourceMask, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint,
   loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts,
-  createVisualReview: rawCreateVisualReview, recordVisualDecision, listVisualReviews, getBackupSnapshot, validateBackupHistory, validateBackupMasks } =
+  createVisualReview: rawCreateVisualReview, recordVisualDecision, listVisualReviews, loadApprovedExportBatch, listApprovedExportCandidates, getBackupSnapshot, validateBackupHistory, validateBackupMasks } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const evidenceByAsset = new Map();
@@ -563,4 +563,28 @@ test('cancelling history verification releases its lock while decoding is held',
     release(); globalThis.createImageBitmap = original;
   }
   assert.equal((await history(f)).reviews.length, 1);
+});
+
+test('legacy mask changes preserve verified read-only review history and reject stale writes', async () => {
+  for (const choice of ['APPROVED', 'REJECTED']) {
+    const f = await ready(), report = await review(f), savedDecision = await decision(f, report, choice);
+    const before = await history(f);
+    assert.equal(before.historicalOnly, false);
+    await saveMask(f.productId, f.source, blob(sourceBytes), f.maskId, [{ x: 0, y: 0, width: 1, height: 1 }]);
+    const historical = await history(f);
+    assert.equal(historical.historicalOnly, true);
+    assert.equal(historical.reviewInputs.maskId, f.maskId);
+    assert.deepEqual(Buffer.from(await historical.reviewInputs.source.arrayBuffer()), sourceBytes);
+    assert.equal(historical.reviews[0].qaId, report.qaId);
+    assert.equal(historical.decisions[0].qaId, savedDecision.qaId);
+    assert.equal(historical.decisions[0].current, false);
+    await assert.rejects(load(f), /active mask changed/i);
+    await assert.rejects(review(f), /active mask changed/i);
+    await assert.rejects(decision(f, report), /active mask changed/i);
+    const selection = { attemptId: f.attemptId, assetId: f.composite.assetId, productSha256: report.productSha256, assetSha256: report.assetSha256, reviewId: report.qaId, decisionId: savedDecision.qaId };
+    await assert.rejects(loadApprovedExportBatch(f.productId, [selection]));
+    assert.deepEqual(await listApprovedExportCandidates(f.productId), []);
+    await mutate(f.db, 'masks', f.maskId, (mask) => ({ ...mask, blob: blob(png(2, 1)) }));
+    await assert.rejects(history(f), /hash|mask/i);
+  }
 });

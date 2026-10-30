@@ -1633,7 +1633,7 @@ export type VisualDecisionRecord = VisualProvenance & {
 };
 export type StoredVisualDecision = Omit<VisualDecisionRecord, 'current'>;
 type CheckedVisualHistory = { reviews: VisualReviewRecord[]; decisions: VisualDecisionRecord[] };
-type VisualHistory = CheckedVisualHistory & { product: Product; productSha256: string; assetSha256: string; importedReviewRequired: boolean; recipeSha256?: string; adSha256?: string; protectedEvidenceSha256?: string };
+type VisualHistory = CheckedVisualHistory & { historicalOnly: boolean; reviewInputs: StrictCompositeInputs; product: Product; productSha256: string; assetSha256: string; importedReviewRequired: boolean; recipeSha256?: string; adSha256?: string; protectedEvidenceSha256?: string };
 type VisualOperation =
   | { kind: 'review'; assetId: string; scoresText: ReviewScores; checks: ReviewChecks; variant: ReviewVariant; note: string; expectedProductSha256: string; expectedAssetSha256: string; expectedRecipeSha256?: string; expectedAdSha256?: string; expectedProtectedEvidenceSha256?: string; styleChecks?: StyleReviewChecks; findings: ReviewFinding[] }
   | { kind: 'decision'; assetId: string; reportId: string; decision: 'APPROVED' | 'REJECTED' }
@@ -1906,6 +1906,7 @@ async function strictCompositeTransaction(
         }
         const sourceRequest = tx.objectStore('sourceAssets').get(attempt.sourceAssetId);
         const maskRequest = tx.objectStore('masks').get(attempt.maskId);
+        const activeMaskRequest = tx.objectStore('masks').get(productRequest.result?.brandLock?.maskAssetId || attempt.maskId);
         const versionsRequest = tx.objectStore('masks').index('sourceAssetId').getAll(attempt.sourceAssetId);
         const jobRequest = tx.objectStore('jobs').get(attempt.jobId);
         const lineageRequest = tx.objectStore('attempts').index('jobId').getAll(attempt.jobId);
@@ -1915,7 +1916,8 @@ async function strictCompositeTransaction(
             try {
               const product = checkedProduct(productRequest.result);
               validateBackupReferences(product);
-              if (product.productId !== productId || !product.rightsAcknowledged || (attempt.styleId === undefined && product.brandLock.maskAssetId !== attempt.maskId)) {
+              const historicalOnly = visual?.kind === 'list' && attempt.styleId === undefined && product.brandLock.maskAssetId !== null && product.brandLock.maskAssetId !== attempt.maskId;
+              if (product.productId !== productId || !product.rightsAcknowledged || (attempt.styleId === undefined && product.brandLock.maskAssetId !== attempt.maskId && !historicalOnly)) {
                 throw new Error('The rights or active mask changed since this attempt.');
               }
               validateAttemptContext(attempt, product, false);
@@ -1950,7 +1952,13 @@ async function strictCompositeTransaction(
                 if (!verifying) return;
                 versions.push(version);
               }
-              validateMaskReferences({ ...product, brandLock: { ...product.brandLock, maskAssetId: attempt.maskId } }, versions);
+              if (historicalOnly) {
+                const activeId = product.brandLock.maskAssetId!;
+                const active = await verifyMask(product, activeMaskRequest.result);
+                if (!verifying) return;
+                if (active.metadata.maskId !== activeId) throw new Error('The active mask is missing or invalid.');
+              }
+              validateMaskReferences({ ...product, brandLock: { ...product.brandLock, maskAssetId: historicalOnly ? null : attempt.maskId } }, versions);
               await verifyStrictPng(scene.blob, scene.sha256);
               if (!verifying) return;
               const inputs: StrictCompositeInputs = { source: original.blob, mask: mask.blob, scene: scene.blob,
@@ -2050,8 +2058,9 @@ async function strictCompositeTransaction(
                     if (!review || review.revision <= barrier) decision.current = false;
                   }
                 }
+                if (historicalOnly) for (const decision of history.decisions) decision.current = false;
                 if (!protectedEvidence) for (const decision of history.decisions) { if (decision.decision === 'APPROVED') decision.current = false; }
-                if (visual.kind === 'list') result = { ...history, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256,
+                if (visual.kind === 'list') result = { ...history, historicalOnly, reviewInputs: inputs, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256,
                   importedReviewRequired: barrier !== undefined && history.reviews.length <= barrier,
                   ...(provenance.recipeSha256 ? { recipeSha256: provenance.recipeSha256 } : {}), ...(provenance.adSha256 ? { adSha256: provenance.adSha256 } : {}), ...(provenance.protectedEvidenceSha256 ? { protectedEvidenceSha256: provenance.protectedEvidenceSha256 } : {}) };
                 else if (visual.kind === 'review') {
