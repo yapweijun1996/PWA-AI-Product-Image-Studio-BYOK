@@ -1,6 +1,6 @@
 {
   "name": "PWA-AI-Product-Image-Studio-BYOK-SSOT",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "date": "2026-10-30",
   "status": "DOCUMENTATION_ONLY_NOT_IMPLEMENTED",
   "source": "user-confirmed repo name + KB-MCP skills + official reference documentation",
@@ -32,8 +32,8 @@
     },
     {
       "path": "BUG.md",
-      "bytes": 3373,
-      "sha256": "310ac538950a4612264c60f3f18173e67be96db0883335690c890674ef395467"
+      "bytes": 3673,
+      "sha256": "23ea1b7adaa2a306d0949c1adbbc23d2fe44703089e19ce87ed29c2274ee32df"
     },
     {
       "path": "DESIGN.md",
@@ -48,7 +48,7 @@
     {
       "path": "README.md",
       "bytes": 7372,
-      "sha256": "2d4bae070334bcd813f733a5d7bdac0eedbcc341cfba50f339c830290e99f68c"
+      "sha256": "00391688a20d566c503eba728874986cda625f2626f5f97f5ba4a31f595a239b"
     },
     {
       "path": "ROADMAP.md",
@@ -72,8 +72,8 @@
     },
     {
       "path": "contracts/openapi.yaml",
-      "bytes": 31411,
-      "sha256": "61fb912de362823a7bc0f9d3a942506c00d4dfcf0083e072991ff9a847645b26"
+      "bytes": 31401,
+      "sha256": "a0ea8192b4b5fdc9961bc5e8021d0f2abfa18ec8e7e0f365e2ee5ad6c019c690"
     },
     {
       "path": "contracts/schemas/export-manifest.schema.json",
@@ -82,8 +82,8 @@
     },
     {
       "path": "contracts/schemas/generation-job.schema.json",
-      "bytes": 5060,
-      "sha256": "0fd6f172d1b7e1c1935755a00cb2c3046f6af6ee83fc87683d1c21e61f2053c2"
+      "bytes": 5065,
+      "sha256": "10db8fa417dd5e96b547cbb4ccc34ff7750302b5e50a7d9857104efdb353e2c0"
     },
     {
       "path": "contracts/schemas/product.schema.json",
@@ -122,8 +122,8 @@
     },
     {
       "path": "docs/00-governance/SSOT_POLICY.md",
-      "bytes": 4695,
-      "sha256": "9280a46bca5f5c7f98b0ee027a5d464fd9820d39973d80953d21912876c29cb2"
+      "bytes": 4846,
+      "sha256": "ee61445d8767e0a950fdba42065b460ebcbb9132247ea91732618e3402a175d6"
     },
     {
       "path": "docs/01-product/FEATURE_PRIORITY.md",
@@ -157,8 +157,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 23358,
-      "sha256": "6ab2f77910966329a01998eb0832e06281b7f778347082ddb10805dbaa5a78cb"
+      "bytes": 24736,
+      "sha256": "7d6f8a30120cf50cbb884883eccbff79e4809f44ca67357a761b55f60277245f"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -227,8 +227,8 @@
     },
     {
       "path": "docs/05-api/ERROR_RETRY_COST.md",
-      "bytes": 5723,
-      "sha256": "38d9eeb8948db1840bb9068b0cb738dcae52c471a173d719e29eaeafd0e08709"
+      "bytes": 5735,
+      "sha256": "6498a009adc21855221f6e0d4c250d6b6df66e9c46c301274b1ee4d6523e5f50"
     },
     {
       "path": "docs/05-api/OPENAI_ADAPTER.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 108315,
-      "sha256": "b81540dabb1a4f0b04fc67b3b33bed7c63ebe82d1233dba05bccd91e96112c3d"
+      "bytes": 109614,
+      "sha256": "26505878226aeb67ee7645546e36e5943c8b6bed746854b8f86cce5d468f59d1"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

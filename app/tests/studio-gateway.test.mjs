@@ -529,13 +529,13 @@ test('provider 429 returns safe quota-aware metadata without automatically retry
 
 test('gateway enforces provider wait across restart, independent of client history', async (t) => {
   let calls = 0;
-  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '60' } }); } });
+  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '86401' } }); } });
   let session = await f.login(); const first = attempt();
   const response = await f.generate(session, first, await approval(f, session, first));
-  assert.equal(response.status, 429); assert.equal((await response.json()).error.retryAfterSeconds, 60);
+  assert.equal(response.status, 429); assert.equal((await response.json()).error.retryAfterSeconds, 86401);
   assert.equal((await f.acknowledge(session, first.clientAttemptId)).status, 200);
   await f.stop(); await f.start(); session = await f.login();
-  f.advance(59999);
+  f.advance(86400999); session = await f.login();
   const early = attempt(); const blocked = await f.generate(session, early, await approval(f, session, early));
   assert.equal(blocked.status, 429); assert.equal((await blocked.json()).error.code, 'RATE_LIMITED'); assert.equal(calls, 1);
   f.advance(1);
@@ -556,7 +556,7 @@ test('malformed durable wait fails closed without a new provider dispatch', asyn
 
 test('unrepresentable provider retry delay retains a durable review gate', async (t) => {
   let calls = 0;
-  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '86401' } }); } });
+  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '2147483648' } }); } });
   let session = await f.login(); const first = attempt();
   const result = await f.generate(session, first, await approval(f, session, first));
   assert.equal(result.status, 429);

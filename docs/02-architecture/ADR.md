@@ -130,3 +130,11 @@ The owner selected a **self-hosted gateway with server-configured provider key**
 ## ADR amendment template
 
 `ADR-ID | Title | Author | Date | State | Scope | Options | Decision + user approval evidence | Security/Data impact | Migration | Test evidence | Rollback | Supersedes`.
+
+## ADR-015 — Extended provider retry delays
+
+- **State:** Local implementation, synthetic-tested; real-provider and independent security acceptance remain open.
+- **Decision:** Preserve valid provider `Retry-After` values through 2147483647 seconds in the client job and gateway journal; both enforce the full delay before new dispatch. Present invalid or out-of-range values retain the existing durable external-review gate. An absent header is not treated as a known delay. No automatic retry is added.
+- **Compatibility:** The generation-job schema's supported maximum expands; old clients reject longer values. SSOT baseline advances to 7.0.0 while the local gateway stays `/api/v2`. Older gateways reject journal format 3. Back up user data, preserve journal evidence and avoid running older clients against extended records. No automatic migration or deletion is authorized.
+- **Limits:** Server enforcement applies to clients sharing that journal and depends on its clock; browser enforcement is profile-local. Owner acknowledgement of an unrepresentable value is an explicit external-review override, not automatic enforcement of its exact delay. Real provider, backup round-trip and independent security evidence remain open.
+- **Rollback:** Disable generation and review journal and backup compatibility before reverting; never discard delay, attempt or user data.

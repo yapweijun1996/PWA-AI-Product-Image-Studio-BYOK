@@ -5,6 +5,8 @@ export const STUDIO_QUALITY = 'low';
 export const STUDIO_SIZE = '1024x1024';
 export const STUDIO_PROMPT_VERSION = '1.0.0';
 export const STUDIO_MAX_PNG_BYTES = 12 * 1024 * 1024;
+// Larger or malformed provider delays require manual external review.
+export const STUDIO_MAX_RETRY_AFTER_SECONDS = 2147483647;
 // Estimate only, not a cap or guaranteed charge: 196 output tokens at $30/1M
 // ($0.005880), plus an assumption of 100 text input tokens at $5/1M ($0.000500).
 // Pricing snapshot 2026-10-29: https://developers.openai.com/api/docs/guides/image-generation

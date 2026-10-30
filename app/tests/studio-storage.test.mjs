@@ -482,9 +482,9 @@ test('retry inputs, failure metadata, and persisted delay are checked atomically
   await assert.rejects(updateStudioAttempt({ ...first, status: 'DEFINITIVE_FAILURE',
     failure: { category: 'rejected', retryAfterSeconds: 1 } }), /failure metadata/i);
   await assert.rejects(updateStudioAttempt({ ...first, status: 'DEFINITIVE_FAILURE',
-    failure: { category: 'rate_limited', retryAfterSeconds: 86401 } }), /failure metadata/i);
+    failure: { category: 'rate_limited', retryAfterSeconds: 2147483648 } }), /failure metadata/i);
   await updateStudioAttempt({ ...first, status: 'DEFINITIVE_FAILURE',
-    failure: { category: 'rate_limited', retryAfterSeconds: 30 } });
+    failure: { category: 'rate_limited', retryAfterSeconds: 86401 } });
   await new Promise((resolve, reject) => {
     const tx = f.db.transaction('jobs', 'readwrite'), store = tx.objectStore('jobs'), request = store.get(first.jobId);
     request.onsuccess = () => { const job = request.result; job.attempts[0].completedAt = '2020-01-01T00:00:00.000Z'; store.put(job); };
@@ -492,17 +492,17 @@ test('retry inputs, failure metadata, and persisted delay are checked atomically
   });
   const entry = (await readJob(f.db, first.jobId)).attempts[0], now = Date.now;
   assert.equal(entry.errorCode, 'rate_limited');
-  assert.equal(entry.retryAfterSeconds, 30);
+  assert.equal(entry.retryAfterSeconds, 86401);
   const retry = retryAttempt(first);
   try {
-    Date.now = () => Date.parse(entry.completedAt) + 29999;
+    Date.now = () => Date.parse(entry.completedAt) + 86400999;
     await assert.rejects(createStudioAttempt(retry), /delay.*wait|wait.*retry/i);
-    Date.now = () => Date.parse(entry.completedAt) + 30000;
+    Date.now = () => Date.parse(entry.completedAt) + 86401000;
     await assert.rejects(createStudioAttempt({ ...retry, maskSha256: 'd'.repeat(64) }), /mask|changed/i);
     await createStudioAttempt(retry);
-    Date.now = () => Date.parse(entry.completedAt) + 29999;
+    Date.now = () => Date.parse(entry.completedAt) + 86400999;
     await assert.rejects(updateStudioAttempt({ ...retry, status: 'SUBMITTED' }), /delay.*wait|wait.*retry/i);
-    Date.now = () => Date.parse(entry.completedAt) + 30000;
+    Date.now = () => Date.parse(entry.completedAt) + 86401000;
     await updateStudioAttempt({ ...retry, status: 'SUBMITTED' });
   } finally { Date.now = now; }
 });
@@ -554,7 +554,7 @@ test('local rate-limit waits block new jobs across products and submission but n
   await updateStudioAttempt({ ...limited, status: 'SUBMITTED' });
   await assert.rejects(updateStudioAttempt({ ...inflight, status: 'SUBMITTED' }), /in progress|UNKNOWN/i);
   await updateStudioAttempt({ ...limited, status: 'DEFINITIVE_FAILURE',
-    failure: { category: 'provider_limit', retryAfterSeconds: 60 } });
+    failure: { category: 'provider_limit', retryAfterSeconds: 86401 } });
   await new Promise((resolve, reject) => {
     const tx = a.db.transaction('jobs', 'readwrite'), store = tx.objectStore('jobs'), request = store.get(limited.jobId);
     request.onsuccess = () => { const job = request.result; job.attempts[0].completedAt = '2021-01-01T00:00:00.000Z'; store.put(job); };
@@ -562,7 +562,7 @@ test('local rate-limit waits block new jobs across products and submission but n
   });
   const now = Date.now, start = Date.parse('2021-01-01T00:00:00.000Z');
   try {
-    Date.now = () => start + 59999;
+    Date.now = () => start + 86400999;
     await assert.rejects(createStudioAttempt(await versionedAttempt(a)), /delay.*wait|wait.*retry/i);
     await assert.rejects(createStudioAttempt(await versionedAttempt(b)), /delay.*wait|wait.*retry/i);
     await assert.rejects(updateStudioAttempt({ ...prepared, status: 'SUBMITTED' }), /delay.*wait|wait.*retry/i);
@@ -580,7 +580,7 @@ test('local rate-limit waits block new jobs across products and submission but n
       tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
     });
     await updateStudioAttempt({ ...inflight, status: 'DEFINITIVE_FAILURE', failure: { category: 'rejected' } });
-    Date.now = () => start + 60000;
+    Date.now = () => start + 86401000;
     await updateStudioAttempt({ ...prepared, status: 'SUBMITTED' });
     await updateStudioAttempt({ ...prepared, status: 'DEFINITIVE_FAILURE' });
     await createStudioAttempt(await versionedAttempt(a));
@@ -656,7 +656,7 @@ test('an UNKNOWN fallback preserves bounded rate guidance after acknowledgement'
   await createStudioAttempt(first);
   await updateStudioAttempt({ ...first, status: 'SUBMITTED' });
   await assert.rejects(updateStudioAttempt({ ...first, status: 'UNKNOWN',
-    failure: { category: 'unknown', retryAfterSeconds: 86401 } }), /failure metadata/i);
+    failure: { category: 'unknown', retryAfterSeconds: 2147483648 } }), /failure metadata/i);
   await assert.rejects(updateStudioAttempt({ ...first, status: 'UNKNOWN',
     failure: { category: 'rejected', retryAfterSeconds: 1 } }), /failure metadata/i);
   await updateStudioAttempt({ ...first, status: 'UNKNOWN',

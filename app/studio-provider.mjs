@@ -1,5 +1,5 @@
 import { inflateSync } from 'node:zlib';
-import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_MAX_PNG_BYTES } from './studio-policy.mjs';
+import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_MAX_PNG_BYTES, STUDIO_MAX_RETRY_AFTER_SECONDS } from './studio-policy.mjs';
 
 const ENDPOINT = 'https://api.openai.com/v1/images/generations';
 const MAX_RESPONSE = 24 * 1024 * 1024;
@@ -73,13 +73,16 @@ function retryAfterSeconds(response) {
   const value = response.headers.get('retry-after');
   if (!value) return null;
   let seconds;
-  if (/^\d{1,5}$/.test(value)) seconds = Number(value);
-  else if (/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)) {
+  if (/^\d+$/.test(value)) {
+    const digits = value.replace(/^0+(?=\d)/, '');
+    if (digits.length > 10) return null;
+    seconds = Number(digits);
+  } else if (/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)) {
     const at = Date.parse(value);
     if (!Number.isFinite(at)) return null;
     seconds = Math.max(0, Math.ceil((at - Date.now()) / 1000));
   } else return null;
-  return seconds <= 86400 ? seconds : null;
+  return seconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? seconds : null;
 }
 function parseUsage(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;

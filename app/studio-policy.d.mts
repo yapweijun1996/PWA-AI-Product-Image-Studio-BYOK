@@ -4,6 +4,7 @@ export const STUDIO_QUALITY: 'low';
 export const STUDIO_SIZE: '1024x1024';
 export const STUDIO_PROMPT_VERSION: '1.0.0';
 export const STUDIO_MAX_PNG_BYTES: number;
+export const STUDIO_MAX_RETRY_AFTER_SECONDS: number;
 export type StudioStyleId = 'studio' | 'hero' | 'lifestyle' | 'flat_lay' | 'macro' | 'ugc' | 'billboard';
 export type StudioSceneContext = { productName: string; category: string; confirmedFacts: string[]; sourceView: 'TOP' | 'OTHER' | 'UNKNOWN' };
 export const STUDIO_SCENE_PROMPT_VERSION: '2.0.0';

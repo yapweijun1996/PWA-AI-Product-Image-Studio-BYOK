@@ -5,7 +5,7 @@ import { evaluateVisualReview, validateReviewFindings, type ReviewScores, type R
 import { sha256, type PreparedSource } from './prepareSource';
 import { inspectImageHeader } from './imageHeader';
 import { STUDIO_MAX_PNG_BYTES, STUDIO_PROMPT, STUDIO_MODEL, STUDIO_PROMPT_VERSION, STUDIO_QUALITY,
-  STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION,
+  STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, STUDIO_MAX_RETRY_AFTER_SECONDS, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION,
   studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
 import { renderStrictComposite, recipeMapping, type StrictRecipe } from './strictComposite';
 
@@ -1083,7 +1083,7 @@ function validateStudioFailure(attempt: StudioAttempt): void {
       (attempt.status === 'DEFINITIVE_FAILURE' && failure.category === 'unknown') ||
       (failure.retryAfterSeconds !== undefined &&
         (!['rate_limited', 'provider_limit', 'unknown'].includes(failure.category) || !Number.isInteger(failure.retryAfterSeconds) ||
-         failure.retryAfterSeconds < 1 || failure.retryAfterSeconds > 86400))) {
+         failure.retryAfterSeconds < 1 || failure.retryAfterSeconds > STUDIO_MAX_RETRY_AFTER_SECONDS))) {
     throw new Error('The attempt failure metadata is invalid.');
   }
 }

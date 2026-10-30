@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, STUDIO_MAX_PNG_BYTES, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD, type StudioStyleId, type StudioSceneContext } from '../studio-policy.mjs';
+import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, STUDIO_MAX_PNG_BYTES, STUDIO_MAX_RETRY_AFTER_SECONDS, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD, type StudioStyleId, type StudioSceneContext } from '../studio-policy.mjs';
 import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, listStrictComposites, listStyleInputs, loadOriginalSource, productSnapshotFingerprint, resolveImportedUncertainty, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StrictComposite, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
 import { inspectImageHeader } from './imageHeader';
 import { sha256 } from './prepareSource';
@@ -76,7 +76,7 @@ function rateLimitMessage(status: number, envelope: Record<string, unknown>): st
   const guidance = envelope.code === 'PROVIDER_LIMIT'
     ? 'Provider limit reached. Check provider rate limits, quota and billing.'
     : 'Local rate limit reached.';
-  return typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= 86400
+  return typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= STUDIO_MAX_RETRY_AFTER_SECONDS
     ? `${guidance} Wait at least ${seconds} seconds before separately authorizing a new attempt; no automatic retry will occur.`
     : `${guidance} A new attempt requires separate authorization; no automatic retry will occur.`;
 }
@@ -84,7 +84,7 @@ export function sanitizedStudioFailure(status: number, envelope: Record<string, 
   if (status === 429 && envelope.outcome === 'DEFINITIVE_FAILURE' && (envelope.code === 'RATE_LIMITED' || envelope.code === 'PROVIDER_LIMIT')) {
     const seconds = envelope.retryAfterSeconds;
     return { category: envelope.code === 'RATE_LIMITED' ? 'rate_limited' : 'provider_limit',
-      ...(typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= 86400 ? { retryAfterSeconds: seconds } : {}) };
+      ...(typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? { retryAfterSeconds: seconds } : {}) };
   }
   if (preSend) return { category: 'pre_send' };
   if (envelope.outcome === 'DEFINITIVE_FAILURE' && ((status === 409 && (envelope.code === 'ATTEMPT_BUSY' || envelope.code === 'APPROVAL_STALE')) ||
@@ -108,14 +108,14 @@ export function retryableStudioAttempt(attempt: StudioAttempt, attempts: StudioA
 function failureText(attempt: StudioAttempt): string {
   if (attempt.status === 'UNKNOWN' || attempt.status === 'SUBMITTED') {
     const seconds = attempt.failure?.retryAfterSeconds;
-    const delay = typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= 86400 ? ` A recorded minimum wait of ${seconds} seconds applies after completion.` : '';
+    const delay = typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? ` A recorded minimum wait of ${seconds} seconds applies after completion.` : '';
     return `Outcome unknown or still in progress; a charge may have occurred.${delay} No automatic retry.`;
   }
   const failure = attempt.failure;
   if (!failure) return 'No categorized reason was recorded for this historical attempt.';
   const labels = { pre_send: 'The image request was not sent.', rejected: 'The image request failed definitively.', rate_limited: 'Local rate limit reached.', provider_limit: 'Provider limit reached; check provider quota and billing.', unknown: 'Outcome unknown; a charge may have occurred.' };
   const text = Object.hasOwn(labels, failure.category) ? labels[failure.category] : 'The failure reason is unavailable.';
-  return `${text}${(failure.category === 'rate_limited' || failure.category === 'provider_limit') && Number.isInteger(failure.retryAfterSeconds) && failure.retryAfterSeconds! >= 1 && failure.retryAfterSeconds! <= 86400 ? ` Minimum wait after completion: ${failure.retryAfterSeconds} seconds; waiting does not guarantee success.` : ''} No automatic retry.`;
+  return `${text}${(failure.category === 'rate_limited' || failure.category === 'provider_limit') && Number.isInteger(failure.retryAfterSeconds) && failure.retryAfterSeconds! >= 1 && failure.retryAfterSeconds! <= STUDIO_MAX_RETRY_AFTER_SECONDS ? ` Minimum wait after completion: ${failure.retryAfterSeconds} seconds; waiting does not guarantee success.` : ''} No automatic retry.`;
 }
 export async function decodeScene(value: unknown, attemptId: string): Promise<{ blob: Blob; hash: string; usage: Record<string, unknown> | null; observedUSD: string | null; pricingSnapshot?: string }> {
   const result = record(value), image = record(result.image);

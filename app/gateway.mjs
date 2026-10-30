@@ -4,7 +4,7 @@ import { constants } from 'node:fs';
 import { open, readdir } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from './studio-policy.mjs';
+import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_PRICING_SNAPSHOT, STUDIO_MAX_RETRY_AFTER_SECONDS, studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from './studio-policy.mjs';
 import { createAttemptJournal } from './studio-journal.mjs';
 import { generateStudioScene } from './studio-provider.mjs';
 
@@ -340,13 +340,13 @@ export async function createGateway({ authTokenHash, providerConfigured, staticD
               const result = await providerPromise;
               if (!result || !['DEFINITIVE_SUCCESS', 'DEFINITIVE_FAILURE', 'UNKNOWN'].includes(result.outcome)) throw new Error('Invalid provider outcome');
               if (result.outcome === 'UNKNOWN') retainInflight = true;
-              const waitSeconds = result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT' && Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 1 && result.retryAfterSeconds <= 86400 ? result.retryAfterSeconds : null;
+              const waitSeconds = result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT' && Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 1 && result.retryAfterSeconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? result.retryAfterSeconds : null;
               const retryNotBefore = waitSeconds === null ? null : now() + waitSeconds * 1000;
               try { await journal.finish(principal, body.clientAttemptId, result.outcome, retryNotBefore); }
               catch { retainInflight = true; }
               if (retainInflight) reply = { status: 504, code: 'UPSTREAM_UNKNOWN', message: 'The attempt may have been charged; its outcome requires review. Do not retry automatically.', outcome: 'UNKNOWN' };
               else if (result.outcome === 'DEFINITIVE_FAILURE' && result.errorCode === 'PROVIDER_LIMIT') {
-                const retryAfterSeconds = Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 0 && result.retryAfterSeconds <= 86400 ? result.retryAfterSeconds : null;
+                const retryAfterSeconds = Number.isInteger(result.retryAfterSeconds) && result.retryAfterSeconds >= 0 && result.retryAfterSeconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? result.retryAfterSeconds : null;
                 rateReview = result.retryAfterRequiresReview === true;
                 if (rateReview) response.setHeader('X-Studio-Cleanup-Pending', '1');
                 reply = { status: 429, code: 'PROVIDER_LIMIT', message: rateReview ? 'Provider delay requires external review before continuing.' : 'Provider returned 429; check rate limits, quota and billing.', retryAfterSeconds };

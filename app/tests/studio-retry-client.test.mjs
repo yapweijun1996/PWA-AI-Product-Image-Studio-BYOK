@@ -30,7 +30,8 @@ test('only the latest terminal or explicitly reviewed UNKNOWN attempt is retryab
 
 test('failure metadata is bounded and never stores gateway text', () => {
   assert.deepEqual(sanitizedStudioFailure(429, { outcome: 'DEFINITIVE_FAILURE', code: 'PROVIDER_LIMIT', retryAfterSeconds: 42, message: 'secret' }), { category: 'provider_limit', retryAfterSeconds: 42 });
-  for (const seconds of [0, 86401, 1.5, '42']) assert.deepEqual(sanitizedStudioFailure(429, { outcome: 'DEFINITIVE_FAILURE', code: 'RATE_LIMITED', retryAfterSeconds: seconds, message: 'secret' }), { category: 'rate_limited' });
+  assert.deepEqual(sanitizedStudioFailure(429, { outcome: 'DEFINITIVE_FAILURE', code: 'PROVIDER_LIMIT', retryAfterSeconds: 86401 }), { category: 'provider_limit', retryAfterSeconds: 86401 });
+  for (const seconds of [0, 2147483648, 1.5, '42']) assert.deepEqual(sanitizedStudioFailure(429, { outcome: 'DEFINITIVE_FAILURE', code: 'RATE_LIMITED', retryAfterSeconds: seconds, message: 'secret' }), { category: 'rate_limited' });
   assert.deepEqual(sanitizedStudioFailure(503, { outcome: 'DEFINITIVE_FAILURE', code: 'RECOVERY_REQUIRED', message: 'secret' }), { category: 'pre_send' });
   assert.deepEqual(sanitizedStudioFailure(500, { outcome: 'UNKNOWN', message: 'secret' }), { category: 'unknown' });
   assert.deepEqual(sanitizedStudioFailure(400, { outcome: 'DEFINITIVE_FAILURE', message: 'secret' }), { category: 'rejected' });
