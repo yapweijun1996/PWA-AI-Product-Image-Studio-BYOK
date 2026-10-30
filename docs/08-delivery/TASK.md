@@ -344,6 +344,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-081 dependency and documentation checks — 2026-10-30
+
+- **Evidence:** At `6626dbd`, `npm audit --audit-level=high --json` reported zero known vulnerabilities across the installed dependency graph. A bounded search of the application tree for OpenAI-style `sk-` credentials of at least 24 characters found no matching files, excluding dependency/build output and the lockfile. The SSOT validator passed all checks with `jsonschema` and `PyYAML` installed in a temporary virtual environment; no warnings were reported. The preceding malformed-date change passed the full 214-test suite before its additional gateway regression was added, and the adapter/gateway subset passed 54 tests afterward.
+- **Limits:** An audit is a point-in-time advisory lookup, and the credential pattern cannot detect all secrets or inspect excluded files and image data. These checks do not constitute independent security review, a live-provider test, a full application security scan or release acceptance. T-081 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence record and documentation hashes; no application, dependency, credential or user data was changed.
+
 ## T-041 malformed retry date hardening — 2026-10-30
 
 - **Change:** Require HTTP-date `Retry-After` values to round-trip exactly after parsing. Impossible calendar dates and mismatched weekdays now follow the existing malformed-guidance review gate rather than being normalized into a potentially misleading wait.
