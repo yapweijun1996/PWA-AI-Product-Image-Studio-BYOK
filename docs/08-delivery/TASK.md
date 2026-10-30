@@ -187,6 +187,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Offline page reload, service-worker updates, real-device iOS installation, screen-reader and comprehensive accessibility testing remain pending. The failed offline reload before T-011 confirms that offline launch is not yet available. Product creation, storage, upload, generation and export are not implemented.
 - **Rollback:** Revert the `app/` tree and corresponding documentation/validator boundary changes together; do not delete user-managed environment files or other local data.
 
+## T-011 failed-install cache recovery — 2026-10-30
+
+- **Change and evidence:** [BUG-005](../../BUG.md) records the repeated failed-install cache-slot exhaustion and the scoped cleanup fix. The worker removes a newly created failed cache only when cooperative Web Locks are available; existing caches remain untouched. Nine simulated-worker tests cover failure, preservation and subsequent successful installation. An isolated Chromium first-install probe returned a synthetic 404 for a required icon, observed the worker become redundant and found no remaining shell cache. The production build passed with its existing chunk-size warning.
+- **Limits:** Best-effort deletion can fail, and missing Web Locks deliberately retains the failed cache. This is not a real quota/eviction, active-update, concurrent-tab or installed-device acceptance. T-011 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert the worker, its regression and documentation together; preserve product data and existing shell caches.
+
 ## T-011 shell update record — 2026-10-30
 
 - **Change:** Each production build emits a distinct static-only service worker. The user must choose the waiting-worker update; the initiating tab displays a loader and reloads after activation. Other tabs receive an update notice rather than an automatic reload. API and non-shell content are not cached.

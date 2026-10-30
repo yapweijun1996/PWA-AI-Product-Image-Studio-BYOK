@@ -98,10 +98,19 @@ self.addEventListener('install', (event) => {
       }
     }
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(SHELL_FILES.map((path) => new Request(path, {
-      cache: 'reload',
-      credentials: 'omit',
-    })));
+    try {
+      await cache.addAll(SHELL_FILES.map((path) => new Request(path, {
+        cache: 'reload',
+        credentials: 'omit',
+      })));
+    } catch (error) {
+      // A failed install must not consume a version slot. Delete only a cache
+      // created by this install, while cooperative installers share the lock.
+      if (!names.includes(CACHE_NAME) && self.navigator?.locks) {
+        try { await caches.delete(CACHE_NAME); } catch { /* Preserve the install failure. */ }
+      }
+      throw error;
+    }
     if (migration) await (await caches.open(META_CACHE)).put(MIGRATION_KEY, new Response('1'));
   }));
 });

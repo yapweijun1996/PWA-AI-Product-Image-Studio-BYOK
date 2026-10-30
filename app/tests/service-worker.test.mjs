@@ -11,6 +11,7 @@ function environment() {
   const stores = new Map();
   let clients = [];
   let denyMetadataWrites = false;
+  let denyShellAdds = false;
   let beforeDelete = null;
   let lockTail = Promise.resolve();
   const navigator = { locks: { request(_name, action) {
@@ -34,6 +35,7 @@ function environment() {
           entries.set(key(request), response.clone());
         },
         async addAll(requests) {
+          if (denyShellAdds) throw new Error('synthetic shell fetch failure');
           for (const request of requests) entries.set(key(request), new Response(`${name}: ${new URL(request.url, origin).pathname}`));
         },
       };
@@ -82,8 +84,38 @@ function environment() {
       },
     };
   }
-  return { caches, worker, messages, registration, navigator, setClients(ids) { clients = ids; }, denyMetadataWrites(value) { denyMetadataWrites = value; }, onDelete(callback) { beforeDelete = callback; } };
+  return { caches, worker, messages, registration, navigator, setClients(ids) { clients = ids; }, denyMetadataWrites(value) { denyMetadataWrites = value; }, denyShellAdds(value) { denyShellAdds = value; }, onDelete(callback) { beforeDelete = callback; } };
 }
+
+test('failed new shell installs do not consume cache slots or delete existing shells', async () => {
+  const env = environment();
+  const active = env.worker('active', ['/assets/active.js']);
+  await active.lifecycle('install');
+  await active.lifecycle('activate');
+  env.denyShellAdds(true);
+  for (let i = 0; i < 8; i++) {
+    await assert.rejects(env.worker(`failed-${i}`, [`/assets/failed-${i}.js`]).lifecycle('install'), /synthetic shell fetch failure/);
+  }
+  assert.deepEqual((await env.caches.keys()).filter((name) => name.startsWith('image-studio-shell-')), ['image-studio-shell-active']);
+  assert.equal(await (await active.fetch('/assets/active.js')).text(), 'image-studio-shell-active: /assets/active.js');
+  env.denyShellAdds(false);
+  const recovered = env.worker('recovered', ['/assets/recovered.js']);
+  await recovered.lifecycle('install');
+  assert.ok((await env.caches.keys()).includes('image-studio-shell-recovered'));
+});
+
+test('a failed reinstall preserves an existing shell, and missing locks do not trigger cleanup', async () => {
+  const env = environment();
+  const active = env.worker('active', ['/assets/active.js']);
+  await active.lifecycle('install');
+  await active.lifecycle('activate');
+  env.denyShellAdds(true);
+  await assert.rejects(active.lifecycle('install'), /synthetic shell fetch failure/);
+  assert.equal(await (await active.fetch('/assets/active.js')).text(), 'image-studio-shell-active: /assets/active.js');
+  env.navigator.locks = undefined;
+  await assert.rejects(env.worker('unlocked', ['/assets/unlocked.js']).lifecycle('install'), /synthetic shell fetch failure/);
+  assert.ok((await env.caches.keys()).includes('image-studio-shell-unlocked'));
+});
 
 test('old static assets survive updates and navigation remains readable when metadata writes fail', async () => {
   const env = environment();
