@@ -38,7 +38,7 @@ async function connect(url, { timeoutMs = 20000, socketFactory = (address) => ne
   });
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data), handler = pending.get(message.id);
-    if (!handler) { if (['Runtime.consoleAPICalled','Runtime.exceptionThrown','Log.entryAdded'].includes(message.method)) events.push(message); return; }
+    if (!handler) { if (['Runtime.consoleAPICalled','Runtime.exceptionThrown','Log.entryAdded','Page.downloadWillBegin','Page.downloadProgress'].includes(message.method)) events.push(message); return; }
     pending.delete(message.id);
     message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result);
   });
@@ -58,11 +58,29 @@ async function connect(url, { timeoutMs = 20000, socketFactory = (address) => ne
   };
 }
 
+async function waitForDownloadCompletion(client, since, description) {
+  const started = await until(() => client.events.slice(since).find((event) => event.method === 'Page.downloadWillBegin'), `${description} start`);
+  await until(() => {
+    const progress = client.events.slice(since).filter((event) => event.method === 'Page.downloadProgress' && event.params.guid === started.params.guid);
+    if (progress.some((event) => event.params.state === 'canceled')) throw new Error(`${description} was canceled.`);
+    return progress.some((event) => event.params.state === 'completed');
+  }, `${description} completion`);
+}
+
 async function evaluate(client, expression) {
   const response = await client.call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
   if (response.exceptionDetails) throw new Error(response.exceptionDetails.exception?.description || response.exceptionDetails.text);
   return response.result.value;
 }
+
+test('download completion matches its transfer and rejects cancellation', async () => {
+  const started = { method: 'Page.downloadWillBegin', params: { guid: 'expected' } };
+  const otherCompletion = { method: 'Page.downloadProgress', params: { guid: 'other', state: 'completed' } };
+  const canceled = { method: 'Page.downloadProgress', params: { guid: 'expected', state: 'canceled' } };
+  await assert.rejects(waitForDownloadCompletion({ events: [started, otherCompletion, canceled] }, 0, 'ZIP'), /canceled/);
+  const completed = { method: 'Page.downloadProgress', params: { guid: 'expected', state: 'completed' } };
+  await waitForDownloadCompletion({ events: [started, otherCompletion, completed] }, 0, 'ZIP');
+});
 
 test('unresponsive DevTools commands time out and closing rejects pending commands', async () => {
   class SilentSocket extends EventTarget {
@@ -190,7 +208,9 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`(() => {const p=document.querySelector('.approved-export');p.querySelector('fieldset input').click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click()})()`);
     await until(()=>evaluate(client,`document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`),'converted output');
     await client.call('Page.setDownloadBehavior',{behavior:'allow',downloadPath:root});
+    const eventsBeforeDownload=client.events.length;
     await evaluate(client,`(() => {const p=document.querySelector('.approved-export');[...p.querySelectorAll('label')].find(l=>l.innerText.includes('I inspected every converted output')).querySelector('input').click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').click()})()`);
+    await waitForDownloadCompletion(client,eventsBeforeDownload,'downloaded bundle');
     const filename=await until(async()=>(await readdir(root)).find(n=>n.startsWith('approved-outputs-')&&n.endsWith('.zip')),'downloaded bundle');
     const zip=new ZipReader(new Uint8ArrayReader(await readFile(join(root,filename))));
     try {const entries=await zip.getEntries(),proof=entries.find(e=>e.filename.startsWith('provenance/')&&e.filename.endsWith('.json')),output=entries.find(e=>e.filename.startsWith('outputs/')&&e.filename.endsWith('.png'));assert.ok(proof&&output);const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter()))),bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.sourceSha256,sourceHash);assert.equal(receipt.sceneSha256,createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex'));assert.equal(receipt.outputSha256,createHash('sha256').update(bytes).digest('hex'));assert.ok(receipt.reviewId&&receipt.decisionId);

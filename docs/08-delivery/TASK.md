@@ -1358,6 +1358,12 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Verification:** The focused browser scenario and a subsequent six-test browser suite passed. The earlier failing file was not retained, so its exact cause is unknown.
 - **Limits and rollback:** The other tab sent a synthetic notification without modifying a project; real concurrent mutation, physical devices and screen readers remain open. T-061/T-080 and BUG-054/055 remain IMPLEMENTED_UNVERIFIED. Revert the test changes without weakening export authorization or archive-content checks.
 
+## T-061 / T-080 / BUG-055 direct-gateway download synchronization — 2026-10-31
+
+- **Finding and change:** The direct-gateway browser journey also read a ZIP after observing only its filename. No direct-gateway failure was reproduced, but filename existence does not establish completion. It now waits for the matching Chrome download completion and rejects cancellation or timeout; archive content, provenance, hashes and credential checks remain in place.
+- **Regression evidence:** A synthetic event test verifies that another transfer's completion cannot mask cancellation of the intended transfer. The direct-gateway journey exercised a completed synthetic download in Chromium; the complete browser suite passed 7/7, including both export journeys and the two-build PWA update.
+- **Limits and rollback:** This test synchronization does not prove the original ZIP parse failure's cause or real interrupted-download behavior. T-061/T-080 and BUG-055 remain IMPLEMENTED_UNVERIFIED. Revert the test change independently without weakening export or archive checks.
+
 ## T-060 / T-061 / T-080 / BUG-056 actual cross-tab fact change — 2026-10-31
 
 - **Finding and change:** An actual synthetic fact edit in a second same-origin tab invalidated the old approval and safely removed its preview, but the notice still asked for a new selection when no approved composites remained. It now directs the user to review and approve an updated composite. See [BUG-056](../../BUG.md).

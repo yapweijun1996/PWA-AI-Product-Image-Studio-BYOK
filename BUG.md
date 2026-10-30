@@ -440,7 +440,7 @@ This register tracks verified defects and their remediation. Application source 
 
 - **Status:** IMPLEMENTED_UNVERIFIED. **Priority:** P2. **Related tasks:** T-061 and T-080.
 - **Finding:** After the cross-tab test was added, a full browser run failed to parse a downloaded ZIP even though a matching filename had appeared. The test waited only for the filename, which does not establish that Chrome completed the download. An incomplete read is a plausible cause; the failed file was not retained for diagnosis.
-- **Remediation and evidence:** The browser test now waits for Chrome's download-start event and the matching download's completed state before reading each ZIP, and fails on cancellation or timeout. Existing ZIP content, hash and provenance assertions remain. The focused scenario and a subsequent six-test browser suite passed.
+- **Remediation and evidence:** Both the protected-region and direct-gateway browser journeys now wait for Chrome's download-start event and the matching download's completed state before reading each ZIP, and fail on cancellation or timeout. A synthetic event check covers another transfer completing and the intended transfer being canceled. Existing ZIP content, hash and provenance assertions remain. The direct-gateway journey had the same filename-only wait, but no corresponding failure was observed there.
 - **Limits:** This is a test synchronization change, not proof that every earlier ZIP failure had the same cause or that interrupted/corrupted real downloads are handled. No application export behavior changed.
 
 ## BUG-056 — Export recheck suggests selecting an image when none is approved
