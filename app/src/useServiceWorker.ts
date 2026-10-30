@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { hasUnsavedChanges } from './useUnsavedChanges';
 
-type UpdateState = 'idle' | 'waiting' | 'activating' | 'activated-elsewhere' | 'error';
+type UpdateState = 'idle' | 'waiting' | 'activating' | 'activated-elsewhere' | 'cache-limit' | 'error';
 
 export function useServiceWorker() {
   const [state, setState] = useState<UpdateState>('idle');
   const [blockedByDraft, setBlockedByDraft] = useState(false);
+  const [clearingCaches, setClearingCaches] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState('');
+  const [cacheCleanupAvailable, setCacheCleanupAvailable] = useState(true);
   const registration = useRef<ServiceWorkerRegistration | null>(null);
   const requestedUpdate = useRef(false);
   const timeout = useRef<number | null>(null);
@@ -34,11 +37,22 @@ export function useServiceWorker() {
       }
       hadController = true;
     };
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SHELL_CACHE_LIMIT') {
+        const available = event.data.cleanupAvailable === true;
+        setCacheCleanupAvailable(available);
+        setCacheMessage(available ? '' : 'This browser cannot safely clear old app caches. Export a backup before changing browser storage.');
+        setState('cache-limit');
+      }
+    };
     const onUpdateFound = () => {
       const worker = current?.installing;
       if (!worker) return;
       const onStateChange = () => {
         if (!disposed && worker.state === 'installed' && navigator.serviceWorker.controller) setState('waiting');
+        else if (!disposed && worker.state === 'redundant' && navigator.serviceWorker.controller) {
+          setState((old) => old === 'cache-limit' ? old : 'error');
+        }
       };
       installingListeners.set(worker, onStateChange);
       worker.addEventListener('statechange', onStateChange);
@@ -55,6 +69,7 @@ export function useServiceWorker() {
       }
     };
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+    navigator.serviceWorker.addEventListener('message', onMessage);
     document.addEventListener('visibilitychange', checkForUpdate);
     window.addEventListener('online', checkForUpdate);
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((value) => {
@@ -71,6 +86,7 @@ export function useServiceWorker() {
     return () => {
       disposed = true;
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      navigator.serviceWorker.removeEventListener('message', onMessage);
       document.removeEventListener('visibilitychange', checkForUpdate);
       window.removeEventListener('online', checkForUpdate);
       current?.removeEventListener('updatefound', onUpdateFound);
@@ -85,7 +101,7 @@ export function useServiceWorker() {
       return;
     }
     setBlockedByDraft(false);
-    if (state === 'activated-elsewhere' || state === 'error') {
+    if (state === 'activated-elsewhere' || state === 'error' || state === 'cache-limit') {
       window.location.reload();
       return;
     }
@@ -113,5 +129,47 @@ export function useServiceWorker() {
     }, 100);
   }
 
-  return { state, updateNow, blockedByDraft };
+  async function clearOldCaches() {
+    if (clearingCaches) return;
+    if (hasUnsavedChanges()) {
+      setBlockedByDraft(true);
+      return;
+    }
+    setBlockedByDraft(false);
+    const confirmed = window.confirm('Save your work, close every other app tab (including suspended tabs), and do not deploy while clearing caches. Older or still-loading tabs may stop working. Product data is not deleted. Continue?');
+    if (!confirmed || hasUnsavedChanges()) return;
+    const controller = navigator.serviceWorker.controller;
+    if (!controller || !registration.current) {
+      setCacheMessage('The active application worker is unavailable. Reload after saving your work.');
+      return;
+    }
+    const scriptUrl = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src;
+    if (!scriptUrl) {
+      setCacheMessage('The current app version could not be verified. Reload after saving your work.');
+      return;
+    }
+    setClearingCaches(true);
+    setCacheMessage('');
+    try {
+      const result = await new Promise<{ ok: boolean; message?: string }>((resolve, reject) => {
+        const channel = new MessageChannel();
+        const timer = window.setTimeout(() => { channel.port1.close(); reject(new Error('Cache cleanup timed out.')); }, 10000);
+        channel.port1.onmessage = (event: MessageEvent<{ ok: boolean; message?: string }>) => {
+          window.clearTimeout(timer); channel.port1.close(); resolve(event.data);
+        };
+        try { controller.postMessage({ type: 'CLEAR_OLD_SHELL_CACHES', scriptUrl }, [channel.port2]); }
+        catch (error) { window.clearTimeout(timer); channel.port1.close(); reject(error); }
+      });
+      if (!result?.ok) throw new Error(result?.message || 'Old app caches could not be cleared.');
+      setState('idle');
+      await registration.current.update();
+    } catch (error) {
+      setCacheMessage(error instanceof Error ? error.message : 'Old app caches could not be cleared.');
+      setState('cache-limit');
+    } finally {
+      setClearingCaches(false);
+    }
+  }
+
+  return { state, updateNow, blockedByDraft, clearOldCaches, clearingCaches, cacheMessage, cacheCleanupAvailable };
 }

@@ -155,6 +155,13 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 - **Limits:** This is one Chromium localhost scenario, not real installed iOS or proof of every transaction, crash or cross-tab race. The previously observed older cached-asset mismatch remains unexplained; no reproduction or fix is claimed here. The screenshot operation timed out. No application code or provider request was changed or used.
 - **Rollback:** Revert this evidence record and matching documentation checksums only; preserve all browser product data and existing caches.
 
+## T-011 retained shell cache follow-up — 2026-10-30
+
+- **Change:** Retain older static shell caches across activation so open tabs can retrieve their hashed assets. At the bounded cache limit, the worker pauses updates and exposes explicit cleanup guarded by active-build verification, other-window and update checks, and Web Locks. Where safe cleanup is unavailable, it fails closed; product IndexedDB data is not deliberately removed.
+- **Evidence:** `node --test tests/service-worker.test.mjs` passed 7/7 isolated simulated-worker tests covering old assets, the cache limit, manual cleanup, concurrent reinstall, missing Web Locks and legacy migration. `npm run build` passed with the existing large-chunk warning. These tests use mocks, not a browser implementation.
+- **Limits:** Two-build cross-tab browser behavior, browser cache eviction, update and cleanup races on installed devices, physical iOS and the prior cached-asset observation remain unverified. Keep T-011 IMPLEMENTED_UNVERIFIED; do not interpret passing unit tests as release acceptance.
+- **Rollback:** Revert the worker, update UI and associated tests and documentation together. Preserve browser product data and cached shells; avoid deleting active user data or caches during rollback.
+
 ## T-011 local gateway build-snapshot follow-up — 2026-10-30
 
 - **Problem and change:** A running loopback gateway previously saved static filenames at startup but reread their contents on every request. Rebuilding its directory could serve new HTML and worker code while the new hashed script was absent from the startup map. The gateway now snapshots only allowlisted static file bytes at startup, retains symlink rejection and serves that snapshot until restarted. Build before startup; do not rebuild concurrently with startup. Restart after the build completes and only after in-flight attempts settle; restart invalidates the local app/provider sessions.
