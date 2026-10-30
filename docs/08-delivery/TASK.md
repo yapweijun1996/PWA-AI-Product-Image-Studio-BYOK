@@ -344,6 +344,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-041 synthetic gateway and browser retry observation — 2026-10-30
+
+- **Evidence:** In isolated desktop Chromium, the built application connected to a loopback gateway using a synthetic credential and synthetic transport. A UI-created product, synthetic original and locally saved mask produced one authorized Studio attempt. The transport returned HTTP 429 with `Retry-After: 86401`; the UI displayed that delay and no automatic retry, and the gateway format 3 journal recorded a definitive failure with a retry deadline. After reload, the history retained 86401; preparing and authorizing a retry before expiry produced a local wait message. The preserved browser network trace contained one generation POST and no second generation POST.
+- **Limits:** This checks one local browser and a synthetic response, not direct-client enforcement, an elapsed-time retry, real provider billing, installed devices, cross-profile behavior or independent security acceptance. BUG-001 remains IN_PROGRESS and T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence and documentation hashes only; preserve user data and journals.
+
 ## T-041 long-delay cross-tab Chromium observation — 2026-10-30
 
 - **Evidence:** Two tabs in an isolated desktop Chromium origin used actual Vite development modules and synthetic 24×24 source images/masks to prepare attempts for two products. One recorded a definitive provider-limit failure with 86401 seconds; after reloading, the second tab retained its PREPARED state when submission was rejected by the persisted wait. Setting that tab's test clock to the exact deadline allowed the local transition; the synthetic attempt was then recorded as a failure. Browser console had no errors or warnings. No network provider call or real key was used.
