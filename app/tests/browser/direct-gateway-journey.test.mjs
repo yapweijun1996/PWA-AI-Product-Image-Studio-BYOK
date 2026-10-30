@@ -406,6 +406,21 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[0])}));li.querySelector('input[type=checkbox]').click();[...li.querySelectorAll('button')].find(b=>b.textContent==='Record local review of imported uncertainty').click()})()`);
     await until(()=>evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[0])}));return li.innerText.includes('This imported record remains untrusted')})()`),'imported local review');
     assert.equal(await evaluate(untrustedClient, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(untouched[1])}));return li.innerText.includes('Review provider billing')})()`),true,'Reviewing one record leaves other imported claims blocked.');
+    const otherProductId=await evaluate(untrustedClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('products','readwrite'),store=tx.objectStore('products'),q=store.get(${JSON.stringify(productId)}),id=crypto.randomUUID();q.onsuccess=()=>store.add({...q.result,productId:id,sku:'CROSS-PROJECT-SYNTHETIC',name:'Other synthetic project',facts:[],sourceAssets:[],brandLock:{mode:'STRICT',protectedText:[],forbiddenChanges:[],maskAssetId:null}});tx.oncomplete=()=>resolve(id);tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
+    await untrustedClient.call('Page.navigate',{url:`${origin}/products/${otherProductId}`});
+    await until(()=>evaluate(untrustedClient, `!!document.querySelector('#other-blockers-heading')`),'cross-project blocker navigation');
+    for (const width of [320,1280]) {
+      await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width===320});
+      assert.equal(await evaluate(untrustedClient, `document.documentElement.scrollWidth<=innerWidth`),true,`Cross-project notice fits at ${width}px.`);
+      assert.equal(await evaluate(untrustedClient, `document.querySelector('#other-blockers-heading').parentElement.innerText.includes('attempts')`),true);
+    }
+    await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    assert.equal(await evaluate(untrustedClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true);
+    await evaluate(untrustedClient, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Refresh attempt history').click()`);
+    await until(()=>evaluate(untrustedClient, `!!document.querySelector('#other-blockers-heading')`),'refreshed cross-project blocker');
+    await evaluate(untrustedClient, `document.querySelector('#other-blockers-heading').parentElement.querySelector('a').click()`);
+    await until(()=>evaluate(untrustedClient, `location.pathname===${JSON.stringify('/products/'+productId)} && !!document.querySelector('.studio-history')`),'blocking project opened');
+    assert.equal(untrustedClient.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0,'Cross-project navigation has no uncaught page exception.');
     assert.equal(providerCalls,13,'Backup and restore do not send provider requests.');
     await evaluate(client,`window.__beforeQueueReload=true`);await client.call('Page.reload');
     await until(()=>evaluate(client,`window.__beforeQueueReload!==true && document.querySelector('.studio-history')?.innerText.includes('Lifestyle · Outcome unknown')`),'persisted interrupted queue');

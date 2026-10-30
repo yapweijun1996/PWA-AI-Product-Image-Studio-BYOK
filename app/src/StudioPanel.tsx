@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, STUDIO_MAX_PNG_BYTES, STUDIO_MAX_RETRY_AFTER_SECONDS, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD, type StudioStyleId, type StudioSceneContext } from '../studio-policy.mjs';
-import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listStudioAttempts, listStrictComposites, listStyleInputs, loadOriginalSource, productSnapshotFingerprint, resolveImportedUncertainty, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StrictComposite, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
+import { acknowledgeStudioAttempt, createStudioAttempt, globalStudioReviewFingerprint, listOtherStudioBlockers, listStudioAttempts, listStrictComposites, listStyleInputs, loadOriginalSource, productSnapshotFingerprint, resolveImportedUncertainty, studioSceneContext, studioAttemptBlocks, studioInput, studioSessionEstimate, updateStudioAttempt, validStudioAcknowledgement, type Product, type StrictComposite, type StudioAsset, type StudioAttempt, type StudioRecordedOutcome } from './products';
 import { inspectImageHeader } from './imageHeader';
 import { sha256 } from './prepareSource';
 import { useUnsavedChanges } from './useUnsavedChanges';
@@ -243,6 +244,7 @@ function moneyString(value: bigint): string {
 export function StudioPanel({ product, onBusyChange }: { product: Product; onBusyChange: (busy: boolean) => void }) {
   const [gateway, setGateway] = useState<Gateway>('checking');
   const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [otherBlockers, setOtherBlockers] = useState<Awaited<ReturnType<typeof listOtherStudioBlockers>> | null>(null);
   const [reviewFingerprint, setReviewFingerprint] = useState<string | null>(null);
   const [max, setMax] = useState(() => { try { return sessionStorage.getItem('studio-attempt-limit') ?? ''; } catch { return ''; } });
   const [budgetSessionId, setBudgetSessionId] = useState(initialBudgetSession);
@@ -269,7 +271,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useUnsavedChanges(busy || topConfirmed || Object.values(styleConsent).some(Boolean) || Object.values(attemptOverrides).some(Boolean) || Object.values(sessionOverrides).some(Boolean) || Object.values(reviewConfirmed).some(Boolean) || Object.values(legacyConfirmed).some(Boolean));
-  const unresolved = entries?.some((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? false;
+  const unresolved = otherBlockers === null || otherBlockers.length > 0 || (entries?.some((entry) => entry.importedUntrusted ? entry.importedUnresolved : studioAttemptBlocks(entry.attempt)) ?? false);
   const validMoney = (value: string) => !value || /^\d{1,9}\.\d{1,6}$/.test(value);
   let plans: PlannedStyle[] = [];
   let planError = '';
@@ -334,13 +336,13 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
   }
   async function refreshEntries() {
     setReviewFingerprint(null);
-    const [value, fingerprint, total] = await Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null)]);
-    setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total);
+    const [value, fingerprint, total, blockers] = await Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null), listOtherStudioBlockers(product.productId)]);
+    setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); setOtherBlockers(blockers);
   }
   useEffect(() => {
     let active = true;
-    setEntries(null); setReviewFingerprint(null); setSessionTotal(null); clearQueueConsent();
-    Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null)]).then(([value, fingerprint, total]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); } }).catch(() => { if (active) setError('Local attempt history is unavailable. Generation is disabled.'); });
+    setEntries(null); setOtherBlockers(null); setReviewFingerprint(null); setSessionTotal(null); clearQueueConsent();
+    Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null), listOtherStudioBlockers(product.productId)]).then(([value, fingerprint, total, blockers]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); setOtherBlockers(blockers); } }).catch(() => { if (active) setError('Local attempt history is unavailable. Generation is disabled.'); });
     void refreshGateway();
     const offline = () => { gatewayCheck.current++; clearQueueConsent(); setGateway('unavailable'); };
     window.addEventListener('offline', offline);
@@ -609,6 +611,12 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     <p>Planned calls: <strong>{selectedStyles.length}</strong>; estimated total: <strong>{planError || !sources || sessionTotal === null ? 'unavailable' : `$${plannedTotal} USD`}</strong>. One call per selected scene; no automatic retry. Estimate only, not a cap or invoice. Model {STUDIO_MODEL}, {STUDIO_QUALITY}, {STUDIO_SIZE}, PNG; pricing snapshot 2026-10-29. <a href="https://developers.openai.com/api/docs/guides/image-generation" target="_blank" rel="noreferrer">Pricing evidence</a>.</p>
     {gateway === 'checking' ? <p role="status">Checking local gateway…</p> : gateway === 'unavailable' ? <p role="status">Offline or local gateway unavailable. Generation is disabled.</p> : gateway === 'signed-out' ? <p>Sign in to the local app in provider settings first.</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>Local app and provider session active.</p>}
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
+    {otherBlockers && otherBlockers.length > 0 && <section aria-labelledby="other-blockers-heading">
+      <h3 id="other-blockers-heading">Attempts in other projects need attention</h3>
+      <p>Generation is blocked across this browser workspace until these attempts are reviewed. Open each project and check its local attempt history; a gateway may also have its own separate restrictions.</p>
+      <ul>{otherBlockers.map((item) => <li key={item.productId}>{item.name ? <Link to={`/products/${encodeURIComponent(item.productId)}#studio-heading`}>{item.name}</Link> : `Missing project ${item.productId}: preserve local data and seek recovery assistance`} — {item.count} {item.count === 1 ? 'attempt' : 'attempts'}</li>)}</ul>
+      <button type="button" className="secondary-button" disabled={busy} onClick={() => { clearQueueConsent(); setOtherBlockers(null); void refreshEntries().catch(() => { setEntries(null); setError('Local attempt history is unavailable. Generation is disabled.'); }); }}>Refresh attempt history</button>
+    </section>}
     <button className="secondary-button" type="button" disabled={busy} onClick={() => void refreshGateway()}>Check gateway</button>
     {typeof gateway === 'object' && gateway.legacyWaits.length > 0 && <section aria-labelledby="legacy-waits-heading">
       <h3 id="legacy-waits-heading">Earlier provider waits need review</h3>

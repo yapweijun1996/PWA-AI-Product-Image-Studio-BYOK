@@ -129,12 +129,15 @@ test('imported uncertainty requires a local review and never mutates attempt or 
   let [entry] = await storage.listStudioAttempts(product.productId);
   assert.equal(entry.importedUnresolved, true);
   assert.equal(entry.importedUntrusted, true);
+  assert.deepEqual(await storage.listOtherStudioBlockers(randomUUID()), [{ productId: product.productId, name: product.name, count: 1 }]);
+  assert.deepEqual(await storage.listOtherStudioBlockers(product.productId), []);
   await assert.rejects(storage.acknowledgeStudioAttempt(attempt.attemptId, new Date().toISOString(), 'UNKNOWN'), /imported/i);
   await storage.resolveImportedUncertainty(attempt.attemptId);
   [entry] = await storage.listStudioAttempts(product.productId);
   assert.deepEqual(entry.attempt, attempt);
   assert.equal(entry.importedUnresolved, false);
   assert.equal(entry.importedUntrusted, true);
+  assert.deepEqual(await storage.listOtherStudioBlockers(randomUUID()), []);
   await assert.rejects(storage.acknowledgeStudioAttempt(attempt.attemptId, new Date().toISOString(), 'UNKNOWN'), /imported/i);
   await new Promise((resolve, reject) => {
     const tx = db.transaction('attempts', 'readwrite');

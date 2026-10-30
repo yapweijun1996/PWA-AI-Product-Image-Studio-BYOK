@@ -1521,6 +1521,34 @@ export async function updateStudioAttempt(attempt: StudioAttempt, asset?: Studio
   });
 }
 
+// This is advisory navigation; the generation transaction remains the authoritative gate.
+export async function listOtherStudioBlockers(productId: string): Promise<Array<{ productId: string; name: string | null; count: number }>> {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['products', 'attempts', 'userSettings'], 'readonly');
+    const products = tx.objectStore('products').getAll();
+    const attempts = tx.objectStore('attempts').getAll();
+    const settings = tx.objectStore('userSettings').getAll();
+    tx.oncomplete = () => {
+      try {
+        const groups = new Map<string, number>();
+        for (const attempt of attempts.result as StudioAttempt[]) {
+          if (attempt.productId !== productId && blocksWithImportedReview(attempt, settings.result)) {
+            if (typeof attempt.productId !== 'string' || !attempt.productId) throw new Error('A blocking attempt has no project identity. Preserve local data and seek recovery assistance.');
+            groups.set(attempt.productId, (groups.get(attempt.productId) ?? 0) + 1);
+          }
+        }
+        resolve([...groups].map(([id, count]) => {
+          const record = (products.result as unknown[]).find((item) => item && typeof item === 'object' && (item as { productId?: unknown }).productId === id);
+          const product = record ? checkedProduct(record) : null;
+          return { productId: id, name: product?.name ?? null, count };
+        }));
+      } catch (error) { reject(error); }
+    };
+    tx.onabort = () => reject(transactionError(tx));
+  });
+}
+
 export async function listStudioAttempts(productId: string): Promise<Array<{ attempt: StudioAttempt; asset: StudioAsset | null; importedUnresolved: boolean; importedUntrusted: boolean }>> {
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
