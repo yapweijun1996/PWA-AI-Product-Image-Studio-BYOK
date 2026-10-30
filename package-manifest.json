@@ -8,7 +8,7 @@
   "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 130,
+  "fileCountHashed": 131,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -152,8 +152,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 22303,
-      "sha256": "b2acdc78f237ce1bb834f7cc335da639314d036822331cbca76b6bdcd5ec5ecf"
+      "bytes": 22519,
+      "sha256": "6de8903da2400d976243dd51c24365f489789c0f16115ccaa41f997fc86653c2"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -169,6 +169,11 @@
       "path": "docs/02-architecture/JOB_ORCHESTRATION.md",
       "bytes": 4846,
       "sha256": "810d704f5114cf7f27fba03d226fafefba524fa8ccc8e63c355bb9e9586970e3"
+    },
+    {
+      "path": "docs/02-architecture/PI_TEXT_BOUNDARY.md",
+      "bytes": 6445,
+      "sha256": "2c5fc70d4f1b114e4aeedaad543b6c5e72e92ec62b389245d7c1dc8915a6ed48"
     },
     {
       "path": "docs/02-architecture/PWA_OFFLINE.md",
@@ -292,8 +297,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 101269,
-      "sha256": "0f30fae074e552a6dcec6cdb7043866450e6497eb51642af43df09051f550f0d"
+      "bytes": 102137,
+      "sha256": "a18d213abc9130255dbc5dddb54822fad983364018f849b473252ab5afb78dcf"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -617,8 +622,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "bytes": 2637,
-      "sha256": "ae161e572c5d1bb1a1bb3ea9bcdb706e2ddbd41d6c1ba0c6db5b7d57aaf86d4f"
+      "bytes": 2694,
+      "sha256": "ccd190d77b9f5c14a944d5cf203a62e979bd2381d411c08fc8deb624082ab898"
     },
     {
       "path": "fixtures/cost-scenario.json",

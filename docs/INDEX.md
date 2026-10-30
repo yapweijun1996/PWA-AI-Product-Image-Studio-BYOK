@@ -4,7 +4,7 @@
 |---|---|---|
 | [00 Governance](00-governance/SSOT_POLICY.md) | SSOT_POLICY, DECISION_REGISTER, REQUIREMENTS_TRACEABILITY, EVIDENCE_STATUS, GLOSSARY | Authority and traceability |
 | [01 Product](01-product/PRD.md) | PRD, PERSONAS, USER_FLOWS, UX_SPEC, FEATURE_PRIORITY, KPI_SUCCESS | What and why |
-| [02 Architecture](02-architecture/SYSTEM_ARCHITECTURE.md) | SYSTEM_ARCHITECTURE, IMAGE_PIPELINE, JOB_ORCHESTRATION, PWA_OFFLINE, DEPLOYMENT, ADR | How the proposed system is divided |
+| [02 Architecture](02-architecture/SYSTEM_ARCHITECTURE.md) | SYSTEM_ARCHITECTURE, IMAGE_PIPELINE, JOB_ORCHESTRATION, PWA_OFFLINE, DEPLOYMENT, ADR, [PI_TEXT_BOUNDARY](02-architecture/PI_TEXT_BOUNDARY.md) | How the proposed system is divided |
 | [03 Security](03-security/BYOK_SECURITY.md) | BYOK_SECURITY, THREAT_MODEL, PRIVACY_DATA_LIFECYCLE | Trust boundaries and controls |
 | [04 Data](04-data/DATA_MODEL.md) | DATA_MODEL, INDEXEDDB_AND_MIGRATION, EXPORT_IMPORT | Entities, persistence and portability |
 | [05 API](05-api/API_CONTRACT.md) | API_CONTRACT, OPENAI_ADAPTER, ERROR_RETRY_COST | Gateway behavior and vendor adapter |

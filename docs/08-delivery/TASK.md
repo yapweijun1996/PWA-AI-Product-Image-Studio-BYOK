@@ -294,6 +294,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Diagnostics and limits:** Browser instrumentation reported `net::ERR_ABORTED` for the two no-content mutation requests despite recording HTTP 204 and observing successful state changes; the cause is unverified. No provider API key or paid request was used. This is local synthetic Chromium evidence, not an installed-iOS, production-identity, independent security-review or live-provider pass; the complete E2E-009 gate remains open.
 - **Rollback:** Revert the settings component, styling and related documentation. Do not remove local product data, owner-managed environment files or server keys.
 
+## T-034 text-model boundary candidate — 2026-10-30
+
+- **Design:** [PI_TEXT_BOUNDARY](../02-architecture/PI_TEXT_BOUNDARY.md) specifies a candidate broker boundary, principal-bound IPC, server-owned budget reservation, fixed provider routing, UNKNOWN recovery and a synthetic verification matrix. It deliberately leaves OS sandbox, IPC transport, pricing, retention and approval UX open for review.
+- **Evidence and limits:** Compared the candidate with ADR-006, the current loopback-only gateway and the prior synthetic Pi isolation probe. No text broker, IPC implementation, fake-key transport test, real provider call or independent security review was performed. T-034 remains PENDING and T-032 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Remove the candidate and its ADR reference and revert the documentation hashes; no runtime, key or user data changed.
+
 ## T-032 Pi isolation preflight — 2026-10-30
 
 - **Design:** ADR-006 now records the proposed separation of Pi, browser approval and credential-holding gateway. The browser must approve the exact chargeable attempt; the gateway enforces session-bound one-use approval and reservation, fixed provider operations and model allowlisting. STRICT preserves the original artwork; ambiguous provider outcomes remain UNKNOWN. The proposed approval and image endpoints are not implemented, and OPEN-008 remains unresolved.
