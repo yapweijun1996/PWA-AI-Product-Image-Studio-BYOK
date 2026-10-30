@@ -571,6 +571,28 @@ test('legacy waits require a separate authenticated provider review before dispa
   assert.equal(f.calls.length, 1);
 });
 
+test('logout or provider disconnect while legacy review waits prevents its mutation', async (t) => {
+  for (const action of ['logout', 'disconnect']) {
+    const f = await fixture(t), journal = await createAttemptJournal(f.journal), session = await f.login();
+    const principal = createHash('sha256').update('studio-local-owner-v1').digest('hex'), old = attempt();
+    assert.equal(await journal.begin(principal, old.clientAttemptId), 'begun');
+    assert.equal(await journal.reserve(principal, old.clientAttemptId, 'a'.repeat(64), 1800000000000, 10, 0), 'reserved');
+    await journal.finish(principal, old.clientAttemptId, 'DEFINITIVE_FAILURE', 1800000060000);
+    await journal.end(principal, old.clientAttemptId);
+    const lock = join(f.journal, '.lock'); await mkdir(lock, { mode: 0o700 });
+    const received = new Promise((resolve) => f.server.once('request', (req) => req.once('end', resolve)));
+    const pending = f.req(`/api/v2/images/attempts/${old.clientAttemptId}/legacy-wait-review`, session, { reviewedProviderWait: true, reviewRevision: 0 });
+    await received;
+    const endpoint = action === 'logout' ? '/api/v2/auth/logout' : '/api/v2/session';
+    const response = await fetch(f.origin + endpoint, { method: action === 'logout' ? 'POST' : 'DELETE', headers: { Origin: f.origin, Cookie: session.cookie, 'X-CSRF-Token': session.csrf } });
+    assert.equal(response.status, 204);
+    await rmdir(lock);
+    assert.equal((await pending).status, 401);
+    assert.equal((await readdir(f.journal)).includes(`${principal}-${old.clientAttemptId}.waitreview`), false);
+    assert.equal(f.calls.length, 0);
+  }
+});
+
 test('forward wall-clock jump and restart do not release a new provider wait', async (t) => {
   let calls = 0;
   const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '86401' } }); } });

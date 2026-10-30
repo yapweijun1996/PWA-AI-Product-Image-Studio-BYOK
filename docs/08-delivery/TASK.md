@@ -396,6 +396,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The clocks and provider outcome are synthetic. This checks separate OS processes and termination before proof, not power loss during fsync, suspension on supported devices, actual provider behavior or independent security review. The simulated elapsed time is not a real one-minute wait. BUG-001 remains IN_PROGRESS.
 - **Rollback:** Revert the test and this record; preserve all production journal results and proofs.
 
+## T-041 legacy review authorization race — 2026-10-30
+
+- **Evidence:** In synthetic loopback gateway tests, a format 3 wait-review request was held behind the journal lock. Logging out or disconnecting the provider session before releasing the lock caused the pending request to return 401, left no wait-review receipt and made no provider call. The targeted test passed for both cases.
+- **Limits:** This checks revocation before the journal authorization check, not all possible post-check races, real-provider behavior or independent security review. The original wait evidence remains unchanged; BUG-001 remains IN_PROGRESS.
+- **Rollback:** Revert this test and evidence with matching documentation hashes; preserve all journal records.
+
 ## T-041 legacy wait recovery — 2026-10-30
 
 - **Change:** A format 3 provider wait now blocks dispatch even when the wall clock passes its deadline, until a separate explicit external review is durably recorded. Authenticated, CSRF-protected endpoints list pending legacy waits and record an attempt-specific review bound to the current review revision. The UI shows pending records across products, requires a separate confirmation that provider wait and billing were checked externally, and clears previous generation consent. Review does not call the provider; a new attempt still requires fresh authorization and the saved wall deadline remains an additional conservative gate.
