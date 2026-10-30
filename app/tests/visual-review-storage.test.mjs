@@ -3,6 +3,8 @@ import test from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { deflateSync, inflateSync } from 'node:zlib';
 import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
+import { BlobReader, BlobWriter, Uint8ArrayReader, ZipReader, ZipWriter } from '@zip.js/zip.js/lib/zip-core-native.js';
 import { build } from 'vite';
 import { STUDIO_PROMPT, STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_PROMPT_VERSION, studioEstimateUSD } from '../studio-policy.mjs';
 
@@ -89,9 +91,9 @@ const built = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
   build: { write: false, minify: false, lib: { entry: 'src/products.ts', formats: ['es'], fileName: 'products' } } });
 const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
-const { createProduct, saveSource, saveMask, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint,
+const { createProduct, getProduct, saveSource, saveMask, loadSourceMask, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint,
   loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts,
-  createVisualReview, recordVisualDecision, listVisualReviews, getBackupSnapshot, validateBackupHistory } =
+  createVisualReview, recordVisualDecision, listVisualReviews, getBackupSnapshot, validateBackupHistory, validateBackupMasks } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 async function fixture() {
@@ -168,6 +170,66 @@ const review = async (f, checks = matches, variant = 'default', values = scores)
 const decision = (f, report, choice = 'APPROVED', signal) =>
   recordVisualDecision(f.productId, f.attemptId, f.composite.assetId, report.qaId, choice, signal);
 const history = (f) => listVisualReviews(f.productId, f.attemptId, f.composite.assetId);
+
+test('mask evidence binds covered regions to immutable source and mask versions', async () => {
+  const f = await fixture();
+  const invalid = png(2, 1, Uint8Array.from([255, 255, 255, 255, 255, 255, 255, 0]));
+  await assert.rejects(saveMask(f.productId, f.source, blob(invalid), f.maskId, [{ x: 1, y: 0, width: 1, height: 1 }]), /not fully covered/);
+  assert.equal((await getProduct(f.productId)).brandLock.maskAssetId, f.maskId);
+  for (const regions of [[], [{ x: 2, y: 0, width: 1, height: 1 }], [{ x: 0, y: 0, width: 0, height: 1 }]]) {
+    await assert.rejects(saveMask(f.productId, f.source, blob(sourceBytes), f.maskId, regions), /protected/i);
+  }
+  const regions = [{ x: 0, y: 0, width: 1, height: 1 }];
+  const pending = saveMask(f.productId, f.source, blob(sourceBytes), f.maskId, regions);
+  regions[0].x = 1;
+  const saved = await pending;
+  const loaded = await loadSourceMask(f.productId, f.source);
+  assert.equal(loaded.maskId, saved.brandLock.maskAssetId);
+  assert.equal(loaded.protectedEvidence.sourceSha256, f.source.sha256);
+  assert.equal(loaded.protectedEvidence.maskSha256, hash(sourceBytes));
+  assert.deepEqual(loaded.protectedEvidence.regions, [{ x: 0, y: 0, width: 1, height: 1 }]);
+  assert.equal(loaded.protectedEvidenceSha256, hash(Buffer.from(JSON.stringify(loaded.protectedEvidence))));
+  const snapshot = await getBackupSnapshot(f.productId);
+  assert.deepEqual(snapshot.masks.find((m) => m.metadata.maskId === loaded.maskId).metadata.protectedEvidence, loaded.protectedEvidence);
+  const protectedMask = snapshot.masks.find((m) => m.metadata.maskId === loaded.maskId);
+  const changedEvidence = { ...protectedMask.metadata.protectedEvidence, sourceSha256: '0'.repeat(64) };
+  const forgedMasks = snapshot.masks.map((m) => m === protectedMask ? { ...m, metadata: { ...m.metadata,
+    protectedEvidence: changedEvidence, protectedEvidenceSha256: hash(Buffer.from(JSON.stringify(changedEvidence))) } } : m);
+  await assert.rejects(validateBackupMasks(snapshot.product, forgedMasks, snapshot.sources), /evidence is invalid/i);
+  const backupBuilt = await build({ configFile: 'vite.config.ts', logLevel: 'silent',
+    build: { write: false, minify: false, lib: { entry: 'src/backup.ts', formats: ['es'], fileName: 'backup' } } });
+  const backupOutput = Array.isArray(backupBuilt) ? backupBuilt[0] : backupBuilt;
+  const backupCode = backupOutput.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
+  const { createBackup, inspectBackup } = await import(`data:text/javascript;base64,${Buffer.from(backupCode).toString('base64')}`);
+  const signal = new AbortController().signal;
+  const archive = await createBackup(f.productId, signal, () => {});
+  const reader = new ZipReader(new BlobReader(archive), { useWebWorkers: false });
+  const entries = await reader.getEntries(), files = new Map();
+  for (const entry of entries) files.set(entry.filename, new Uint8Array(await (await entry.getData(new BlobWriter())).arrayBuffer()));
+  await reader.close();
+  const manifest = JSON.parse(new TextDecoder().decode(files.get('export-manifest.json')));
+  assert.equal(manifest.schemaVersion, '3.0.0');
+  manifest.schemaVersion = '2.0.0';
+  files.set('export-manifest.json', new TextEncoder().encode(JSON.stringify(manifest)));
+  const writer = new ZipWriter(new BlobWriter('application/zip'), { useWebWorkers: false, level: 0 });
+  for (const [path, bytes] of files) await writer.add(path, new Uint8ArrayReader(bytes));
+  const downgraded = await writer.close();
+  await assert.rejects(inspectBackup(new File([downgraded], 'downgraded.zip'), signal, () => {}), /version.*protected/i);
+  const preview = await inspectBackup(new File([archive], 'test.zip'), signal, () => {});
+  assert.deepEqual(preview.masks.find((m) => m.metadata.maskId === loaded.maskId).metadata.protectedEvidence, loaded.protectedEvidence);
+  const originalIndexedDB = globalThis.indexedDB;
+  try {
+    globalThis.indexedDB = new IDBFactory();
+    const isolated = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}#isolated-mask-evidence`);
+    await isolated.restoreProduct(preview.product, preview.sources, preview.masks, preview.history);
+    const restored = await isolated.loadSourceMask(f.productId, f.source);
+    assert.deepEqual(restored.protectedEvidence, loaded.protectedEvidence);
+    assert.equal(restored.protectedEvidenceSha256, loaded.protectedEvidenceSha256);
+  } finally { globalThis.indexedDB = originalIndexedDB; }
+  await mutate(f.db, 'masks', loaded.maskId, (row) => ({ ...row, protectedEvidenceSha256: 'a'.repeat(64) }));
+  await assert.rejects(loadSourceMask(f.productId, f.source), /evidence hash/i);
+  await assert.rejects(getBackupSnapshot(f.productId), /evidence hash/i);
+});
 
 test('uncertain or mismatched checks require a nonempty human note, preserved verbatim', async () => {
   const f = await ready(), fingerprint = (await history(f)).productSha256;

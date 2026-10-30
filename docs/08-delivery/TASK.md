@@ -731,6 +731,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
 - **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
 
+## T-052 source-bound mask evidence storage foundation — 2026-10-30
+
+- **Change:** The local mask API accepts optional protected source-pixel rectangles, snapshots them before asynchronous work, binds them to exact source/mask hashes and dimensions and stores an evidence digest with the immutable mask version. Validation rejects malformed, out-of-bounds, missing, hash-mismatched, transparent or uncovered evidence. Existing evidence-free masks remain readable.
+- **Compatibility:** [ADR-017](../02-architecture/ADR.md) defines v3 project backups for masks with evidence; v1/v2 backups remain supported, and a v2 archive carrying evidence is rejected. Earlier app versions do not understand new mask fields or v3 backups; do not downgrade or edit from older tabs. Preserve data and use a current client.
+- **Evidence and limits:** A synthetic fake-IndexedDB test checks save rollback, input snapshotting, mismatched source and digest rejection, v3 archive creation, downgrade-label rejection and restore to a separate database. A Chromium development-module probe saved and reopened a covered region, rejected a mask with an erased protected pixel and inspected its backup. The application suite reported 259 passing and one known BUG-007 TODO failure; build and full documentation validation including six validator tests passed. No normal UI selects regions; composite save, approval/export, real browser/device concurrency and real SKU remain unverified. Evidence is not authenticated or complete merely because its digest matches. T-052 and [BUG-007](../../BUG.md) remain open.
+- **Rollback:** Preserve all originals, masks, evidence and archives. Use a reviewed migration before downgrade; do not strip evidence to make an old client accept the data.
+
 ## T-052 protected output footprint foundation — 2026-10-30
 
 - **Change:** The renderer rejects explicitly protected regions smaller than one geometric output pixel in either dimension. Normal and macro recipes use source or crop scaling; billboard uses the product-to-ad and ad-to-display scales. This is a necessary condition only, not proof of pixel identity or label readability.

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: AI Product Image Studio BYOK Gateway (PROPOSED)
-  version: 7.1.0
+  version: 8.0.0
   description: >-
-    Draft 7.1.0 adds explicit legacy wait review; older clients cannot complete that recovery.
+    Draft 8.0.0 adds local mask-evidence archive v3; gateway operations are unchanged from 7.1.0.
     The local-only gateway retains /api/v2 as the server-key route namespace;
     no deployed compatibility endpoint or production deployment is claimed.
     A default-disabled local seven-style scene subset has only synthetic-provider evidence.

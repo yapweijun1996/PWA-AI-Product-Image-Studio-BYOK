@@ -7,7 +7,7 @@ import { inspectImageHeader } from './imageHeader';
 import { STUDIO_MAX_PNG_BYTES, STUDIO_PROMPT, STUDIO_MODEL, STUDIO_PROMPT_VERSION, STUDIO_QUALITY,
   STUDIO_SIZE, STUDIO_PRICING_SNAPSHOT, STUDIO_MAX_RETRY_AFTER_SECONDS, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION,
   studioBuildPrompt, studioEstimateUSD, studioObservedUSD } from '../studio-policy.mjs';
-import { renderStrictComposite, recipeMapping, type StrictRecipe } from './strictComposite';
+import { renderStrictComposite, recipeMapping, type StrictRecipe, type StrictRect, type ProtectedEvidence } from './strictComposite';
 
 export type Fact = {
   factId: string;
@@ -238,6 +238,8 @@ export type MaskMetadata = {
   height: number;
   sha256: string;
   version: number;
+  protectedEvidence?: ProtectedEvidence;
+  protectedEvidenceSha256?: string;
 };
 export type BackupMask = { metadata: MaskMetadata; blob: Blob };
 
@@ -278,7 +280,8 @@ function ownedSource(product: Product, metadata: SourceMetadata): void {
 async function verifyMask(product: Product, value: unknown): Promise<BackupMask> {
   if (!value || typeof value !== 'object') throw new Error('A mask is missing or invalid.');
   const row = value as Record<string, unknown>;
-  const fields = ['maskId', 'productId', 'sourceAssetId', 'sourceSha256', 'width', 'height', 'sha256', 'version', 'blob'];
+  const fields = ['maskId', 'productId', 'sourceAssetId', 'sourceSha256', 'width', 'height', 'sha256', 'version', 'blob',
+    ...(Object.hasOwn(row, 'protectedEvidence') ? ['protectedEvidence', 'protectedEvidenceSha256'] : [])];
   if (Object.keys(row).length !== fields.length || Object.keys(row).some((key) => !fields.includes(key)) ||
       typeof row.maskId !== 'string' || !uuidPattern.test(row.maskId) || row.productId !== product.productId ||
       typeof row.sourceAssetId !== 'string' || typeof row.sourceSha256 !== 'string' ||
@@ -290,6 +293,26 @@ async function verifyMask(product: Product, value: unknown): Promise<BackupMask>
   const source = product.sourceAssets.find((item) => item.assetId === row.sourceAssetId);
   if (!source || source.sha256 !== row.sourceSha256 || source.width !== row.width || source.height !== row.height) {
     throw new Error('A mask does not match its original source.');
+  }
+  if (row.protectedEvidence !== undefined) {
+    const evidence = row.protectedEvidence as ProtectedEvidence;
+    if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence) ||
+        !exactKeys(evidence, ['version', 'sourceSha256', 'maskSha256', 'width', 'height', 'regions']) ||
+        evidence.version !== 1 || evidence.sourceSha256 !== source.sha256 || evidence.maskSha256 !== row.sha256 ||
+        evidence.width !== source.width || evidence.height !== source.height || !Array.isArray(evidence.regions) ||
+        evidence.regions.length < 1 || evidence.regions.length > 32 || typeof row.protectedEvidenceSha256 !== 'string' ||
+        !hashPattern.test(row.protectedEvidenceSha256)) throw new Error('Protected mask evidence is invalid.');
+    let work = 0;
+    for (const rect of evidence.regions) {
+      if (!rect || typeof rect !== 'object' || Array.isArray(rect) || !exactKeys(rect, ['x', 'y', 'width', 'height']) ||
+          ![rect.x, rect.y, rect.width, rect.height].every(Number.isSafeInteger) || rect.x < 0 || rect.y < 0 ||
+          rect.width < 1 || rect.height < 1 || rect.x + rect.width > source.width || rect.y + rect.height > source.height ||
+          (work += rect.width * rect.height) > source.width * source.height) throw new Error('Protected mask region bounds are invalid.');
+    }
+    if (await sha256(new TextEncoder().encode(JSON.stringify(evidence))) !== row.protectedEvidenceSha256)
+      throw new Error('Protected mask evidence hash does not match.');
+  } else if (Object.hasOwn(row, 'protectedEvidence') || Object.hasOwn(row, 'protectedEvidenceSha256')) {
+    throw new Error('Protected mask evidence is incomplete.');
   }
   const bytes = new Uint8Array(await row.blob.arrayBuffer());
   const header = inspectImageHeader(bytes);
@@ -370,6 +393,15 @@ async function verifyMaskAlpha(source: BackupSource, mask: BackupMask, signal?: 
           if (maskPixels[offset] > sourcePixels[offset]) throw new Error('The mask alpha exceeds the original source alpha.');
           if (maskPixels[offset] > 0) selected = true;
         }
+        for (const rect of mask.metadata.protectedEvidence?.regions ?? []) {
+          for (let sy = Math.max(y, rect.y); sy < Math.min(y + rows, rect.y + rect.height); sy++) {
+            for (let sx = rect.x; sx < rect.x + rect.width; sx++) {
+              const alpha = ((sy - y) * width + sx) * 4 + 3;
+              if (sourcePixels[alpha] !== 255 || maskPixels[alpha] !== 255)
+                throw new Error('A protected mask region is not fully covered.');
+            }
+          }
+        }
         if (signal) {
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
           checkBackupCancellation(signal);
@@ -434,7 +466,7 @@ export async function validateBackupMasks(product: Product, masks: BackupMask[],
   const verified: BackupMask[] = [];
   for (const mask of masks) {
     checkBackupCancellation(signal);
-    if (!mask.metadata || typeof mask.metadata !== 'object' || Object.keys(mask.metadata).length !== 8 || Object.hasOwn(mask.metadata, 'blob')) {
+    if (!mask.metadata || typeof mask.metadata !== 'object' || ![8, 10].includes(Object.keys(mask.metadata).length) || Object.hasOwn(mask.metadata, 'blob')) {
       throw new Error('Mask metadata contains unsupported fields.');
     }
     const checked = await verifyMask(product, { ...mask.metadata, blob: mask.blob });
@@ -448,7 +480,7 @@ export async function validateBackupMasks(product: Product, masks: BackupMask[],
   return verified;
 }
 
-export async function loadSourceMask(productId: string, source: SourceMetadata): Promise<{ blob: Blob; sha256: string; maskId: string } | null> {
+export async function loadSourceMask(productId: string, source: SourceMetadata): Promise<{ blob: Blob; sha256: string; maskId: string; protectedEvidence?: ProtectedEvidence; protectedEvidenceSha256?: string } | null> {
   const db = await openDatabase();
   const snapshot = await new Promise<{ product: Product; source: unknown; mask: unknown; versions: unknown[] }>((resolve, reject) => {
     const tx = db.transaction(['products', 'sourceAssets', 'masks'], 'readonly');
@@ -486,17 +518,25 @@ export async function loadSourceMask(productId: string, source: SourceMetadata):
   }, versions);
   const latest = versions.reduce<BackupMask | null>((current, mask) =>
     !current || mask.metadata.version > current.metadata.version ? mask : current, null);
-  return latest ? { blob: latest.blob, sha256: latest.metadata.sha256, maskId: latest.metadata.maskId } : null;
+  return latest ? { blob: latest.blob, sha256: latest.metadata.sha256, maskId: latest.metadata.maskId,
+    ...(latest.metadata.protectedEvidence ? { protectedEvidence: structuredClone(latest.metadata.protectedEvidence), protectedEvidenceSha256: latest.metadata.protectedEvidenceSha256 } : {}) } : null;
 }
 
-export async function saveMask(productId: string, source: SourceMetadata, blob: Blob, expectedMaskAssetId: string | null): Promise<Product> {
+export async function saveMask(productId: string, source: SourceMetadata, blob: Blob, expectedMaskAssetId: string | null, protectedRegions?: StrictRect[]): Promise<Product> {
   if (expectedMaskAssetId !== null && (typeof expectedMaskAssetId !== 'string' || !uuidPattern.test(expectedMaskAssetId))) {
     throw new Error('The expected mask version is invalid. Reload the editor.');
   }
   if (!(blob instanceof Blob) || blob.size < 1 || blob.size > MAX_MASK_BYTES) throw new Error('The mask exceeds the 20 MiB limit or is empty.');
+  const regions = protectedRegions === undefined ? undefined : structuredClone(protectedRegions);
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const metadata: MaskMetadata = { maskId: crypto.randomUUID(), productId, sourceAssetId: source.assetId,
     sourceSha256: source.sha256, width: source.width, height: source.height, sha256: await sha256(bytes), version: 1 };
+  if (regions !== undefined) {
+    const evidence: ProtectedEvidence = { version: 1, sourceSha256: source.sha256, maskSha256: metadata.sha256,
+      width: source.width, height: source.height, regions };
+    metadata.protectedEvidence = evidence;
+    metadata.protectedEvidenceSha256 = await sha256(new TextEncoder().encode(JSON.stringify(evidence)));
+  }
   const db = await openDatabase();
   return new Promise<Product>((resolve, reject) => {
     const tx = db.transaction(['products', 'sourceAssets', 'masks'], 'readwrite');
