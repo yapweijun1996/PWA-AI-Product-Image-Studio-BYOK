@@ -344,6 +344,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-041 long-delay cross-tab Chromium observation — 2026-10-30
+
+- **Evidence:** Two tabs in an isolated desktop Chromium origin used actual Vite development modules and synthetic 24×24 source images/masks to prepare attempts for two products. One recorded a definitive provider-limit failure with 86401 seconds; after reloading, the second tab retained its PREPARED state when submission was rejected by the persisted wait. Setting that tab's test clock to the exact deadline allowed the local transition; the synthetic attempt was then recorded as a failure. Browser console had no errors or warnings. No network provider call or real key was used.
+- **Limits:** Programmatic module calls and a simulated clock do not establish end-to-end user interaction, a provider request, actual billing, installed devices, cross-profile or independent security acceptance. BUG-001 remains IN_PROGRESS and T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence and documentation hashes only; preserve user data, backups and journals.
+
 ## T-041 extended provider delays — 2026-10-30
 
 - **Change:** A shared policy permits valid `Retry-After` seconds through 2147483647, including HTTP-date values; the gateway journal and local job retain and enforce the full supported delay. Present invalid or out-of-range values retain the explicit review gate. No automatic retry is introduced.
