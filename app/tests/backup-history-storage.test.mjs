@@ -48,6 +48,28 @@ test('a cancelled restore leaves no project behind', async () => {
   await assert.rejects(storage.restoreProduct(product, [], [], empty(), controller.signal), { name: 'AbortError' });
   assert.equal(await storage.getProduct(product.productId), null);
 });
+test('cancellation after a restore write aborts the transaction without replacing existing data', async () => {
+  const original = await storage.createProduct({ sku: randomUUID(), name: 'Synthetic', category: 'Test', rightsAcknowledged: true });
+  const product = { ...original, productId: randomUUID(), sku: randomUUID() };
+  const controller = new AbortController();
+  const add = IDBObjectStore.prototype.add;
+  let writeObserved = false;
+  IDBObjectStore.prototype.add = function (...args) {
+    const request = add.apply(this, args);
+    if (this.name === 'products' && args[0].productId === product.productId) {
+      request.addEventListener('success', () => { writeObserved = true; controller.abort(); }, { once: true });
+    }
+    return request;
+  };
+  try {
+    await assert.rejects(storage.restoreProduct(product, [], [], empty(), controller.signal), { name: 'AbortError' });
+  } finally {
+    IDBObjectStore.prototype.add = add;
+  }
+  assert.equal(writeObserved, true);
+  assert.equal(await storage.getProduct(product.productId), null);
+  assert.deepEqual(await storage.getProduct(original.productId), original);
+});
 test('an orphaned foreign attempt reference prevents add-only restore', async () => {
   const original = await storage.createProduct({ sku: randomUUID(), name: 'Synthetic', category: 'Test', rightsAcknowledged: true });
   const product = { ...original, productId: randomUUID(), sku: randomUUID() };

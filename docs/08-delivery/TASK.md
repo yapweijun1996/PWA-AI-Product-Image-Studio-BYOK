@@ -626,6 +626,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Browser data and unencrypted backups remain user-owned and may contain prompts, estimates, reviewer notes, photos and EXIF. Credential scanning is heuristic and does not inspect image pixels. No real provider call, seller SKU, physical iOS device, natural quota exhaustion, large-project memory test, production key or formal independent security acceptance was used. Synthetic Chromium is not release approval.
 - **Rollback:** Disable backup/import and generation as necessary; preserve originals, masks, jobs, attempts, generated assets, reviews, local trust markers and gateway journals. Older clients cannot safely read v2 archives or silently discard newer records. Do not delete ambiguous evidence to clear a safety gate.
 
+## T-022 cancellation during restore — 2026-10-30
+
+- **Evidence:** A synthetic fake-indexeddb regression cancels after the imported product's add request succeeds but before the transaction commits. The restore rejects with `AbortError`, the new product is absent and an existing synthetic project is unchanged. All nine backup-history storage tests passed.
+- **Limits:** This exercises one empty-project transaction in an in-memory IndexedDB implementation; it does not establish multi-record rollback, natural quota failure, browser or physical-device behavior. T-022 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Remove the regression and this record together; do not delete any user data or backups.
+
 ## T-080 scoped offline and accessibility observations — 2026-10-30
 
 - **Environment:** Localhost, synthetic project and Chromium 150 on the development workstation; offline state was browser-emulated after the shell had been cached. This is not an installed iPhone, real network-loss or cross-browser test.
