@@ -32,8 +32,8 @@
     },
     {
       "path": "BUG.md",
-      "bytes": 6324,
-      "sha256": "c758b4f120aa261fb47a808090b978d7c37effaf4c0ca44222143849228371c9"
+      "bytes": 6864,
+      "sha256": "d9b082d6bd6e3e83ff32454338f83dc7143a8cb9fb7de0dc2f4257bf6805084b"
     },
     {
       "path": "DESIGN.md",
@@ -232,8 +232,8 @@
     },
     {
       "path": "docs/05-api/OPENAI_ADAPTER.md",
-      "bytes": 4364,
-      "sha256": "f8f8269865623c5fd6c3ba71c6bd37a54c58eb7747ad25025817f41d08b7121d"
+      "bytes": 4647,
+      "sha256": "60916c6fd919332476527552ca4b81c5e8cbbfc5b1dd3333984bb4c7e544d14c"
     },
     {
       "path": "docs/06-ai/BRAND_LOCK_ENGINE.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 119028,
-      "sha256": "c87464693a8e169924862ee32c1eed815617b78af8ad4eaf4bbe1c803f49e3de"
+      "bytes": 120325,
+      "sha256": "ee1ae9ea7971e45d4396a2a33ec9c279bce614abde710ddcf23aefb53bcc021b"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

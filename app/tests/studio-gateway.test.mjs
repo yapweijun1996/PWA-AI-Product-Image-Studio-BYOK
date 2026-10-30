@@ -543,6 +543,23 @@ test('gateway enforces provider wait across restart, independent of client histo
   assert.equal(retried.status, 429); assert.equal((await retried.json()).error.code, 'PROVIDER_LIMIT'); assert.equal(calls, 2);
 });
 
+test('gateway retains the provider HTTP-date interval despite a fast local clock', async (t) => {
+  let calls = 0;
+  const providerNow = Math.floor(Date.now() / 1000) * 1000 - 7200000;
+  const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: {
+    date: new Date(providerNow).toUTCString(), 'retry-after': new Date(providerNow + 3600000).toUTCString(),
+  } }); } });
+  let session = await f.login(); const first = attempt();
+  const response = await f.generate(session, first, await approval(f, session, first));
+  assert.equal(response.status, 429); assert.equal((await response.json()).error.retryAfterSeconds, 3600);
+  assert.equal((await f.acknowledge(session, first.clientAttemptId)).status, 200);
+  await f.stop(); await f.start(); session = await f.login();
+  const next = attempt();
+  const blocked = await f.generate(session, next, await approval(f, session, next));
+  assert.equal(blocked.status, 429); assert.equal((await blocked.json()).error.code, 'RATE_LIMITED');
+  assert.equal(calls, 1);
+});
+
 test('malformed durable wait fails closed without a new provider dispatch', async (t) => {
   let calls = 0;
   const f = await fixture(t, { transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: { 'retry-after': '60' } }); } });

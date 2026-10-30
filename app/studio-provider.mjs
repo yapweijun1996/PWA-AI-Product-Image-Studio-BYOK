@@ -80,7 +80,12 @@ function retryAfterSeconds(response) {
   } else if (/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)) {
     const at = Date.parse(value);
     if (!Number.isFinite(at) || new Date(at).toUTCString() !== value) return null;
-    seconds = Math.max(0, Math.ceil((at - Date.now()) / 1000));
+    const serverDate = response.headers.get('date');
+    if (serverDate === null) return null;
+    const serverTime = Date.parse(serverDate);
+    if (!Number.isFinite(serverTime) || new Date(serverTime).toUTCString() !== serverDate) return null;
+    // A valid server date prevents a fast local clock shortening the stated interval.
+    seconds = Math.max(0, Math.ceil((at - serverTime) / 1000), Math.ceil((at - Date.now()) / 1000));
   } else return null;
   return seconds <= STUDIO_MAX_RETRY_AFTER_SECONDS ? seconds : null;
 }

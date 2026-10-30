@@ -6,11 +6,11 @@ import addFormats from 'ajv-formats';
 import { STUDIO_MAX_RETRY_AFTER_SECONDS } from '../studio-policy.mjs';
 import { generateStudioScene } from '../studio-provider.mjs';
 
-async function simulate(retryAfter) {
+async function simulate(retryAfter, date = null) {
   let calls = 0;
   const transport = async () => {
     calls++;
-    return new Response('untrusted provider error', { status: 429, headers: retryAfter === null ? {} : { 'Retry-After': retryAfter } });
+    return new Response('untrusted provider error', { status: 429, headers: { ...(retryAfter === null ? {} : { 'Retry-After': retryAfter }), ...(date === null ? {} : { Date: date }) } });
   };
   const result = await generateStudioScene({ apiKey: 'synthetic-only', transport, timeoutMs: 1000, prompt: 'validated scene prompt' });
   assert.equal(calls, 1);
@@ -33,10 +33,44 @@ test('a provider HTTP-date retry delay is interpreted without automatic retry', 
   const now = Date.now;
   Date.now = () => 1_700_000_000_000;
   try {
-    const result = await simulate(new Date(Date.now() + 30000).toUTCString());
+    const result = await simulate(new Date(Date.now() + 30000).toUTCString(), new Date(Date.now()).toUTCString());
     assert.deepEqual(result, { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: 30 });
-    const longResult = await simulate(new Date(Date.now() + 86401000).toUTCString());
+    const longResult = await simulate(new Date(Date.now() + 86401000).toUTCString(), new Date(Date.now()).toUTCString());
     assert.equal(longResult.retryAfterSeconds, 86401);
+  } finally { Date.now = now; }
+});
+
+test('HTTP-date retry does not shorten a provider interval when the local clock is fast', async () => {
+  const now = Date.now; const providerNow = 1_700_000_000_000;
+  Date.now = () => providerNow + 2 * 60 * 60 * 1000;
+  let calls = 0;
+  try {
+    const result = await generateStudioScene({ apiKey: 'synthetic-only', prompt: 'synthetic', timeoutMs: 1000,
+      transport: async () => { calls++; return new Response('synthetic', { status: 429, headers: {
+        date: new Date(providerNow).toUTCString(), 'retry-after': new Date(providerNow + 3600 * 1000).toUTCString(),
+      } }); } });
+    assert.equal(result.retryAfterSeconds, 3600);
+    assert.equal(calls, 1);
+  } finally { Date.now = now; }
+});
+
+test('HTTP-date without a provider date requires manual review', async () => {
+  const result = await simulate(new Date(Date.now() + 3600000).toUTCString());
+  assert.deepEqual(result, { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: null, retryAfterRequiresReview: true });
+});
+
+test('HTTP-date uses the longer local interval and rejects a malformed server date', async () => {
+  const now = Date.now, providerNow = 1_700_000_000_000;
+  Date.now = () => providerNow - 3600 * 1000;
+  try {
+    for (const [date, expected] of [[new Date(providerNow).toUTCString(), 7200], ['invalid date', null]]) {
+      const result = await generateStudioScene({ apiKey: 'synthetic-only', prompt: 'synthetic', timeoutMs: 1000,
+        transport: async () => new Response('synthetic', { status: 429, headers: {
+          date, 'retry-after': new Date(providerNow + 3600 * 1000).toUTCString(),
+        } }) });
+      assert.equal(result.retryAfterSeconds, expected);
+      assert.equal(result.retryAfterRequiresReview === true, expected === null);
+    }
   } finally { Date.now = now; }
 });
 

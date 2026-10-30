@@ -344,6 +344,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-041 HTTP-date clock skew mitigation — 2026-10-30
+
+- **Change and reproduction:** With a synthetic provider `Date` and `Retry-After` one hour later, a local clock two hours ahead previously reduced the wait to zero. For HTTP-date guidance, the adapter now requires a valid response `Date` and selects the longer provider-relative or local-clock interval. Missing or invalid `Date` enters the existing durable external-review gate. Numeric delays are unchanged.
+- **Evidence:** Synthetic tests cover fast and slow local clocks, missing and malformed `Date`, valid and invalid retry dates and the original boundary; a gateway test confirms the one-hour wait survives acknowledgement and restart without a second provider call. No real credential or paid request was used.
+- **Limits:** This relies on an accurate upstream `Date`; subsequent local clock jumps can affect a persisted deadline. External-review acknowledgement can lift a manual hold, and installed-device, actual provider and independent security acceptance remain open. BUG-001 stays IN_PROGRESS and T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Disable generation and revert adapter, tests and matching documentation together; preserve journal and local attempt evidence, and review any recorded wait before resuming.
+
 ## T-040 / T-042 provider contract fact check — 2026-10-30
 
 - **Evidence:** The current [OpenAI Images API reference](https://developers.openai.com/api/reference/resources/images/methods/generate) lists `gpt-image-2.5-flare`, `low`, `1024x1024`, PNG and one image as supported request choices. The [model page](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare) lists Standard rates of $5/1M text input, $8/1M image input and $30/1M image output tokens, matching the existing snapshot. The API reference marks output token details optional; the adapter retains partial usage and does not calculate observed cost without complete details.
