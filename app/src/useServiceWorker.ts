@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasUnsavedChanges } from './useUnsavedChanges';
+import { hasUnsavedChanges, UNSAVED_CHANGES_EVENT } from './useUnsavedChanges';
 
 type UpdateState = 'idle' | 'waiting' | 'activating' | 'activated-elsewhere' | 'cache-limit' | 'error';
 
@@ -45,6 +45,9 @@ export function useServiceWorker() {
         setState('cache-limit');
       }
     };
+    const onDraftChange = () => {
+      if (!hasUnsavedChanges()) setBlockedByDraft(false);
+    };
     const onUpdateFound = () => {
       const worker = current?.installing;
       if (!worker) return;
@@ -70,6 +73,7 @@ export function useServiceWorker() {
     };
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
     navigator.serviceWorker.addEventListener('message', onMessage);
+    window.addEventListener(UNSAVED_CHANGES_EVENT, onDraftChange);
     document.addEventListener('visibilitychange', checkForUpdate);
     window.addEventListener('online', checkForUpdate);
     navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((value) => {
@@ -87,6 +91,7 @@ export function useServiceWorker() {
       disposed = true;
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
       navigator.serviceWorker.removeEventListener('message', onMessage);
+      window.removeEventListener(UNSAVED_CHANGES_EVENT, onDraftChange);
       document.removeEventListener('visibilitychange', checkForUpdate);
       window.removeEventListener('online', checkForUpdate);
       current?.removeEventListener('updatefound', onUpdateFound);

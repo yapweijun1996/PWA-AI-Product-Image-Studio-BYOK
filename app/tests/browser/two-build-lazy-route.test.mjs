@@ -89,11 +89,15 @@ test('an old tab loads its cached lazy route after a user-activated two-build up
     await evaluate(oldTab,`(() => {const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [id,v] of [['product-sku',crypto.randomUUID()],['product-category','Test']]){const e=document.getElementById(id);set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('.form-card input[type="checkbox"]').click();document.querySelector('.form-card button[type="submit"]').click()})()`);
     const productId=await until(()=>evaluate(oldTab,`location.pathname.startsWith('/products/')&&location.pathname!=='/products/new'&&location.pathname.split('/')[2]`),'created product');
     await until(()=>evaluate(oldTab,`!!document.querySelector('#source-file')`),'old lazy product page');
+    assert.equal(await evaluate(oldTab,`document.querySelector('.update-notice').innerText.includes('Save or discard your changes before continuing.')`),false,'The saved draft no longer blocks the update notice.');
     assert.equal(await evaluate(oldTab,`!!document.querySelector('[data-test-build="b"]')`),false,'Old tab keeps its old route implementation.');
     assert.equal(await evaluate(oldTab,`window.__oldTabSentinel`),'still-loaded');
     await clientNavigate(newTab,origin,productId);
     await until(()=>evaluate(newTab,`!!document.querySelector('[data-test-build="b"]')`),'new version product page');
     assert.equal(await evaluate(oldTab,`document.documentElement.scrollWidth===innerWidth`),true);
+    await evaluate(oldTab,`[...document.querySelectorAll('.update-notice button')].find(x=>x.textContent==='Reload when ready').click()`);
+    await until(()=>evaluate(oldTab,`location.pathname===${JSON.stringify('/products/')}+${JSON.stringify(productId)} && !!document.querySelector('[data-test-build="b"]')`),'saved product after explicit reload');
+    assert.equal(await evaluate(oldTab,`document.querySelector('h1').textContent`),'Synthetic old tab','The saved product survives the user-initiated update.');
   } finally {
     oldTab?.close();newTab?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(server)await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));await rm(root,{recursive:true,force:true});

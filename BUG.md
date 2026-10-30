@@ -197,3 +197,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Show the number of style authorizations and name the outstanding styles next to the action. The live status also says that other required confirmations and gateway checks still apply; it does not change any billing, approval or readiness checks.
 - **Evidence and limits:** The synthetic browser journey checks 0/7, 6/7 with Billboard missing, and 7/7 before running seven independent provider stubs. The partial state makes no provider call. A 320 px screenshot was inspected and the browser suite and build passed. No actual screen reader, physical device, seller comprehension study or real billing was tested.
 - **Rollback:** Remove the status and matching assertions together; retain every per-style authorization and existing submission guard.
+
+## BUG-024 — Update notice continues to report a saved draft as unsaved
+
+- **Status:** VERIFIED for the scoped two-build Chromium scenario. **Priority:** P2. **Related tasks:** T-011 and T-080.
+- **Reproduction:** With a product draft open in one tab, activate a new application version from another tab. After saving the draft in the first tab, the update notice continued to say “Save or discard your changes before continuing,” even though the saved project was open. A synthetic two-build test reproduced the stale message before the fix.
+- **Fix:** Notify the update UI when tracked draft ownership changes and clear its draft-blocked message only when no tracked owner remains. The user must still choose to reload and all existing unsaved-work guards remain in force.
+- **Evidence and limits:** In 390 px emulated Chromium, the old tab retained its draft during activation, saved the project, cleared the stale warning and explicitly reloaded into the new build with the saved product intact. The full browser suite and production build passed. This does not establish installed-device behavior, all simultaneous draft-owner races, screen-reader usability or the cause of the earlier cached-asset observation.
+- **Rollback:** Revert the draft-change notification and update UI listener with the regression assertions; preserve saved projects and the existing reload guards.
