@@ -106,7 +106,7 @@ export function ApprovedExportPanel({ productId, productVersion, disabled }: { p
 
   return <section className="product-section approved-export" aria-labelledby="approved-export-heading">
     <span className="section-kicker">LOCAL DELIVERY</span><h2 id="approved-export-heading">Export reviewed images</h2>
-    <p><strong>Mask coverage is not automatically verified.</strong> Human approval can miss hidden or changed labels. Compare each output against the original before using it; do not use an output if a required detail is missing or unclear.</p>
+    <p><strong>Mask coverage is not enforced for approval or export.</strong> Human approval can miss hidden or changed labels. Compare each output against the original before using it; do not use an output if a required detail is missing or unclear.</p>
     <p>Only current human-approved composites are eligible. Converted files are separate from your originals; inspect every output before download. New-style ZIPs include the exact prompt, selected confirmed facts and seller ad copy, as well as any complete billboard ad and frozen copy layer. This bundle is unencrypted and is not a project backup.</p>
     <p>All ratios fit the entire image without cropping. PNG and WebP use transparent margins; JPEG uses a white background. Conversion may resample labels and colors and does not guarantee a marketplace's requirements.</p>
     {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}

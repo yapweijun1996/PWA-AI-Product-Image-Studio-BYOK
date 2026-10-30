@@ -58,7 +58,7 @@ export function StrictCompositePanel({ productId, productVersion, attemptId, sce
           else { recipe.display = selection; if (frontFacing) recipe.displayFrontFacing = true; recipe.copy = copy; }
         }
       }
-      const rendered = await renderStrictComposite({ source: inputs.source, mask: inputs.mask, scene: inputs.scene, sourceWidth: inputs.sourceWidth, sourceHeight: inputs.sourceHeight, signal: abort.signal, recipe });
+      const rendered = await renderStrictComposite({ source: inputs.source, mask: inputs.mask, scene: inputs.scene, sourceWidth: inputs.sourceWidth, sourceHeight: inputs.sourceHeight, signal: abort.signal, recipe, protectedEvidence: inputs.protectedEvidence });
       if (recipe && rendered.copyLayer) recipe = { ...recipe, copyLayerSha256: await sha256(new Uint8Array(await rendered.copyLayer.arrayBuffer())) };
       if (!abort.signal.aborted && alive.current) setDraft({ inputs, ...rendered, recipe });
     } catch (reason) {
@@ -96,6 +96,7 @@ export function StrictCompositePanel({ productId, productVersion, attemptId, sce
     <h4>STRICT source-layer composite</h4>
     <p><strong>Original product layer; AI-generated environment.</strong></p>
     <p>Place the verified original and its saved mask over this background locally. The original viewpoint is retained; resizing can change sampled pixels. No perspective or hidden face is invented. This is not a QA approval.</p>
+    {available && <p>{available.protectedEvidence ? `${available.protectedEvidence.regions.length} protected ${available.protectedEvidence.regions.length === 1 ? 'area' : 'areas'} will be checked during preview and save. This does not yet block approval or export, and cannot prove every detail is selected or legible.` : 'This mask has no protected areas. Preview and save cannot verify label coverage; approval and export do not yet enforce it.'}</p>}
     {available?.styleId && <p>Recipe: {available.styleId}; source viewpoint: {available.sourceView}. {available.styleId === 'flat_lay' && available.sourceView === 'OTHER' && 'The original non-top viewpoint is retained; this is an adapted arrangement, not an invented top view.'}</p>}
     {(available?.styleId === 'macro' || available?.styleId === 'billboard') && <fieldset disabled={busy || draft !== null}>
       <legend>{available.styleId === 'macro' ? 'Choose an oriented source-pixel crop' : 'Inspect the scene and select the rectangular display in 1024 × 1024 scene pixels'}</legend>

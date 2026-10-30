@@ -196,6 +196,28 @@ test('the renderer rejects a mask that removes an explicitly supplied protected 
   assert.ok(legacy.blob.size > 0);
 });
 
+test('composite save checks source-bound protected evidence and rejects stale evidence', async () => {
+  const f = await fixture('macro');
+  const evidence = { version: 1, sourceSha256: f.source.sha256, maskSha256: hash(sourceBytes), width: 2, height: 1,
+    regions: [{ x: 1, y: 0, width: 1, height: 1 }] };
+  const evidenceHash = (value) => hash(Buffer.from(JSON.stringify(value)));
+  await mutate(f.db, 'masks', f.maskId, (row) => ({ ...row, protectedEvidence: evidence, protectedEvidenceSha256: evidenceHash(evidence) }));
+  const inputs = await load(f);
+  assert.deepEqual(inputs.protectedEvidence, evidence);
+  const crop = { version: 1, styleId: 'macro', sourceView: 'OTHER', crop: { x: 0, y: 0, width: 1, height: 1 } };
+  const unsafe = await renderStrictCompositePixels({ ...inputs, protectedEvidence: undefined, recipe: crop });
+  await assert.rejects(saveStrictComposite(f.productId, f.attemptId, inputs, unsafe.blob, unsafe.mapping, undefined, crop), /crop excludes protected/);
+  const full = { ...crop, crop: { x: 0, y: 0, width: 2, height: 1 } };
+  const valid = await renderStrictCompositePixels({ ...inputs, recipe: full, protectedEvidence: inputs.protectedEvidence });
+  const saved = await saveStrictComposite(f.productId, f.attemptId, inputs, valid.blob, valid.mapping, undefined, full);
+  assert.equal(saved.maskId, f.maskId);
+  const omitted = { ...inputs }; delete omitted.protectedEvidence; delete omitted.protectedEvidenceSha256;
+  await assert.rejects(saveStrictComposite(f.productId, f.attemptId, omitted, valid.blob, valid.mapping, undefined, full), /inputs changed/);
+  const changed = { ...evidence, regions: [{ x: 0, y: 0, width: 1, height: 1 }] };
+  await mutate(f.db, 'masks', f.maskId, (row) => ({ ...row, protectedEvidence: changed, protectedEvidenceSha256: evidenceHash(changed) }));
+  await assert.rejects(saveStrictComposite(f.productId, f.attemptId, inputs, valid.blob, valid.mapping, undefined, full), /inputs changed/);
+});
+
 test('completed versioned scene remains accessible after product facts or name change', async () => {
   const f = await fixture('hero');
   await mutate(f.db, 'products', f.productId, (row) => ({ ...row, name: 'Updated product name' }));

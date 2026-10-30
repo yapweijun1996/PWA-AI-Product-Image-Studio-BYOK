@@ -1512,6 +1512,7 @@ export type StrictCompositeInputs = {
   source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number;
   sourceAssetId: string; sourceSha256: string; maskId: string; maskSha256: string;
   sceneAssetId: string; sceneSha256: string;
+  protectedEvidence?: ProtectedEvidence; protectedEvidenceSha256?: string;
   styleId?: StudioStyleId; sourceView?: StudioSceneContext['sourceView'];
   topViewConfirmed?: true;
 };
@@ -1925,15 +1926,18 @@ async function strictCompositeTransaction(
               const inputs: StrictCompositeInputs = { source: original.blob, mask: mask.blob, scene: scene.blob,
                 sourceWidth: source.width, sourceHeight: source.height, sourceAssetId: source.assetId, sourceSha256: source.sha256,
                 maskId: mask.metadata.maskId, maskSha256: mask.metadata.sha256, sceneAssetId: scene.assetId, sceneSha256: scene.sha256,
+                ...(mask.metadata.protectedEvidence ? { protectedEvidence: structuredClone(mask.metadata.protectedEvidence), protectedEvidenceSha256: mask.metadata.protectedEvidenceSha256 } : {}),
                 ...(attempt.styleId ? { styleId: attempt.styleId, sourceView: attempt.sceneContext!.sourceView, ...(attempt.topViewConfirmed ? { topViewConfirmed: true as const } : {}) } : {}) };
               if (save) {
                 if ((attempt.styleId === undefined) !== (save.recipe === undefined) ||
                     (save.recipe && (save.recipe.styleId !== attempt.styleId || save.recipe.sourceView !== attempt.sceneContext?.sourceView || save.recipe.topViewConfirmed !== attempt.topViewConfirmed))) throw new Error('The recipe does not match the immutable job.');
                 if ((['sourceWidth', 'sourceHeight', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256'] as const)
-                  .some((key) => save.expected[key] !== inputs[key])) throw new Error('The verified composite inputs changed before saving.');
+                  .some((key) => save.expected[key] !== inputs[key]) || save.expected.protectedEvidenceSha256 !== inputs.protectedEvidenceSha256 ||
+                    JSON.stringify(save.expected.protectedEvidence) !== JSON.stringify(inputs.protectedEvidence)) throw new Error('The verified composite inputs changed before saving.');
                 const given = save.inputs;
                 if (!given || (['sourceWidth', 'sourceHeight', 'sourceAssetId', 'sourceSha256', 'maskId', 'maskSha256', 'sceneAssetId', 'sceneSha256'] as const)
-                  .some((key) => given[key] !== inputs[key]) ||
+                  .some((key) => given[key] !== inputs[key]) || given.protectedEvidenceSha256 !== inputs.protectedEvidenceSha256 ||
+                    JSON.stringify(given.protectedEvidence) !== JSON.stringify(inputs.protectedEvidence) ||
                     !(given.source instanceof Blob) || !(given.mask instanceof Blob) || !(given.scene instanceof Blob) ||
                     given.source.size < 1 || given.source.size > 20 * 1024 * 1024 ||
                     given.mask.size < 1 || given.mask.size > MAX_MASK_BYTES ||
@@ -2141,7 +2145,7 @@ async function compareCompositePixels(expected: Blob, actual: Blob, signal: Abor
 export async function saveStrictComposite(productId: string, attemptId: string, inputs: StrictCompositeInputs, blob: Blob, mapping: StrictMapping, signal?: AbortSignal, recipe?: StrictRecipe, copyLayer?: Blob): Promise<StrictComposite> {
   const cancellation = signal ?? new AbortController().signal;
   checkCompositeCancellation(cancellation);
-  const given = inputs && { ...inputs }, placement = mapping && { ...mapping };
+  const given = inputs && { ...inputs, ...(inputs.protectedEvidence === undefined ? {} : { protectedEvidence: structuredClone(inputs.protectedEvidence) }) }, placement = mapping && { ...mapping };
   if (!given) throw new Error('The composite inputs are invalid.');
   verifyStrictMapping(placement, given.sourceWidth, given.sourceHeight, recipe);
   await verifyCopyLayer(recipe, copyLayer);
@@ -2152,7 +2156,7 @@ export async function saveStrictComposite(productId: string, attemptId: string, 
   let rendered: { blob: Blob; mapping: StrictMapping; ad?: Blob; copyLayer?: Blob };
   try {
     rendered = await renderStrictComposite({ source: expected.source, mask: expected.mask, scene: expected.scene,
-      sourceWidth: expected.sourceWidth, sourceHeight: expected.sourceHeight, signal: cancellation, recipe });
+      sourceWidth: expected.sourceWidth, sourceHeight: expected.sourceHeight, signal: cancellation, recipe, protectedEvidence: expected.protectedEvidence });
   } catch (error) {
     checkCompositeCancellation(cancellation);
     throw error;
