@@ -1312,3 +1312,8 @@ Do not mark production deployed from CI green alone. Human permission required f
 
 - **Evidence:** Two standalone synthetic gateway journeys passed after the full-suite run; interrupted-backup inspection took 8,509 ms and 530 ms. Temporary instrumentation of the second, fast run observed one zero-delay timer with less than 1 ms wait while the import page was visible; the slow run was not instrumented. The temporary instrumentation was removed.
 - **Limits and rollback:** The timing variation is not a diagnosis and does not establish the cause of earlier test timeouts. No real user data, provider or physical device was tested. BUG-048 remains IN_PROGRESS and T-080/T-081 remain IMPLEMENTED_UNVERIFIED; no application or test behavior changed. Remove this record only if the evidence is corrected.
+
+## T-052 / T-060 / T-081 synthetic unit regression — 2026-10-31
+
+- **Verification:** After the disk-space recovery, `npm test` passed all 282 synthetic tests. The suite includes protected-mask and approved-export rejection, backup restore and cancellation, human-review veto and attempt-state checks. This is complementary to the separately recorded six-test Chromium run.
+- **Limits and rollback:** This run does not prove physical-device usability, real SKU fidelity, production security or provider billing. T-052 remains IN_PROGRESS; T-060 and T-081 remain IMPLEMENTED_UNVERIFIED. This record changes no runtime behavior and may be corrected without changing saved data or acceptance gates.
