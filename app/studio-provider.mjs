@@ -49,17 +49,24 @@ function validatePng(base64) {
   if (position !== raw.length) throw new Error('Invalid image');
   return base64;
 }
-async function limitedText(response) {
+function discardBody(body) {
+  // Cancellation is advisory and must never delay or replace the request outcome.
+  try { void body?.cancel().catch(() => {}); } catch { /* Preserve the outcome. */ }
+}
+async function limitedText(response, signal) {
   if (!response.body || typeof response.body.getReader !== 'function') throw new Error('Invalid provider response');
-  const reader = response.body.getReader(), chunks = []; let size = 0;
+  const reader = response.body.getReader(), chunks = []; let size = 0, complete = false;
+  const onAbort = () => discardBody(reader);
+  signal.addEventListener('abort', onAbort, { once: true });
+  if (signal.aborted) onAbort();
   try {
     while (true) {
-      const { done, value } = await reader.read(); if (done) break;
+      const { done, value } = await reader.read(); if (done) { complete = true; break; }
       size += value.byteLength; if (size > MAX_RESPONSE) throw new Error('Provider response too large');
       chunks.push(value);
     }
     return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
-  } finally { reader.releaseLock(); }
+  } finally { signal.removeEventListener('abort', onAbort); if (!complete) discardBody(reader); reader.releaseLock(); }
 }
 function retryAfterSeconds(response) {
   const value = response.headers.get('retry-after');
@@ -108,10 +115,13 @@ export async function generateStudioScene({ apiKey, transport, timeoutMs, prompt
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: STUDIO_MODEL, prompt, quality: STUDIO_QUALITY, size: STUDIO_SIZE, output_format: 'png', n: 1 })
       });
-      if (response.status === 429) return { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: retryAfterSeconds(response) };
-      if (!response.ok) return { outcome: response.status >= 400 && response.status < 500 && response.status !== 408 ? 'DEFINITIVE_FAILURE' : 'UNKNOWN' };
-      if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) throw new Error('Invalid provider response');
-      const payload = JSON.parse(await limitedText(response));
+      if (!response.ok) {
+        discardBody(response.body);
+        if (response.status === 429) return { outcome: 'DEFINITIVE_FAILURE', errorCode: 'PROVIDER_LIMIT', retryAfterSeconds: retryAfterSeconds(response) };
+        return { outcome: response.status >= 400 && response.status < 500 && response.status !== 408 ? 'DEFINITIVE_FAILURE' : 'UNKNOWN' };
+      }
+      if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) { discardBody(response.body); throw new Error('Invalid provider response'); }
+      const payload = JSON.parse(await limitedText(response, controller.signal));
       if (!payload || !Array.isArray(payload.data) || payload.data.length !== 1) throw new Error('Invalid provider response');
       return { outcome: 'DEFINITIVE_SUCCESS', image: validatePng(payload.data[0]?.b64_json), usage: parseUsage(payload.usage) };
     })();
