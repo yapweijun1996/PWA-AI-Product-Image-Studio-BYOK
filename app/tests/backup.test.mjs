@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
+import { deflateRawSync, deflateSync } from 'node:zlib';
 import 'fake-indexeddb/auto';
 import { build } from 'vite';
 import { BlobReader, BlobWriter, TextReader, Uint8ArrayReader, ZipReader, ZipWriter, configure } from '@zip.js/zip.js/lib/zip-core-native.js';
@@ -88,7 +89,7 @@ const productsBuild = await build({
 });
 const productsOutput = Array.isArray(productsBuild) ? productsBuild[0] : productsBuild;
 const productsCode = productsOutput.output.find((entry) => entry.type === 'chunk').code;
-const { createProduct } = await import(`data:text/javascript;base64,${Buffer.from(productsCode).toString('base64')}`);
+const { createProduct, saveSource } = await import(`data:text/javascript;base64,${Buffer.from(productsCode).toString('base64')}`);
 
 async function emptyBackup() {
   const product = await createProduct({ sku: randomUUID(), name: 'Synthetic', category: 'Test', rightsAcknowledged: true });
@@ -115,6 +116,45 @@ test('exports versioned unapproved backups and previews empty history', async ()
   const preview = await inspect(file);
   assert.deepEqual(preview.history, { jobs: [], attempts: [], assets: [], reviews: [], heads: [] });
   assert.equal(preview.conflict, true);
+});
+
+test('backup exports and previews a highly compressible original without triggering its import ratio limit', async () => {
+  function chunk(name, data) {
+    const type = Buffer.from(name), length = Buffer.alloc(4), checksum = Buffer.alloc(4);
+    let crc = 0xffffffff;
+    for (const byte of Buffer.concat([type, data])) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+    length.writeUInt32BE(data.length); checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+    return Buffer.concat([length, type, data, checksum]);
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0); header.writeUInt32BE(1, 4); header[8] = 8; header[9] = 6;
+  const bytes = Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header),
+    chunk('tEXt', Buffer.concat([Buffer.from('Comment\0'), Buffer.alloc(1024 * 1024, 65)])),
+    chunk('IDAT', deflateSync(Buffer.from([0, 255, 255, 255, 255]))), chunk('IEND', Buffer.alloc(0)),
+  ]);
+  assert.ok(bytes.length / deflateRawSync(bytes).length > 200);
+  const product = await createProduct({ sku: randomUUID(), name: 'Synthetic', category: 'Test', rightsAcknowledged: true });
+  const source = { assetId: randomUUID(), sha256: hash(bytes), mimeType: 'image/png', width: 1, height: 1, cameraView: 'UNKNOWN', filename: 'metadata.png' };
+  await saveSource(product.productId, { file: new File([bytes], source.filename, { type: source.mimeType }), metadata: source, exifOrientation: 1, previewUrl: '' }, 'UNKNOWN');
+  const file = new File([await createBackup(product.productId, new AbortController().signal, () => {})], 'backup.zip');
+  const reader = new ZipReader(new BlobReader(file), { useWebWorkers: false });
+  const entries = await reader.getEntries();
+  const original = entries.find((entry) => entry.filename.startsWith('originals/'));
+  assert.equal(original.compressionMethod, 0);
+  assert.equal(original.compressedSize, original.uncompressedSize);
+  await reader.close();
+  const bitmap = globalThis.createImageBitmap, document = globalThis.document;
+  globalThis.createImageBitmap = async () => ({ width: 1, height: 1, close() {} });
+  globalThis.document = { createElement: () => ({ getContext: () => ({ drawImage() {} }), toBlob: (done) => done(new Blob(['preview'], { type: 'image/png' })) }) };
+  try {
+    const preview = await inspect(file);
+    assert.equal(preview.sources.length, 1);
+    assert.equal(hash(Buffer.from(await preview.sources[0].blob.arrayBuffer())), hash(bytes));
+  } finally { globalThis.createImageBitmap = bitmap; globalThis.document = document; }
 });
 
 test('continues to import version 1 with an empty history', async () => {
