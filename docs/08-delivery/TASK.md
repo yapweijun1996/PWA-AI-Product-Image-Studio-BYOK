@@ -378,6 +378,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 legacy wait-review journal foundation — 2026-10-30
+
+- **Change:** Added a separate, immutable, attempt-bound format 3 wait-review receipt under the journal lock. Creating it requires the current review revision and an authorization callback; an existing receipt is idempotent, and malformed or mismatched evidence fails closed. Review receipts increment the same revision used to bind fresh approvals, independently of prior charge acknowledgements. The operation does not dispatch or alter the original outcome.
+- **Evidence:** Synthetic journal tests cover prior acknowledgement versus separate wait review, stale revision, revoked authorization, wrong principal, replay, restart and mismatched receipt. The full application suite passed 236 tests; the build passed with its existing bundle-size warning. No real key or provider request was used.
+- **Limits:** No gateway endpoint or browser confirmation invokes this method yet, and format 3 waits still use the wall-clock dispatch check. The new record does not by itself correct the legacy clock-jump bypass. Explicit user-facing external-review semantics, multi-process/crash tests and independent security acceptance remain open. BUG-001 stays IN_PROGRESS.
+- **Rollback:** Disable generation, preserve journal records and review receipts, and use a reviewed compatibility and recovery plan before returning to an older journal version.
+
 ## T-041 gateway elapsed-proof integration — 2026-10-30
 
 - **Change:** For new definitive provider-limit responses with a supported positive delay, the gateway now records both the bounded duration and deadline in journal format 4. The final dispatch path requires the journal's durable monotonic wait proof as well as the wall deadline. Injected monotonic time is used only by synthetic tests; normal execution uses the process clock.

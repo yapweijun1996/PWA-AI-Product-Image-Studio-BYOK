@@ -7,7 +7,7 @@ import { createRetryWaitTracker } from './retry-wait-tracker.mjs';
 import { STUDIO_MAX_RETRY_AFTER_SECONDS } from './studio-policy.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const RECORD = /^([a-f0-9]{64})-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\.result|\.ack|\.clean|\.waitproof)?$/;
+const RECORD = /^([a-f0-9]{64})-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\.result|\.ack|\.clean|\.waitproof|\.waitreview)?$/;
 const HASH = /^[a-f0-9]{64}$/;
 const TEMP = /^\.tmp-[a-f0-9]{32}$/;
 const VERSION_MARKER = '.journal-protocol-v4';
@@ -45,7 +45,7 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
   }
   let initialized = false;
   async function scan() {
-    const entries = await readdir(directory), reservations = new Map(), results = new Map(), acknowledgements = new Map(), clean = new Map(), proofs = new Map();
+    const entries = await readdir(directory), reservations = new Map(), results = new Map(), acknowledgements = new Map(), clean = new Map(), proofs = new Map(), reviews = new Map();
     if (initialized && !entries.includes(VERSION_MARKER)) throw new Error('Journal protocol marker missing');
     for (const name of entries) {
       if (name === '.lock' || name === '.inflight') continue;
@@ -69,6 +69,9 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
       if (match[3] === '.result') {
         if (!OUTCOMES.has(value.outcome) || !((Object.keys(value).length === 1 && !('format' in value)) || (Object.keys(value).length === 2 && value.format === 2) || (Object.keys(value).length === 3 && value.format === 3 && value.outcome === 'DEFINITIVE_FAILURE' && Number.isSafeInteger(value.retryNotBefore) && value.retryNotBefore >= 0) || (Object.keys(value).length === 4 && value.format === 4 && value.outcome === 'DEFINITIVE_FAILURE' && Number.isSafeInteger(value.retryNotBefore) && value.retryNotBefore >= 0 && Number.isInteger(value.retryAfterSeconds) && value.retryAfterSeconds >= 1 && value.retryAfterSeconds <= STUDIO_MAX_RETRY_AFTER_SECONDS))) throw new Error('Invalid journal outcome');
         results.set(base, value);
+      } else if (match[3] === '.waitreview') {
+        if (Object.keys(value).length !== 2 || !Number.isSafeInteger(value.retryNotBefore) || value.retryNotBefore < 0 || !validDate(value.reviewedAt)) throw new Error('Invalid wait review');
+        reviews.set(base, value);
       } else if (match[3] === '.waitproof') {
         if (Object.keys(value).length !== 1 || !Number.isInteger(value.retryAfterSeconds) || value.retryAfterSeconds < 1 || value.retryAfterSeconds > STUDIO_MAX_RETRY_AFTER_SECONDS) throw new Error('Invalid wait proof');
         proofs.set(base, value);
@@ -86,9 +89,10 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
     for (const name of results.keys()) if (!reservations.has(name)) throw new Error('Orphan journal outcome');
     for (const [name, value] of acknowledgements) if (!reservations.has(name) || results.get(name)?.outcome !== value.recordedOutcome) throw new Error('Orphan journal acknowledgement');
     for (const [name, value] of clean) if (!reservations.has(name) || ![2, 3, 4].includes(results.get(name)?.format) || results.get(name)?.outcome !== value.outcome) throw new Error('Orphan journal cleanup');
+    for (const [name, review] of reviews) if (results.get(name)?.format !== 3 || results.get(name).retryNotBefore !== review.retryNotBefore) throw new Error('Orphan or mismatched wait review');
     for (const [name, proof] of proofs) if (results.get(name)?.format !== 4 || results.get(name).retryAfterSeconds !== proof.retryAfterSeconds) throw new Error('Orphan or mismatched wait proof');
     for (const [name, result] of results) if (result.format === 4 && !proofs.has(name)) waitTracker.observe(name, result.retryAfterSeconds);
-    return { reservations, results, acknowledgements, clean, proofs };
+    return { reservations, results, acknowledgements, clean, proofs, reviews };
   }
   async function locked(fn) {
     const lock = join(directory, '.lock');
@@ -225,13 +229,30 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
       });
     },
     async revision() {
-      return locked(async () => (await scan()).acknowledgements.size);
+      return locked(async () => { const { acknowledgements, reviews } = await scan(); return acknowledgements.size + reviews.size; });
+    },
+    // This records only the reviewed legacy wait; it never dispatches or changes
+    // the original outcome. The caller must authenticate and confirm the review.
+    async reviewLegacyWait(principal, attempt, revision, time, authorized) {
+      if (!validName(principal, attempt) || !Number.isSafeInteger(revision) || revision < 0 || !Number.isSafeInteger(time) || time < 0 || typeof authorized !== 'function') throw new Error('Invalid wait review');
+      return locked(async () => {
+        const { results, acknowledgements, reviews } = await scan(), name = `${principal}-${attempt}`;
+        if (acknowledgements.size + reviews.size !== revision) return 'stale';
+        const result = results.get(name);
+        if (result?.format !== 3) return null;
+        if (!authorized()) throw new Error('Authorization revoked');
+        const prior = reviews.get(name);
+        if (prior) return prior;
+        const receipt = { retryNotBefore: result.retryNotBefore, reviewedAt: new Date(time).toISOString() };
+        await put(`${name}.waitreview`, receipt);
+        return receipt;
+      });
     },
     async reserve(principal, attempt, digest, time, maxPerHour, revision) {
       if (!validName(principal, attempt) || !Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid journal identity or revision');
       return locked(async () => {
-        const { reservations, results, acknowledgements, proofs } = await scan(), name = `${principal}-${attempt}`;
-        if (acknowledgements.size !== revision) return 'stale';
+        const { reservations, results, acknowledgements, proofs, reviews } = await scan(), name = `${principal}-${attempt}`;
+        if (acknowledgements.size + reviews.size !== revision) return 'stale';
         if (reservations.has(name)) return 'duplicate';
         if (await waiting(principal, results, proofs, time)) return 'rate';
         let recent = 0;
@@ -244,8 +265,8 @@ export async function createAttemptJournal(directory, { monotonicClock } = {}) {
     async reserveAndDispatch(principal, attempt, digest, time, maxPerHour, revision, authorized, dispatch, onReserved) {
       if (!validName(principal, attempt) || !HASH.test(digest) || !Number.isSafeInteger(revision) || revision < 0 || typeof authorized !== 'function' || typeof dispatch !== 'function' || typeof onReserved !== 'function') throw new Error('Invalid dispatch');
       return locked(async () => {
-        const { reservations, results, acknowledgements, proofs } = await scan(), name = `${principal}-${attempt}`;
-        if (acknowledgements.size !== revision) return 'stale';
+        const { reservations, results, acknowledgements, proofs, reviews } = await scan(), name = `${principal}-${attempt}`;
+        if (acknowledgements.size + reviews.size !== revision) return 'stale';
         if (reservations.has(name)) return 'duplicate';
         if (await waiting(principal, results, proofs, time)) return 'rate';
         let recent = 0;
