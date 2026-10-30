@@ -1307,3 +1307,8 @@ Do not mark production deployed from CI green alone. Human permission required f
 
 - **Verification:** After available disk space increased to approximately 126 GiB, `npm run test:browser` passed all six synthetic browser tests, including the production-gateway creation-to-export journey, protected-mask export and onboarding guide; `npm run build` also passed. The synthetic interrupted-backup inspection took 15,957 ms. The earlier disk-full failure is historical; this run does not establish why earlier intermittent waits occurred.
 - **Limits and rollback:** No physical devices, real provider credentials, real SKU or screen reader were used. T-080 and T-081 remain IMPLEMENTED_UNVERIFIED, BUG-048 remains IN_PROGRESS, and BUG-049/050 remain IMPLEMENTED_UNVERIFIED. This record changes no runtime behavior; remove it only if the evidence is corrected.
+
+## T-080 / T-081 / BUG-048 isolated backup wait investigation — 2026-10-31
+
+- **Evidence:** Two standalone synthetic gateway journeys passed after the full-suite run; interrupted-backup inspection took 8,509 ms and 530 ms. Temporary instrumentation of the second, fast run observed one zero-delay timer with less than 1 ms wait while the import page was visible; the slow run was not instrumented. The temporary instrumentation was removed.
+- **Limits and rollback:** The timing variation is not a diagnosis and does not establish the cause of earlier test timeouts. No real user data, provider or physical device was tested. BUG-048 remains IN_PROGRESS and T-080/T-081 remain IMPLEMENTED_UNVERIFIED; no application or test behavior changed. Remove this record only if the evidence is corrected.
