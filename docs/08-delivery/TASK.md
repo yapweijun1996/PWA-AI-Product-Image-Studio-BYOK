@@ -1193,3 +1193,10 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Finding and fix:** A cross-project review link changed the route but left its Studio destination outside the mobile viewport. The link now lands directly on the loaded local attempt history and focuses its heading once; later history updates do not refocus it. See [BUG-038](../../BUG.md).
 - **Verification:** The original 320 px destination assertion failed before the fix. The four-test Chromium suite passed after it: the synthetic journey verifies the visible focused mobile history, no horizontal overflow, no repeat focus after review, and direct-link reload at 1280 px. Production build and documentation validation passed; the existing large-chunk warning remains.
 - **Limits and rollback:** This is emulated Chromium, not a physical phone, screen-reader check, screenshot review or complete keyboard/back-forward matrix. No real provider calls or external billing review occurred. T-041/T-080 and BUG-038 remain IMPLEMENTED_UNVERIFIED. Revert the destination and focus behavior only with equivalent discoverability and focus handling; preserve review history and transactional gates.
+
+
+## T-080 / T-084 / BUG-038 keyboard and browser history follow-up — 2026-10-31
+
+- **Evidence:** In the existing synthetic 320 px Chromium cross-project journey, focus starts on the history refresh button; a real Shift+Tab key event moves to the project link and Enter activates it. Browser Back returns to the blocked project; Forward returns to the visible, focused review-history heading. A separate desktop direct-link reload and review-without-repeat-focus remain covered by the same test.
+- **Verification:** The focused browser journey and four-test browser suite passed. Documentation validation passed; no application behavior changed in this follow-up.
+- **Limits:** This is one keyboard path in emulated Chromium. It does not establish full tab order, actual zoom, screen-reader behavior, real mobile hardware or owner acceptance of visual anchors. T-080/T-084 and BUG-038 remain open.
