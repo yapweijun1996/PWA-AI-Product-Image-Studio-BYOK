@@ -110,10 +110,14 @@ export function App() {
   const location = useLocation();
   const navigationType = useNavigationType();
   const previousPath = useRef(location.pathname);
+  const mainContent = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const changedPage = previousPath.current !== location.pathname;
     previousPath.current = location.pathname;
-    if (changedPage && navigationType !== 'POP' && !location.hash) window.scrollTo(0, 0);
+    if (changedPage && navigationType !== 'POP' && !location.hash) {
+      window.scrollTo(0, 0);
+      mainContent.current?.focus({ preventScroll: true });
+    }
   }, [location.pathname, location.hash, navigationType]);
   const online = useNetworkStatus();
   const update = useServiceWorker();
@@ -140,7 +144,7 @@ export function App() {
             ? <button type="button" onClick={update.updateNow}>Reload when ready</button>
             : <button type="button" onClick={update.updateNow}>Update now</button>)}
       </section>}
-      <main id="main-content" tabIndex={-1}>
+      <main id="main-content" tabIndex={-1} ref={mainContent}>
         <RouteErrorBoundary key={location.pathname}><Suspense fallback={<p role="status">Loading page…</p>}><Routes><Route path="/" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes></Suspense></RouteErrorBoundary>
       </main>
       <footer><span>PRODUCT IMAGE STUDIO</span><span>Local-first by design</span></footer>

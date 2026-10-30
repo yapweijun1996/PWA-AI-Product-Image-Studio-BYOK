@@ -554,6 +554,10 @@ test('guide describes current local workflow and supports keyboard navigation', 
     await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
     await until(()=>evaluate(client, `location.pathname==='/settings' && document.querySelector('.provider-session')?.innerText.includes('Remote mobile gateway access is not available yet.')`),'guide settings link');
+    assert.equal(await evaluate(client, `document.activeElement?.id`),'main-content','Keyboard navigation moves focus into the destination page.');
+    await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+    await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+    assert.equal(await evaluate(client, `document.activeElement?.id`),'theme','The next Tab reaches the first Settings control.');
     assert.equal(await evaluate(client, `document.querySelector('h1').getBoundingClientRect().top >= 0`),true,'The destination heading is visible after navigating from the guide.');
     for(const width of [320,390,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
