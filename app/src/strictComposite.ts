@@ -101,6 +101,20 @@ export function assertProtectedCoverage(width: number, height: number, source: U
   }
 }
 
+// This necessary size check cannot prove readable text or pixel identity after resampling.
+export function assertProtectedOutputFootprint(regions: StrictRect[], scaleX: number, scaleY: number): void {
+  if (!Array.isArray(regions) || regions.length < 1 || regions.length > 32 ||
+      !Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) {
+    throw new Error('Protected output mapping is invalid.');
+  }
+  for (const region of regions) {
+    if (!region || !Number.isSafeInteger(region.width) || !Number.isSafeInteger(region.height) ||
+        region.width < 1 || region.height < 1 || region.width * scaleX < 1 || region.height * scaleY < 1) {
+      throw new Error('A protected region is smaller than one output pixel.');
+    }
+  }
+}
+
 // Conservatively keep copy off the entire product rectangle when protected
 // evidence is supplied. This does not prove fidelity after resampling.
 export function assertBillboardCopyClear(layer: Uint8ClampedArray, width: number, height: number,
@@ -223,6 +237,14 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
     outputContext.drawImage(decoded.image, (EDGE - sceneWidth * scale) / 2, (EDGE - sceneHeight * scale) / 2, sceneWidth * scale, sceneHeight * scale);
     decoded.release(); decoded = undefined;
     const mapping = recipe ? recipeMapping(recipe, sw, sh) : strictMapping(sw, sh);
+    if (protectedEvidence) {
+      const crop = recipe?.styleId === 'macro' ? recipe.crop : undefined;
+      const billboardScale = recipe?.styleId === 'billboard'
+        ? Math.min(720 / sw, (recipe.copy ? 650 : 820) / sh) * mapping.width / EDGE : undefined;
+      assertProtectedOutputFootprint(protectedEvidence.regions,
+        billboardScale ?? mapping.width / (crop?.width ?? sw),
+        billboardScale ?? mapping.height / (crop?.height ?? sh));
+    }
     let ad: Blob | undefined, copyLayer: Blob | undefined;
     if (recipe?.styleId === 'macro') {
       const crop = recipe.crop!;

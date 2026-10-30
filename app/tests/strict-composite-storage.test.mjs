@@ -205,6 +205,16 @@ test('completed versioned scene remains accessible after product facts or name c
   assert.equal(inputs.sourceSha256, f.source.sha256);
 });
 
+test('explicit protected evidence rejects a billboard display too small for the region', async () => {
+  const inputs = { source: blob(sourceBytes), mask: blob(sourceBytes), scene: blob(sceneBytes), sourceWidth: 2, sourceHeight: 1 };
+  const protectedEvidence = { version: 1, sourceSha256: hash(sourceBytes), maskSha256: hash(sourceBytes),
+    width: 2, height: 1, regions: [{ x: 0, y: 0, width: 2, height: 1 }] };
+  const recipe = { version: 1, styleId: 'billboard', sourceView: 'OTHER',
+    display: { x: 100, y: 100, width: 1, height: 1 }, displayFrontFacing: true, copy: '' };
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, recipe, protectedEvidence }), /smaller than one output pixel/);
+  await assert.doesNotReject(renderStrictCompositePixels({ ...inputs, recipe }));
+});
+
 test('explicit protected evidence rejects an overlapping billboard copy layer', async () => {
   const inputs = { source: blob(sourceBytes), mask: blob(sourceBytes), scene: blob(sceneBytes), sourceWidth: 2, sourceHeight: 1 };
   const protectedEvidence = { version: 1, sourceSha256: hash(sourceBytes), maskSha256: hash(sourceBytes),

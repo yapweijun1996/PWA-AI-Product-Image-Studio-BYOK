@@ -8,7 +8,7 @@ const result = await build({
 });
 const output = Array.isArray(result) ? result[0] : result;
 const code = output.output.find((entry) => entry.type === 'chunk' && entry.isEntry).code;
-const { applyFinalCoverage, assertProtectedCoverage, assertBillboardCopyClear, strictMapping, recipeMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { applyFinalCoverage, assertProtectedCoverage, assertBillboardCopyClear, assertProtectedOutputFootprint, strictMapping, recipeMapping } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 const rgba = (...values) => new Uint8ClampedArray(values);
 
@@ -46,6 +46,15 @@ test('protected billboard rejects copy over the product and its edge margin', ()
   }
   assert.throws(() => assertBillboardCopyClear(pixels.slice(1), 8, 8, rect), /invalid/);
   assert.throws(() => assertBillboardCopyClear(pixels, 8, 8, { ...rect, x: -1 }), /invalid/);
+});
+
+test('protected regions smaller than an output pixel are rejected', () => {
+  const regions = [{ x: 0, y: 0, width: 4, height: 2 }];
+  assert.doesNotThrow(() => assertProtectedOutputFootprint(regions, 0.25, 0.5));
+  assert.throws(() => assertProtectedOutputFootprint(regions, 0.249, 0.5), /smaller than one output pixel/);
+  assert.throws(() => assertProtectedOutputFootprint(regions, 0.25, 0.499), /smaller than one output pixel/);
+  for (const invalid of [0, -1, NaN, Infinity]) assert.throws(() => assertProtectedOutputFootprint(regions, invalid, 1), /invalid/);
+  assert.throws(() => assertProtectedOutputFootprint([], 1, 1), /invalid/);
 });
 
 test('coverage is final alpha, not multiplied by source alpha', () => {

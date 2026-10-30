@@ -731,6 +731,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** The long-name fixture was created through a development module; only the long-SKU creation used the UI. This is emulated Chromium, not physical touch, installed iOS, screen-reader, real zoom or complete error/offline journeys. Desktop brand height is 42 px and is not changed by the mobile rule. T-080 and T-084 remain open.
 - **Rollback:** Revert the two CSS rules and matching bug records together; retain product data.
 
+## T-052 protected output footprint foundation — 2026-10-30
+
+- **Change:** The renderer rejects explicitly protected regions smaller than one geometric output pixel in either dimension. Normal and macro recipes use source or crop scaling; billboard uses the product-to-ad and ad-to-display scales. This is a necessary condition only, not proof of pixel identity or label readability.
+- **Evidence:** The renderer and strict-composite storage suites passed 24 tests, including threshold boundaries, invalid scales and a synthetic tiny billboard display that is rejected with evidence but retains the previous no-evidence behavior. Production build and TypeScript passed with the existing chunk-size warning.
+- **Limits:** Ordinary product callers do not yet supply evidence. Pixel alignment, filtering, copy effects, downstream output conversion, browser/device and real-SKU verification remain open; a one-pixel footprint is not a quality threshold. [BUG-007](../../BUG.md) and T-052 remain open, including selection, persistence and fail-closed approval/export.
+- **Rollback:** Revert the footprint check and corresponding tests together with this record; preserve all user data and history.
+
 ## T-052 protected billboard copy foundation — 2026-10-30
 
 - **Change:** When explicit source/mask-bound protected evidence is provided to the renderer, billboard copy pixels cannot overlap the entire product rectangle or its one-pixel margin. The conservative rule checks both generated and supplied frozen copy layers. Existing callers that omit protected evidence retain their behavior.
