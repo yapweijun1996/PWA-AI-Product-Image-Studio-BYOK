@@ -21,3 +21,5 @@ Every architecture diagram and interface here is **proposed** unless a future ev
 ## AI agent handoff
 
 Start with repository `AGENTS.md` and [AI_AGENT_HANDOFF](08-delivery/AI_AGENT_HANDOFF.md); execute one task ID at a time, update code evidence and SSOT documents together, and do not change user-confirmed product invariants without consent.
+
+The [Bug Register](../BUG.md) records verified defects and their remediation state.

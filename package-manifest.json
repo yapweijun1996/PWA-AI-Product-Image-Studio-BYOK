@@ -8,7 +8,7 @@
   "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 131,
+  "fileCountHashed": 132,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -29,6 +29,11 @@
       "path": "AGENTS.md",
       "bytes": 3381,
       "sha256": "39afae0288c54fbe384aad446937318849d385661da278c9621e791c35da48da"
+    },
+    {
+      "path": "BUG.md",
+      "bytes": 2657,
+      "sha256": "dc8a5a89d7f333468f190b8bbfda73f43b707c625ad29014ee4bf2d3c395aec0"
     },
     {
       "path": "DESIGN.md",
@@ -297,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 105437,
-      "sha256": "661b19aacb77e291c68a18c7ae7c963e1b2eb5150bff11d2d4effd542a519af4"
+      "bytes": 105589,
+      "sha256": "b2882246fa08b72d76d39d5b9952357cbc01b45509935d4b69a2d5a1045af06f"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -622,8 +627,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "bytes": 2694,
-      "sha256": "ccd190d77b9f5c14a944d5cf203a62e979bd2381d411c08fc8deb624082ab898"
+      "bytes": 2779,
+      "sha256": "f331adf1dbbf30b2e989ca1ad443744e0a07d4b1f873c3f2c355cdf785004437"
     },
     {
       "path": "fixtures/cost-scenario.json",
