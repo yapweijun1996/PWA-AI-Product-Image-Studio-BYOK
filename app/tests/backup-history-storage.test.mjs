@@ -70,6 +70,28 @@ test('cancellation after a restore write aborts the transaction without replacin
   assert.equal(await storage.getProduct(product.productId), null);
   assert.deepEqual(await storage.getProduct(original.productId), original);
 });
+test('a synchronous quota failure aborts a queued restore and gives recovery guidance', async () => {
+  const original = await storage.createProduct({ sku: randomUUID(), name: 'Synthetic', category: 'Test', rightsAcknowledged: true });
+  const product = { ...original, productId: randomUUID(), sku: randomUUID() };
+  const add = IDBObjectStore.prototype.add;
+  let queued = false;
+  IDBObjectStore.prototype.add = function (...args) {
+    const request = add.apply(this, args);
+    if (this.name === 'products' && args[0].productId === product.productId) {
+      queued = true;
+      throw new DOMException('', 'QuotaExceededError');
+    }
+    return request;
+  };
+  try {
+    await assert.rejects(storage.restoreProduct(product, [], [], empty()), /Local storage is full/);
+  } finally {
+    IDBObjectStore.prototype.add = add;
+  }
+  assert.equal(queued, true);
+  assert.equal(await storage.getProduct(product.productId), null);
+  assert.deepEqual(await storage.getProduct(original.productId), original);
+});
 test('an orphaned foreign attempt reference prevents add-only restore', async () => {
   const original = await storage.createProduct({ sku: randomUUID(), name: 'Synthetic', category: 'Test', rightsAcknowledged: true });
   const product = { ...original, productId: randomUUID(), sku: randomUUID() };

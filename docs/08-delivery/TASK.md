@@ -676,6 +676,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** Browser data and unencrypted backups remain user-owned and may contain prompts, estimates, reviewer notes, photos and EXIF. Credential scanning is heuristic and does not inspect image pixels. No real provider call, seller SKU, physical iOS device, natural quota exhaustion, large-project memory test, production key or formal independent security acceptance was used. Synthetic Chromium is not release approval.
 - **Rollback:** Disable backup/import and generation as necessary; preserve originals, masks, jobs, attempts, generated assets, reviews, local trust markers and gateway journals. Older clients cannot safely read v2 archives or silently discard newer records. Do not delete ambiguous evidence to clear a safety gate.
 
+## T-022 synchronous quota-error recovery — 2026-10-30
+
+- **Change and evidence:** [BUG-006](../../BUG.md) records the formerly unhelpful synchronous quota-error message. Restore now reuses the existing storage-full guidance. Ten backup-history tests passed and the production build passed. In isolated Chromium, a synthetic synchronous quota failure at the source write after the product write was queued rolled back the imported project, preserved an existing original and its SHA-256, and returned the recovery guidance.
+- **Limits:** This is injected failure through application modules, not natural quota exhaustion or the full import UI; it does not cover every history record or installed devices. T-022 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert the error mapping, regression and related documentation together; retain all user data and backup files.
+
 ## T-022 multi-source Chromium backup observation — 2026-10-30
 
 - **Evidence:** In an isolated desktop Chromium origin, four independently generated 1024 × 1024 synthetic noisy PNGs (approximately 3.61 MB each) were saved through the source module. A 14,438,772-byte ZIP was created through the backup module. Only the synthetic product and its source records were removed from that disposable origin, then the archive was inspected and restored through the application modules. The preview reported no conflict, all four originals were restored, and SHA-256 hashes of the restored blobs matched the saved sources. The console reported no errors or warnings. The complete application suite passed 247/247.

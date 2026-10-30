@@ -106,9 +106,11 @@ function checkedProduct(value: unknown): Product {
   return value as Product;
 }
 
+function quotaError(): Error { return new Error('Local storage is full. Free space or back up your data before trying again.'); }
+
 function transactionError(transaction: IDBTransaction): Error {
   if (transaction.error?.name === 'ConstraintError') return new Error('A project with this SKU already exists.');
-  if (transaction.error?.name === 'QuotaExceededError') return new Error('Local storage is full. Free space or back up your data before trying again.');
+  if (transaction.error?.name === 'QuotaExceededError') return quotaError();
   return transaction.error ?? new Error('Local storage failed. No changes were saved.');
 }
 
@@ -790,7 +792,7 @@ export async function restoreProduct(product: Product, sources: BackupSource[], 
     for (const row of history.reviews) tx.objectStore('qaReports').add(row);
     for (const head of history.heads) tx.objectStore('userSettings').add(head);
     } catch (error) {
-      failure = error instanceof Error ? error : new Error('Could not import backup.');
+      failure = error instanceof Error && error.name === 'QuotaExceededError' ? quotaError() : error instanceof Error ? error : new Error('Could not import backup.');
       try { tx.abort(); } catch { /* Already aborted. */ }
     }
     tx.oncomplete = () => { signal?.removeEventListener('abort', cancel); resolve(); };
