@@ -228,6 +228,17 @@ test('production gateway serves a synthetic creation-to-export journey without o
     }
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     assert.equal(providerCalls,2,'Preparing a retry does not send a request.');
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Start a new job instead').click()`);
+    await until(()=>evaluate(client,`!document.querySelector('#retry-review-heading')`),'retry review dismissed');
+    await evaluate(client,`(() => {const original=crypto.subtle.digest.bind(crypto.subtle);let first=true;crypto.subtle.digest=(...args)=>{if(!first)return original(...args);first=false;window.__retryDigestHeld=true;return new Promise(resolve=>{window.__releaseRetryDigest=()=>resolve(original(...args))})};window.__restoreRetryDigest=()=>{crypto.subtle.digest=original}})()`);
+    await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));const button=[...li.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prepare retry for Studio'));button.focus();button.click()})()`);
+    await until(()=>evaluate(client,`!!window.__retryDigestHeld`),'held retry verification');
+    await evaluate(client,`document.querySelector('.brand').focus();window.__releaseRetryDigest()`);
+    await until(()=>evaluate(client,`!!document.querySelector('#retry-review-heading')`),'retry after held verification');
+    await evaluate(client,`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    assert.equal(await evaluate(client,`document.activeElement?.classList.contains('brand')`),true,'Retry preparation does not steal focus when the user moves it.');
+    await evaluate(client,`window.__restoreRetryDigest()`);
+    assert.equal(providerCalls,2,'The interrupted-focus preparation sends no request.');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Retry needs fresh consent.');
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Studio attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'retry consent');
