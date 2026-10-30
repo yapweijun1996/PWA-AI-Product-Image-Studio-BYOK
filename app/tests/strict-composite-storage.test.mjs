@@ -176,6 +176,21 @@ function maskVersion(f, version) {
     width: 2, height: 1, sha256: hash(sourceBytes), version, blob: blob(sourceBytes) };
 }
 
+test('the renderer rejects a mask that removes an explicitly supplied protected region', async () => {
+  const maskBytes = png(2, 1, Uint8Array.from([255, 255, 255, 255, 255, 255, 255, 0]));
+  const inputs = { source: blob(sourceBytes), mask: blob(maskBytes), scene: blob(sceneBytes), sourceWidth: 2, sourceHeight: 1 };
+  const intact = await renderStrictCompositePixels({ ...inputs, protectedRegions: [{ x: 0, y: 0, width: 1, height: 1 }] });
+  assert.ok(intact.blob.size > 0);
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedRegions: [{ x: 1, y: 0, width: 1, height: 1 }] }), /not fully covered/);
+  await assert.rejects(renderStrictCompositePixels({ ...inputs, protectedRegions: [] }), /missing or invalid/);
+  const mutable = [{ x: 0, y: 0, width: 1, height: 1 }];
+  const pending = renderStrictCompositePixels({ ...inputs, protectedRegions: mutable });
+  mutable[0].x = 1;
+  assert.ok((await pending).blob.size > 0);
+  const legacy = await renderStrictCompositePixels(inputs);
+  assert.ok(legacy.blob.size > 0);
+});
+
 test('completed versioned scene remains accessible after product facts or name change', async () => {
   const f = await fixture('hero');
   await mutate(f.db, 'products', f.productId, (row) => ({ ...row, name: 'Updated product name' }));

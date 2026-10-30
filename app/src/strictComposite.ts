@@ -7,7 +7,7 @@ export type StrictRecipe = {
   sourceView: 'TOP' | 'OTHER' | 'UNKNOWN'; topViewConfirmed?: true; crop?: StrictRect;
   display?: StrictRect; displayFrontFacing?: true; copy?: string; copyLayerSha256?: string;
 };
-type Inputs = { source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number; signal: AbortSignal; recipe?: StrictRecipe; copyLayer?: Blob };
+type Inputs = { source: Blob; mask: Blob; scene: Blob; sourceWidth: number; sourceHeight: number; signal: AbortSignal; recipe?: StrictRecipe; copyLayer?: Blob; protectedRegions?: StrictRect[] };
 type RenderInputs = Omit<Inputs, 'signal'>;
 type Result = { blob: Blob; mapping: StrictCompositeMapping; ad?: Blob; copyLayer?: Blob };
 const EDGE = 1024;
@@ -149,6 +149,8 @@ async function png(canvas: Canvas): Promise<Blob> {
 // Shared by the worker and the main-thread fallback; allocations and decodes are sequential.
 export async function renderStrictCompositePixels(inputs: RenderInputs, checkCancelled: () => void = () => {}): Promise<Result> {
   const { source, mask, scene, sourceWidth, sourceHeight } = inputs;
+  const protectedRegions = inputs.protectedRegions === undefined ? undefined : structuredClone(inputs.protectedRegions);
+  const recipe = inputs.recipe === undefined ? undefined : structuredClone(inputs.recipe);
   if (!Number.isInteger(sourceWidth) || !Number.isInteger(sourceHeight) || sourceWidth < 1 || sourceHeight < 1 || sourceWidth > MAX_DIMENSION || sourceHeight > MAX_DIMENSION || sourceWidth * sourceHeight > MAX_PIXELS) throw new Error('Invalid source dimensions.');
   const sourceHeader = await header(source); checkCancelled();
   const maskHeader = await header(mask); checkCancelled();
@@ -171,6 +173,10 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
     if (decoded.width !== sw || decoded.height !== sh) throw new Error('Mask dimensions do not match the source.');
     productContext.drawImage(decoded.image, 0, 0); decoded.release(); decoded = undefined;
     const coverage = productContext.getImageData(0, 0, sw, sh);
+    if (protectedRegions !== undefined) {
+      assertProtectedCoverage(sw, sh, pixels.data, coverage.data, protectedRegions,
+        recipe?.styleId === 'macro' ? recipe.crop : undefined);
+    }
     applyFinalCoverage(pixels.data, coverage.data);
     productContext.putImageData(pixels, 0, 0); checkCancelled();
     const output = makeCanvas(EDGE, EDGE); canvases.push(output);
@@ -181,18 +187,18 @@ export async function renderStrictCompositePixels(inputs: RenderInputs, checkCan
     const scale = Math.max(EDGE / sceneWidth, EDGE / sceneHeight);
     outputContext.drawImage(decoded.image, (EDGE - sceneWidth * scale) / 2, (EDGE - sceneHeight * scale) / 2, sceneWidth * scale, sceneHeight * scale);
     decoded.release(); decoded = undefined;
-    const mapping = inputs.recipe ? recipeMapping(inputs.recipe, sw, sh) : strictMapping(sw, sh);
+    const mapping = recipe ? recipeMapping(recipe, sw, sh) : strictMapping(sw, sh);
     let ad: Blob | undefined, copyLayer: Blob | undefined;
-    if (inputs.recipe?.styleId === 'macro') {
-      const crop = inputs.recipe.crop!;
+    if (recipe?.styleId === 'macro') {
+      const crop = recipe.crop!;
       const selected = productContext.getImageData(crop.x, crop.y, crop.width, crop.height).data;
       if (!selected.some((value, index) => index % 4 === 3 && value !== 0)) throw new Error('The macro crop contains no visible product pixels.');
       outputContext.drawImage(product, crop.x, crop.y, crop.width, crop.height, mapping.x, mapping.y, mapping.width, mapping.height);
-    } else if (inputs.recipe?.styleId === 'billboard') {
+    } else if (recipe?.styleId === 'billboard') {
       const canvas = makeCanvas(EDGE, EDGE); canvases.push(canvas);
       const adContext = context(canvas);
       adContext.fillStyle = '#ffffff'; adContext.fillRect(0, 0, EDGE, EDGE);
-      const copy = inputs.recipe.copy!;
+      const copy = recipe.copy!;
       const scale = Math.min(720 / sw, (copy ? 650 : 820) / sh);
       const w = sw * scale, h = sh * scale;
       adContext.drawImage(product, (EDGE - w) / 2, (copy ? 720 : EDGE) / 2 - h / 2, w, h);
