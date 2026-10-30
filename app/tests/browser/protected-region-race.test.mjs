@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,7 +48,7 @@ async function evaluate(client, expression) {
   return response.result.value;
 }
 
-test('protected area review and multi-touch brush gestures remain stable', { timeout: 90000 }, async () => {
+test('protected mask gestures and approved export bundle remain consistent', { timeout: 90000 }, async () => {
   assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable before running browser tests.');
   const userDir = await mkdtemp(join(tmpdir(), 'studio-region-browser-'));
   const vite = await createServer({ root: appRoot, configFile: join(appRoot, 'vite.config.ts'), logLevel: 'silent', server: { host: '127.0.0.1', port: 0 } });
@@ -161,6 +161,40 @@ test('protected area review and multi-touch brush gestures remain stable', { tim
     await until(() => evaluate(client, `document.querySelectorAll('.mask-region').length === 1 && document.querySelector('canvas[aria-label="Mask drawing surface"]')?.width === 200 && [...document.querySelectorAll('button')].some(b => b.textContent === 'Review mask' && !b.disabled)`), 'reloaded mask');
     const reopened = await until(() => evaluate(client, `(async () => {const c=document.querySelector('canvas[aria-label="Mask drawing surface"]'); const alpha=c.getContext('2d').getImageData(100,10,1,1).data[3]; if(alpha!==0) return null; const p=await import('/src/products.ts');const product=await p.getProduct(${JSON.stringify(productId)});return {middle:alpha,end:c.getContext('2d').getImageData(180,10,1,1).data[3],protected:c.getContext('2d').getImageData(100,50,1,1).data[3],sourceHash:product.sourceAssets[0].sha256,regions:[...document.querySelector('.mask-region').querySelectorAll('input')].map(i=>Number(i.value))};})()`), 'reloaded brush pixels');
     assert.deepEqual(reopened,{middle:0,end:0,protected:255,sourceHash:persisted.sourceHash,regions:[x,y,width,height]});
+    const exportFixture = await evaluate(client, `(async () => {
+      const p=await import('/src/products.ts'), c=await import('/src/strictComposite.ts'), policy=await import('/studio-policy.mjs');
+      const product=await p.getProduct(${JSON.stringify(productId)}), source=product.sourceAssets[0];
+      const mask=await p.loadSourceMask(product.productId,source);
+      const attempt={attemptId:crypto.randomUUID(),jobId:crypto.randomUUID(),productId:product.productId,sourceAssetId:source.assetId,sourceSha256:source.sha256,maskId:mask.maskId,maskSha256:mask.sha256,prompt:policy.STUDIO_PROMPT,promptVersion:policy.STUDIO_PROMPT_VERSION,model:policy.STUDIO_MODEL,quality:policy.STUDIO_QUALITY,size:policy.STUDIO_SIZE,estimatedUSD:policy.studioEstimateUSD(),submittedAt:new Date().toISOString(),status:'PREPARED',usage:null,observedUSD:null};
+      const fingerprint=await p.globalStudioReviewFingerprint(); await p.createStudioAttempt(attempt,fingerprint); await p.updateStudioAttempt({...attempt,status:'SUBMITTED'},undefined,fingerprint);
+      const sceneCanvas=document.createElement('canvas');sceneCanvas.width=1024;sceneCanvas.height=1024;const ctx=sceneCanvas.getContext('2d');ctx.fillStyle='#225588';ctx.fillRect(0,0,1024,1024);
+      const blob=await new Promise(r=>sceneCanvas.toBlob(r,'image/png'));const bytes=await blob.arrayBuffer();const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');
+      const scene={assetId:crypto.randomUUID(),productId:product.productId,attemptId:attempt.attemptId,blob,sha256};await p.updateStudioAttempt({...attempt,status:'DEFINITIVE_SUCCESS'},scene);
+      const inputs=await p.loadStrictCompositeInputs(product.productId,attempt.attemptId,scene.assetId);const rendered=await c.renderStrictCompositePixels(inputs);const composite=await p.saveStrictComposite(product.productId,attempt.attemptId,inputs,rendered.blob,rendered.mapping);
+      const history=await p.listVisualReviews(product.productId,attempt.attemptId,composite.assetId);const scores={design:'5',typography:'5',geometry:'5',realism:'5',style:'5'};const matches={product:'MATCH',typography:'MATCH',claims:'MATCH',viewpoint:'MATCH',source:'MATCH',mask:'MATCH'};
+      const report=await p.createVisualReview(product.productId,attempt.attemptId,composite.assetId,scores,matches,'default','Synthetic fixture',history.productSha256,composite.sha256,undefined,undefined,undefined,undefined,[],composite.protectedEvidenceSha256);
+      const decision=await p.recordVisualDecision(product.productId,attempt.attemptId,composite.assetId,report.qaId,'APPROVED');return {attemptId:attempt.attemptId,assetId:composite.assetId,reviewId:report.qaId,decisionId:decision.qaId,sourceHash:source.sha256};
+    })()`);
+    await client.call('Page.reload');
+    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
+    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'converted preview');
+    assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Download approved output bundle').disabled`), true);
+    await client.call('Page.setDownloadBehavior', {behavior:'allow', downloadPath:userDir});
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const box=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes('I inspected every converted output'));box.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Download approved output bundle').click()})()`);
+    const download = await until(async () => (await readdir(userDir)).find(name=>name.startsWith('approved-outputs-') && name.endsWith('.zip')), 'approved output download');
+    const archive = await readFile(join(userDir,download));
+    const { ZipReader, Uint8ArrayReader, Uint8ArrayWriter } = await import('@zip.js/zip.js/lib/zip-core-native.js');
+    const zip=new ZipReader(new Uint8ArrayReader(archive));
+    try {
+      const entries=await zip.getEntries(); const provenance=entries.find(entry=>entry.filename===`provenance/${exportFixture.assetId}.json`);assert.ok(provenance,'Downloaded bundle contains the approved asset provenance.');
+      const receipt=JSON.parse(new TextDecoder().decode(await provenance.getData(new Uint8ArrayWriter())));
+      assert.equal(receipt.reviewId,exportFixture.reviewId);assert.equal(receipt.decisionId,exportFixture.decisionId);assert.equal(receipt.sourceSha256,exportFixture.sourceHash);
+      const imageEntry=entries.find(entry=>entry.filename===`outputs/${exportFixture.assetId}.png`);assert.ok(imageEntry,'Downloaded bundle contains an image.');const output=await imageEntry.getData(new Uint8ArrayWriter());
+      const { createHash } = await import('node:crypto');assert.equal(createHash('sha256').update(output).digest('hex'),receipt.outputSha256);
+      const pixel=await evaluate(client, `(async () => {const bytes=Uint8Array.from(atob(${JSON.stringify(Buffer.from(output).toString('base64'))}),c=>c.charCodeAt(0));const image=await createImageBitmap(new Blob([bytes],{type:'image/png'}));const c=document.createElement('canvas');c.width=image.width;c.height=image.height;const ctx=c.getContext('2d');ctx.drawImage(image,0,0);image.close();return {width:c.width,height:c.height,pixel:[...ctx.getImageData(512,512,1,1).data]};})()`);
+      assert.deepEqual(pixel,{width:1024,height:1024,pixel:[170,51,17,255]});
+    } finally { await zip.close(); }
     assert.equal(await evaluate(client, 'document.documentElement.scrollWidth === innerWidth'), true);
   } finally {
     client?.close();
