@@ -349,6 +349,30 @@ test('protected mask gestures and approved export bundle remain consistent', { t
       t.diagnostic(`16:9 PNG synthetic label samples retained: ${wideFidelity.matched}/${wideFidelity.samples}`);
     } finally { await zip.close(); }
     await unlink(join(userDir,download));
+    for (const format of ['png','jpeg','webp']) {
+      await evaluate(client, `(() => {const [f,r]=document.querySelectorAll('.approved-export-options select');f.value=${JSON.stringify(format)};f.dispatchEvent(new Event('change',{bubbles:true}));r.value='16:9';r.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await until(() => evaluate(client, `!document.querySelector('.approved-export .strict-comparison')`),`${format} preview reset`);
+      await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click()`);
+      await until(() => evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),`${format} wide preview`);
+      assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').disabled`),true,`${format} requires fresh preview confirmation.`);
+      await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes('I inspected every converted output')).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').click()})()`);
+      const filename=await until(async () => (await readdir(userDir)).find(name=>name.startsWith('approved-outputs-') && name.endsWith('.zip')),`${format} wide ZIP`);
+      const archive=await readFile(join(userDir,filename));
+      const reader=new ZipReader(new Uint8ArrayReader(archive));
+      try {
+        const entries=await reader.getEntries(),extension=format==='jpeg'?'jpg':format;
+        const asset=entries.find(e=>e.filename===`outputs/${exportFixture.assetId}.${extension}`),receiptEntry=entries.find(e=>e.filename===`provenance/${exportFixture.assetId}.json`);
+        assert.ok(asset && receiptEntry,`${format} bundle has the approved output and provenance.`);
+        const bytes=await asset.getData(new Uint8ArrayWriter()), receipt=JSON.parse(new TextDecoder().decode(await receiptEntry.getData(new Uint8ArrayWriter())));
+        const {createHash}=await import('node:crypto');assert.equal(createHash('sha256').update(bytes).digest('hex'),receipt.outputSha256);
+        assert.equal(receipt.reviewId,exportFixture.reviewId);assert.equal(receipt.decisionId,exportFixture.decisionId);
+        const measurement=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const product=await p.getProduct(${JSON.stringify(productId)});const original=await createImageBitmap(await p.loadOriginalSource(product.productId,product.sourceAssets[0]));const o=document.createElement('canvas');o.width=original.width;o.height=original.height;const oc=o.getContext('2d');oc.drawImage(original,0,0);original.close();const src=oc.getImageData(0,0,o.width,o.height).data;const raw=Uint8Array.from(atob(${JSON.stringify(Buffer.from(bytes).toString('base64'))}),c=>c.charCodeAt(0));const img=await createImageBitmap(new Blob([raw],{type:${JSON.stringify('image/'+format)}}));const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);img.close();const out=ctx.getImageData(0,0,c.width,c.height).data,m=${JSON.stringify(exportFixture.mapping)};let samples=0,matched=0;for(let y=24;y<44;y++)for(let x=48;x<132;x++){const i=(y*o.width+x)*4;if(src[i]<24&&src[i+1]<24&&src[i+2]<24){const cx=m.x+(x+.5)*m.width/o.width,cy=m.y+(y+.5)*m.height/o.height,ox=Math.floor(350+cx*900/1024),oy=Math.floor(cy*900/1024),j=(oy*c.width+ox)*4;samples++;if(out[j]<64&&out[j+1]<64&&out[j+2]<64)matched++;}}return {samples,matched,width:c.width,height:c.height,margin:[...out.slice(0,4)]}})()`);
+        assert.deepEqual([measurement.width,measurement.height],[1600,900]);
+        assert.deepEqual(measurement.margin,format==='jpeg'?[255,255,255,255]:[0,0,0,0],`${format} uses its documented margin background.`);
+        assert.ok(measurement.samples>50 && measurement.matched/measurement.samples>=0.9,`${format} protected label samples: ${measurement.matched}/${measurement.samples}`);
+        t.diagnostic(`Downloaded 16:9 ${format.toUpperCase()} synthetic label samples retained: ${measurement.matched}/${measurement.samples}`);
+      } finally { await reader.close(); await unlink(join(userDir,filename)); }
+    }
     await client.call('Page.navigate',{url:`${origin}/settings`});
     await until(() => evaluate(client, `!!document.querySelector('#local-access-token')`),'local gateway sign-in');
     await evaluate(client, `(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(token)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
