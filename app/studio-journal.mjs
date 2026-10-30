@@ -8,6 +8,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const RECORD = /^([a-f0-9]{64})-([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\.result|\.ack|\.clean)?$/;
 const HASH = /^[a-f0-9]{64}$/;
 const TEMP = /^\.tmp-[a-f0-9]{32}$/;
+const VERSION_MARKER = '.journal-protocol-v4';
 const OUTCOMES = new Set(['DEFINITIVE_SUCCESS', 'DEFINITIVE_FAILURE', 'UNKNOWN']);
 function validName(principal, attempt) { return typeof principal === 'string' && HASH.test(principal) && typeof attempt === 'string' && UUID.test(attempt); }
 function validDate(value) { return typeof value === 'string' && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value; }
@@ -39,10 +40,17 @@ export async function createAttemptJournal(directory) {
       return JSON.parse(await fd.readFile('utf8'));
     } finally { await fd.close(); }
   }
+  let initialized = false;
   async function scan() {
     const entries = await readdir(directory), reservations = new Map(), results = new Map(), acknowledgements = new Map(), clean = new Map();
+    if (initialized && !entries.includes(VERSION_MARKER)) throw new Error('Journal protocol marker missing');
     for (const name of entries) {
       if (name === '.lock' || name === '.inflight') continue;
+      if (name === VERSION_MARKER) {
+        const version = await readRecord(name);
+        if (!version || typeof version !== 'object' || Array.isArray(version) || Object.keys(version).length !== 1 || version.format !== 4) throw new Error('Invalid journal protocol marker');
+        continue;
+      }
       if (TEMP.test(name)) {
         let info;
         try { info = await lstat(join(directory, name)); }
@@ -114,7 +122,19 @@ export async function createAttemptJournal(directory) {
       await syncDir();
     }
   }
-  await locked(scan);
+  await locked(async () => {
+    await scan();
+    let marker;
+    try { marker = await lstat(join(directory, VERSION_MARKER)); }
+    catch (reason) { if (reason.code !== 'ENOENT') throw reason; }
+    if (!marker) {
+      // An older in-flight operation could otherwise publish after the upgrade.
+      try { await lstat(join(directory, '.inflight')); throw new Error('Resolve in-flight work before journal upgrade'); }
+      catch (reason) { if (reason.code !== 'ENOENT') throw reason; }
+      await put(VERSION_MARKER, { format: 4 });
+    }
+    initialized = true;
+  });
   return {
     async begin(principal, attempt) {
       if (!validName(principal, attempt)) throw new Error('Invalid journal identity');

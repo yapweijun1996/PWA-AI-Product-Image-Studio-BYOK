@@ -378,6 +378,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 
 - **Rollback:** Revert this proposed script and documentation hashes only; no participant contact or user data changed.
 
+## T-041 journal protocol barrier foundation — 2026-10-30
+
+- **Change:** On opening an existing private journal, the gateway validates its contents and, under the existing lock, creates a durable `.journal-protocol-v4` barrier. An older in-flight marker prevents first upgrade and is preserved for recovery with compatible software. Existing upgraded journals can reopen with in-flight evidence; a missing or invalid barrier after initialization fails journal scans closed. The barrier does not alter existing attempt results or implement elapsed proofs.
+- **Evidence:** Synthetic tests cover creation, reopen, refusal of pre-upgrade in-flight evidence, corrupt marker and runtime marker removal. A separate experiment loaded the previous committed journal implementation and verified it rejects a newly upgraded directory. The full application suite passed 229 tests and the build passed with the existing bundle-size warning; no provider request or real key was used.
+- **Limits and compatibility:** This is a one-way journal compatibility barrier: stop older gateway processes before upgrade; older gateway code rejects the marker. A legacy in-flight marker requires compatible recovery before upgrading. Do not delete the marker or journal records to force a downgrade. The existing format 3 retry check still uses wall-clock time; BUG-001 remains IN_PROGRESS until duration proofs, legacy review and cross-process recovery are implemented and verified.
+- **Rollback:** Stop generation and all gateway processes, preserve the marker and all records, and use a reviewed migration or recovery plan before any downgrade. Revert source, tests and documentation only where compatibility is assured.
+
 ## T-041 process-local retry timer foundation — 2026-10-30
 
 - **Change:** Added an isolated monotonic wait tracker for the ADR-016 candidate. It starts each wait on first observation, retains the original start across repeated observations and fails closed for conflicting values or an invalid/backward clock. It has no access to credentials or storage and is not yet connected to the gateway.
@@ -388,7 +395,7 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 ## T-041 elapsed-time recovery candidate — 2026-10-30
 
 - **Design:** [ADR-016](../02-architecture/ADR.md#adr-016--candidate-elapsed-time-proof-for-provider-retry-waits) proposes versioned duration records, process-local monotonic observation and durable serialized elapsed proofs, with a conservative legacy-review path and a fail-closed version barrier. It records crash, multi-process, old-gateway and rollback boundaries.
-- **Limits:** This remains a candidate: an isolated monotonic tracker has synthetic tests, but journal integration, durable proofs, live-provider testing and independent review have not been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
+- **Limits:** This remains a candidate: the monotonic tracker and journal version barrier have scoped tests, but durable proofs, live-provider testing and independent review have not been completed. It may extend waits after restart and requires a safe owner recovery path. BUG-001 remains IN_PROGRESS and the current format 3 gateway remains vulnerable to forward clock jumps. The routed `instruction-modules/architecture.md` and `verification.md` files were unavailable; core project instructions and local evidence were used.
 - **Rollback:** Revert this candidate and matching checksums; preserve all existing journal and product records.
 
 ## T-041 forward clock-jump investigation — 2026-10-30
