@@ -294,6 +294,12 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Diagnostics and limits:** Browser instrumentation reported `net::ERR_ABORTED` for the two no-content mutation requests despite recording HTTP 204 and observing successful state changes; the cause is unverified. No provider API key or paid request was used. This is local synthetic Chromium evidence, not an installed-iOS, production-identity, independent security-review or live-provider pass; the complete E2E-009 gate remains open.
 - **Rollback:** Revert the settings component, styling and related documentation. Do not remove local product data, owner-managed environment files or server keys.
 
+## T-032 Node and container isolation probe — 2026-10-30
+
+- **Evidence:** In disposable `node:22-alpine` containers with network mode `none`, read-only root, dropped capabilities, `no-new-privileges` and an unprivileged UID, a direct Node script successfully spawned another Node process. With `--experimental-permission`, tested attempts to spawn `/bin/sh` and Node returned `ERR_ACCESS_DENIED`; a separate Node process with `--permission` still created a loopback TCP server and connected to it within the namespace. No host credential, private data, external request or Pi SDK was used.
+- **Interpretation:** [Node 22 documentation](https://nodejs.org/docs/latest-v22.x/api/permissions.html) states the permission model is not a security boundary against malicious code. These observations do not establish that arbitrary outbound internet access is available, that an IPC peer is authenticated, or that the packaged Pi runtime is isolated. T-032 remains IMPLEMENTED_UNVERIFIED; T-033 remains dependent on accepted isolation.
+- **Rollback:** Revert this observation and the related design note and hashes; containers were removed automatically and no user data was modified.
+
 ## T-034 text-model boundary candidate — 2026-10-30
 
 - **Design:** [PI_TEXT_BOUNDARY](../02-architecture/PI_TEXT_BOUNDARY.md) specifies a candidate broker boundary, principal-bound IPC, server-owned budget reservation, fixed provider routing, UNKNOWN recovery and a synthetic verification matrix. It deliberately leaves OS sandbox, IPC transport, pricing, retention and approval UX open for review.

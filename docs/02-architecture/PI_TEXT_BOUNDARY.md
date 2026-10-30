@@ -21,6 +21,12 @@ The browser-facing Pi agent needs a text-model path without receiving provider c
 - IPC must authenticate both peer and broker, bind capability to one run/principal and expire/revoke safely. Test forged, replayed, expired and cross-principal capabilities, peer replacement and revoked in-flight access. No client-provided principal or path can expand access.
 - Pi SDK must be pinned with a compatible Node runtime. Disable extension/resource autoload and only expose explicitly reviewed tools. Sandbox escape and tool-prompt injection tests must exercise the actual packaged runtime, not only a mocked registry.
 
+## Node and container restrictions are not the IPC boundary
+
+A local Node 22 container experiment found that disabling container networking, dropping capabilities, making the root read-only and using an unprivileged user did not prevent that process from starting another Node executable. Enabling Node's permission model denied the tested `child_process.spawnSync` calls, but the same process still opened a TCP server and client on loopback inside its isolated network namespace. These are narrow observations, not an escape or a complete sandbox test. [Node 22 documentation](https://nodejs.org/docs/latest-v22.x/api/permissions.html) explicitly says its permission model does not provide security against malicious code and identifies inherited descriptors and other limitations.
+
+Consequently, neither a shell-free image, `--network none` nor Node permissions establish authenticated IPC or OS-level no-exec isolation. A production candidate must identify the peer and broker and restrict the channel and inherited descriptors, then verify those controls on the actual Pi runtime; no real key is authorized by this experiment.
+
 ## Verification matrix before enablement
 
 | Boundary | Required synthetic evidence |
