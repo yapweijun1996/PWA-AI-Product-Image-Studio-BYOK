@@ -344,6 +344,13 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 - **Limits:** This is desktop Chromium with synthetic data and programmatic creation of the attempt; it is not an installed-device, real-provider, complete backup-matrix or independent security pass. BUG-001 and T-041 remain open; T-020 and T-022 retain their existing scoped statuses.
 - **Rollback:** Revert the Vite config and its test with this record and documentation hashes; preserve products, archives and journal data.
 
+## T-041 forward clock-jump investigation — 2026-10-30
+
+- **Confirmed defect:** A synthetic gateway received `Retry-After: 86401`, recorded and acknowledged the failure, and was restarted after its injected wall clock jumped forward by 86401 seconds. Without waiting that duration, a separately approved second attempt reached the synthetic transport: two calls occurred. The test completed in under a second. The current format 3 journal compares an absolute wall-clock deadline and cannot distinguish that jump from elapsed time.
+- **Required next work:** Design and verify a conservative timing/recovery policy that covers forward and backward clock changes, restart and multiple gateway processes without silently bypassing a provider minimum. A process-local monotonic clock alone cannot establish elapsed time across a restart or reboot. Consider a reviewable hold when trusted elapsed time is unavailable; preserve existing journals and attempt histories, document compatibility and validate both safe recovery and separately authorized retry. Do not treat the last HTTP-date skew mitigation as fixing this issue.
+- **Limits:** The reproduction uses an injected gateway clock and synthetic transport, not a changed system clock, real provider, billing or installed device. No runtime fix has been made. BUG-001 remains IN_PROGRESS and T-041 remains IMPLEMENTED_UNVERIFIED.
+- **Rollback:** Revert this evidence and documentation hashes only; preserve all journals and user data.
+
 ## T-041 HTTP-date clock skew mitigation — 2026-10-30
 
 - **Change and reproduction:** With a synthetic provider `Date` and `Retry-After` one hour later, a local clock two hours ahead previously reduced the wait to zero. For HTTP-date guidance, the adapter now requires a valid response `Date` and selects the longer provider-relative or local-clock interval. Missing or invalid `Date` enters the existing durable external-review gate. Numeric delays are unchanged.
