@@ -375,3 +375,17 @@ This register tracks verified defects and their remediation. Application source 
 - **Finding:** Imported or interrupted projects can contain many historical attempts. On narrow screens, finding the records that currently need local attention required scrolling through all history, even after some records were reviewed.
 - **Remediation:** A toggle filters the displayed history to records flagged by the existing local attention check, displays the number shown and offers an empty state. The full list remains available. When a focused review control disappears after successful review, focus returns to the filter. The filter does not alter data, authorization, gateway checks or retry restrictions.
 - **Evidence and limits:** Synthetic Chromium checks cover a 17-attempt imported history, keyboard toggle, reviewed-record removal, focus return, restoring the full list and an empty filtered view; no extra fake-provider call occurred. Mobile and desktop screenshots were inspected. Actual devices, screen readers, very large histories and all concurrency cases remain open.
+
+## BUG-047 — Unsupported gateway origin does not explain the mobile limitation
+
+- **Status:** IMPLEMENTED_UNVERIFIED — synthetic browser and layout checks passed; remote gateway support and physical-device acceptance remain open. **Priority:** P1. **Related tasks:** T-030, T-031 and T-080.
+- **Finding:** The development gateway only accepts the same-device `http://127.0.0.1` origin. Settings and Studio previously reported generic unavailability for other origins, without explaining why a phone cannot use a computer's loopback address or that browser workspaces are separate.
+- **Remediation:** Settings and Studio share an origin check and explain the same-device limitation, unavailable remote mobile gateway, separate browser data and downloaded backup files. Unsupported origins remain unable to sign in or generate; this does not change network access or implement remote hosting.
+- **Evidence and limits:** A 320 px Chromium profile used the local development server through `localhost` as an unsupported origin, displayed the explanation, created a synthetic local project, and made no gateway API or additional fake-provider call. Mobile and desktop screenshots were inspected. This is not an actual phone, remote deployment or security approval.
+
+## BUG-048 — Direct-gateway browser test can exceed its time limit
+
+- **Status:** IN_PROGRESS — the wait source remains unidentified. **Priority:** P2. **Related tasks:** T-080 and T-081.
+- **Finding:** The synthetic direct-gateway browser test exceeded its 90-second limit in two separate full-suite runs and did not promptly release its test process. Standalone runs and later complete suite runs passed; the underlying cause was not established.
+- **Mitigation and evidence:** The test's page-evaluation helper now rejects a single evaluation after 20 seconds with its most recent test checkpoint, allowing the normal cleanup path to run for that class of wait. A standalone run and a subsequent four-test suite passed. This does not bound every DevTools command or prove the original wait was an evaluation.
+- **Remaining work:** Capture the failing checkpoint on recurrence, identify the root cause and verify stable repeated runs without weakening assertions. No application failure or real-provider event has been established from these test timeouts.

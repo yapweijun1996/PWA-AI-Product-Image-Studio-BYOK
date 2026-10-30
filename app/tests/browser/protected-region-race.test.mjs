@@ -489,6 +489,25 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     const secondZip=new ZipReader(new Uint8ArrayReader(await readFile(join(userDir,secondDownload))));
     try {const entries=await secondZip.getEntries();const proof=entries.find(e=>e.filename===`provenance/${generatedComposite}.json`), output=entries.find(e=>e.filename===`outputs/${generatedComposite}.png`);assert.ok(proof&&output,'Generated composite and provenance are in the ZIP.');const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter())));const bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.attemptId,generated.attemptId);assert.equal(receipt.sceneSha256,generated.scene);assert.equal(receipt.sourceSha256,originalHash);assert.equal(receipt.reviewId,generatedDecision.reviewId);assert.equal(receipt.decisionId,generatedDecision.decisionId);assert.equal(createHash('sha256').update(bytes).digest('hex'),receipt.outputSha256);} finally {await secondZip.close();}
     assert.equal(providerCalls,1,'Composition, review and export do not resend the provider request.');
+    await client.call('Page.addScriptToEvaluateOnNewDocument',{source:`window.__apiRequests=[];const originalFetch=window.fetch;window.fetch=function(input,...args){const url=typeof input==='string'?input:input.url;if(String(url).includes('/api/v2'))window.__apiRequests.push(url);return originalFetch.call(this,input,...args)}`});
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await client.call('Page.navigate',{url:`http://localhost:${vite.httpServer.address().port}/settings`});
+    await until(()=>evaluate(client, `location.hostname==='localhost' && document.querySelector('.provider-session')?.innerText.includes('Remote mobile gateway access is not available yet.')`),'unsupported-origin gateway explanation');
+    assert.equal(await evaluate(client, `!!document.querySelector('#local-access-token')`),false,'Unsupported origins never show the gateway login form.');
+    assert.equal(await evaluate(client, `window.__apiRequests.length`),0,'Unsupported origins do not send gateway API requests.');
+    assert.equal(await evaluate(client, `document.documentElement.scrollWidth<=innerWidth`),true,'The unsupported-origin notice fits mobile.');
+    for(const width of [320,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      assert.equal(await evaluate(client, `document.documentElement.scrollWidth<=innerWidth`),true,`Gateway explanation fits at ${width}px.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await client.call('Page.navigate',{url:`http://localhost:${vite.httpServer.address().port}/products/new`});
+    await until(()=>evaluate(client, `!!document.querySelector('#product-sku')`),'unsupported-origin local product form');
+    await evaluate(client, `(() => {const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [id,value] of [['product-sku',crypto.randomUUID()],['product-name','Synthetic local-only'],['product-category','Test']]){const input=document.getElementById(id);set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('.form-card input[type=checkbox]').click();document.querySelector('.form-card button[type=submit]').click()})()`);
+    await until(()=>evaluate(client, `document.querySelector('.studio-panel')?.innerText.includes('Remote mobile gateway access is not available yet.')`),'unsupported-origin studio explanation');
+    assert.equal(await evaluate(client, `[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Generation stays disabled on unsupported origins.');
+    assert.equal(await evaluate(client, `window.__apiRequests.length`),0,'Local project creation and status do not call the gateway on unsupported origins.');
+    assert.equal(providerCalls,1,'The unsupported-origin journey makes no additional fake-provider call.');
 
 
 

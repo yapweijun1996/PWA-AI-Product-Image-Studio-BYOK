@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
 import { useUnsavedChanges } from './useUnsavedChanges';
+import { gatewayOriginSupported, unsupportedGatewayMessage } from './gatewayAccess';
 
 type Status = { connected: boolean; configured: boolean; provider: 'openai'; expiresAt: string | null; stale: boolean };
-type State = { kind: 'checking' | 'unavailable' | 'signed-out' } | { kind: 'signed-in'; csrf: string; status: Status };
+type State = { kind: 'checking' | 'unavailable' | 'unsupported-origin' | 'signed-out' } | { kind: 'signed-in'; csrf: string; status: Status };
 type Busy = 'checking' | 'login' | 'connect' | 'disconnect' | 'logout';
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 
@@ -69,8 +70,8 @@ export function ProviderSessionPanel() {
 
   const refresh = useCallback(async () => {
     const active = start('checking'); if (!active) return;
-    if (window.location.protocol !== 'http:' || window.location.hostname !== '127.0.0.1') {
-      setState({ kind: 'unavailable' }); finish(active); return;
+    if (!gatewayOriginSupported()) {
+      setState({ kind: 'unsupported-origin' }); finish(active); return;
     }
     setState({ kind: 'checking' });
     try {
@@ -90,7 +91,7 @@ export function ProviderSessionPanel() {
     const online = () => { void refresh(); };
     const offline = () => {
       operation.current?.abort(); operation.current = null;
-      setBusy(null); setMessage(''); setState({ kind: 'unavailable' }); setError('The browser is offline. Recheck the local gateway when online.');
+      setBusy(null); setMessage(''); setState({ kind: gatewayOriginSupported() ? 'unavailable' : 'unsupported-origin' }); setError('The browser is offline. Recheck the local gateway when online.');
     };
     const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
     window.addEventListener('online', online); window.addEventListener('offline', offline); document.addEventListener('visibilitychange', visible);
@@ -151,6 +152,7 @@ export function ProviderSessionPanel() {
   return <section className="notice provider-session" aria-labelledby="provider-heading"><h2 id="provider-heading">Provider connection</h2>
     <p>Local development only. Billable image generation is disabled by default; enabling it can incur provider charges. Use synthetic credentials until security review is complete. This gateway is not approved for production.</p>
     {state.kind === 'checking' && <p role="status">Checking local gateway…</p>}
+    {state.kind === 'unsupported-origin' && <p role="status">{unsupportedGatewayMessage}</p>}
     {state.kind === 'unavailable' && <><p>The local gateway is unavailable. Start the app using the loopback gateway, then check again.</p><button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void refresh()}>Check gateway</button></>}
     {state.kind === 'signed-out' && <form className="provider-login" onSubmit={signIn}><p>Sign in with the separate local app access token. Never enter your OpenAI API key in the browser.</p><label htmlFor="local-access-token">Local app access token</label><input id="local-access-token" type="password" autoComplete="off" maxLength={128} value={accessToken} onChange={(event) => onToken(event.target.value)} onBlur={() => { rejectUntilBlur.current = false; }} onPaste={onPaste} disabled={Boolean(busy)} /><button type="submit" className="primary-button" disabled={Boolean(busy) || !accessToken}>Sign in locally</button></form>}
     {state.kind === 'signed-in' && <><p role="status">{state.status.connected ? `Provider authorization active until ${new Date(state.status.expiresAt!).toLocaleString()}.` : state.status.stale ? 'Provider authorization may have expired. Refresh to verify.' : 'Provider authorization is disconnected.'}</p><p>{state.status.configured ? 'A server key is configured; its validity has not been checked.' : 'No server key was configured at startup. Configure it outside the browser and restart the gateway.'}</p><p>Disconnecting does not remove the server key or revoke it at OpenAI.</p><div className="form-actions provider-actions">{state.status.connected ? <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void change('disconnect')}>Disconnect provider</button> : <button type="button" className="secondary-button" disabled={Boolean(busy) || !state.status.configured} onClick={() => void change('connect')}>Connect provider</button>}<button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void refresh()}>Refresh status</button><button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void change('logout')}>Sign out</button></div></>}

@@ -18,7 +18,9 @@ const chrome = process.env.CHROME_BIN || [
 ].find(existsSync);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+let lastCheckpoint = 'initialization';
 async function until(read, description) {
+  lastCheckpoint = description;
   for (let i = 0; i < 150; i++) {
     const result = await read();
     if (result) return result;
@@ -47,7 +49,8 @@ async function connect(url) {
 }
 
 async function evaluate(client, expression) {
-  const response = await client.call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  let timer;
+  const response = await Promise.race([client.call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Browser evaluation timed out after ${lastCheckpoint}.`)), 20000); })]).finally(() => clearTimeout(timer));
   if (response.exceptionDetails) throw new Error(response.exceptionDetails.exception?.description || response.exceptionDetails.text);
   return response.result.value;
 }
