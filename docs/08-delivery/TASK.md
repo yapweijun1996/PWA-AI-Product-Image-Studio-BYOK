@@ -1200,3 +1200,10 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Evidence:** In the existing synthetic 320 px Chromium cross-project journey, focus starts on the history refresh button; a real Shift+Tab key event moves to the project link and Enter activates it. Browser Back returns to the blocked project; Forward returns to the visible, focused review-history heading. A separate desktop direct-link reload and review-without-repeat-focus remain covered by the same test.
 - **Verification:** The focused browser journey and four-test browser suite passed. Documentation validation passed; no application behavior changed in this follow-up.
 - **Limits:** This is one keyboard path in emulated Chromium. It does not establish full tab order, actual zoom, screen-reader behavior, real mobile hardware or owner acceptance of visual anchors. T-080/T-084 and BUG-038 remain open.
+
+
+## T-022 / T-041 / T-080 imported review offline recovery — 2026-10-31
+
+- **Evidence:** After restoring a synthetic interrupted-queue archive into an isolated 320 px Chromium profile, the test emulated offline network state and explicitly recorded one local imported-attempt review. The offline indicator appeared, generation was disabled and no additional fake-provider call occurred. Offline reload preserved the reviewed marker and the unchanged imported attempt snapshot; other imported records remained pending. The profile then returned online for the existing cross-tab and navigation checks.
+- **Verification:** Focused direct-gateway browser tests and the four-test browser suite passed; documentation validation passed. This is a simulated human attestation, not proof of provider billing or rate-limit review.
+- **Limits:** This does not prove physical network loss, installed iOS/Android behavior, storage eviction, independent security review or all interrupted requests. T-022/T-041/T-080 and BUG-036 remain IMPLEMENTED_UNVERIFIED. Remove the synthetic scenario and evidence without modifying stored records or gateway journals if needed.
