@@ -7,3 +7,5 @@ The test starts a local Vite server and a headless browser with a temporary, iso
 The same test generates a synthetic scene through the UI, composes and approves that same scene, and verifies its downloaded ZIP. It starts a temporary local gateway with a synthetic access token, fake provider credential, isolated journal and in-process provider response. A Vite test proxy rewrites the upstream origin to the gateway origin; this exercises the UI and gateway together, but does not validate production origin handling or contact an external provider. No real credentials are used.
 
 A second test builds the app into a temporary directory and serves it directly from the local gateway, with no proxy or Origin rewriting. It exercises the synthetic creation-to-export journey and a cross-origin login rejection. Both tests use independent temporary browser profiles and journals.
+
+The direct-gateway test also checks synthetic credential markers against the final DOM, local/session storage, populated IndexedDB and caches, downloaded ZIP entries, and captured console/exception events. This is a scoped plaintext-marker check, not a complete secret or security audit.

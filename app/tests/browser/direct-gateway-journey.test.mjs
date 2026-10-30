@@ -28,16 +28,17 @@ async function until(read, description) {
 }
 
 async function connect(url) {
-  const socket = new WebSocket(url), pending = new Map(); let next = 0;
+  const socket = new WebSocket(url), pending = new Map(), events = []; let next = 0;
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data), handler = pending.get(message.id);
-    if (!handler) return;
+    if (!handler) { if (['Runtime.consoleAPICalled','Runtime.exceptionThrown','Log.entryAdded'].includes(message.method)) events.push(message); return; }
     pending.delete(message.id);
     message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result);
   });
   socket.addEventListener('close', () => { for (const entry of pending.values()) entry.reject(new Error('DevTools connection closed.')); pending.clear(); });
   return {
+    events,
     call(method, params = {}) {
       return new Promise((resolve, reject) => { const id = ++next; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
     },
@@ -69,9 +70,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
     browser=spawn(chrome,['--headless=new','--remote-debugging-port=0',`--user-data-dir=${profile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{stdio:'ignore'});
     const port=await until(async()=>{try{return Number((await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0]);}catch{return null}},'isolated Chromium');
     const target=(await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.type==='page');
-    client=await connect(target.webSocketDebuggerUrl);await client.call('Page.enable');await client.call('Page.bringToFront');
+    client=await connect(target.webSocketDebuggerUrl);await client.call('Runtime.enable');await client.call('Log.enable');await client.call('Page.enable');await client.call('Page.bringToFront');
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     await client.call('Page.navigate',{url:origin});await until(()=>evaluate(client,`location.origin===${JSON.stringify(origin)} && document.readyState==='complete'`),'app load');
+    await evaluate(client, `console.info('studio-log-capture-probe')`);
+    await until(()=>client.events.some(e=>e.method==='Runtime.consoleAPICalled'&&JSON.stringify(e).includes('studio-log-capture-probe')),'console capture');
     providerImage=await evaluate(client,`(() => {const c=document.createElement('canvas');c.width=1024;c.height=1024;const x=c.getContext('2d');x.fillStyle='#225588';x.fillRect(0,0,1024,1024);return c.toDataURL('image/png').split(',')[1]})()`);
     await until(()=>evaluate(client,`[...document.querySelectorAll('a')].some(a=>a.textContent==='Create product')`),'product creation link');
     await evaluate(client,`[...document.querySelectorAll('a')].find(a=>a.textContent==='Create product').click()`);
@@ -129,8 +132,25 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`(() => {const p=document.querySelector('.approved-export');[...p.querySelectorAll('label')].find(l=>l.innerText.includes('I inspected every converted output')).querySelector('input').click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').click()})()`);
     const filename=await until(async()=>(await readdir(root)).find(n=>n.startsWith('approved-outputs-')&&n.endsWith('.zip')),'downloaded bundle');
     const zip=new ZipReader(new Uint8ArrayReader(await readFile(join(root,filename))));
-    try {const entries=await zip.getEntries(),proof=entries.find(e=>e.filename.startsWith('provenance/')&&e.filename.endsWith('.json')),output=entries.find(e=>e.filename.startsWith('outputs/')&&e.filename.endsWith('.png'));assert.ok(proof&&output);const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter()))),bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.sourceSha256,sourceHash);assert.equal(receipt.sceneSha256,createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex'));assert.equal(receipt.outputSha256,createHash('sha256').update(bytes).digest('hex'));assert.ok(receipt.reviewId&&receipt.decisionId);}finally{await zip.close()}
+    try {const entries=await zip.getEntries(),proof=entries.find(e=>e.filename.startsWith('provenance/')&&e.filename.endsWith('.json')),output=entries.find(e=>e.filename.startsWith('outputs/')&&e.filename.endsWith('.png'));assert.ok(proof&&output);const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter()))),bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.sourceSha256,sourceHash);assert.equal(receipt.sceneSha256,createHash('sha256').update(Buffer.from(providerImage,'base64')).digest('hex'));assert.equal(receipt.outputSha256,createHash('sha256').update(bytes).digest('hex'));assert.ok(receipt.reviewId&&receipt.decisionId);
+      for(const entry of entries) {if(entry.directory) continue;const content=await entry.getData(new Uint8ArrayWriter());const text=new TextDecoder().decode(content);assert.equal(text.includes(token)||text.includes('synthetic-provider-fixture'),false,'Downloaded ZIP entries must not contain the synthetic credentials.');}}finally{await zip.close()}
     assert.equal(providerCalls,1,'No automatic resend during review or download.');
+    await until(()=>evaluate(client, `(async()=> (await caches.keys()).length>0)()`),'installed shell cache');
+    const browserExposure=await evaluate(client, `(async()=>{
+      const needles=[${JSON.stringify(token)},'synthetic-provider-fixture'];
+      const scan=async value=>{if(typeof value==='string')return needles.some(n=>value.includes(n));if(value instanceof Blob)return scan(await value.text());if(value instanceof ArrayBuffer||ArrayBuffer.isView(value))return scan(new TextDecoder().decode(value));if(value&&typeof value==='object'){for(const [k,v] of Object.entries(value))if(await scan(k)||await scan(v))return true}return false};
+      const result={probe:await scan({nested:new Blob([needles[0]])}),dom:await scan(document.documentElement.outerHTML),local:await scan({...localStorage}),session:await scan({...sessionStorage}),indexedDB:false,cache:false,dbCount:0,rowCount:0,cacheCount:0,cacheEntries:0};
+      for(const info of await indexedDB.databases()){if(!info.name)continue;result.dbCount++;const db=await new Promise((resolve,reject)=>{const q=indexedDB.open(info.name);q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{for(const name of db.objectStoreNames){const rows=await new Promise((resolve,reject)=>{const t=db.transaction(name,'readonly'),q=t.objectStore(name).getAll();q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});result.rowCount+=rows.length;if(await scan(rows))result.indexedDB=true}}finally{db.close()}}
+      for(const name of await caches.keys()){result.cacheCount++;const cache=await caches.open(name);for(const request of await cache.keys()){result.cacheEntries++;const response=await cache.match(request);if(await scan(request.url)||await scan(await response.clone().text()))result.cache=true}}
+      return result;
+    })()`);
+    const {probe,dbCount,rowCount,cacheCount,cacheEntries,...exposure}=browserExposure;
+    assert.equal(probe,true,'The scanner detects a synthetic credential embedded in a Blob.');
+    assert.ok(dbCount>0 && rowCount>0 && cacheCount>0 && cacheEntries>0,'The scan examined populated databases and caches.');
+    assert.deepEqual(exposure,{dom:false,local:false,session:false,indexedDB:false,cache:false},'Synthetic credentials are absent from browser-visible storage and shell caches.');
+    const logText=JSON.stringify(client.events);assert.equal(logText.includes(token)||logText.includes('synthetic-provider-fixture'),false,'Console and exception events contain no synthetic credentials.');
+    assert.equal(client.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0,'No uncaught page exceptions occurred.');
+
     assert.equal(await evaluate(client,'document.documentElement.scrollWidth===innerWidth'),true);
   } finally {
     client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
