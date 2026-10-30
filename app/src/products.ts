@@ -55,7 +55,7 @@ function notifyProductChanged(productId: string): void {
     try { channel.postMessage(productId); } finally { channel.close(); }
   } catch { /* Notifications are advisory; the committed transaction remains authoritative. */ }
 }
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let connection: Promise<IDBDatabase> | null = null;
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -63,33 +63,49 @@ function openDatabase(): Promise<IDBDatabase> {
   const pending = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     let abandoned = false;
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      const products = db.createObjectStore('products', { keyPath: 'productId' });
-      products.createIndex('sku', 'sku', { unique: true });
-      products.createIndex('updatedAt', 'updatedAt');
-      for (const [name, key, indexes] of [
-        ['sourceAssets', 'assetId', ['productId', 'sha256']],
-        ['masks', 'maskId', ['sourceAssetId', 'version']],
-        ['jobs', 'jobId', ['productId', 'status', 'createdAt']],
-        ['attempts', 'attemptId', ['jobId', 'status', 'submittedAt']],
-        ['generatedAssets', 'assetId', ['attemptId', 'productId']],
-        ['qaReports', 'qaId', ['assetId', 'createdAt']],
-        ['userSettings', 'key', []],
-        ['migrations', 'version', ['appliedAt']],
-      ] as Array<[string, string, string[]]>) {
-        const store = db.createObjectStore(name, { keyPath: key });
-        for (const index of indexes) store.createIndex(index, index);
+    let upgradeFailure: Error | undefined;
+    request.onupgradeneeded = (event) => {
+      const db = request.result, transaction = request.transaction!;
+      try {
+        const stores: Array<[string, string, string[]]> = [
+          ['sourceAssets', 'assetId', ['productId', 'sha256']],
+          ['masks', 'maskId', ['sourceAssetId', 'version']],
+          ['jobs', 'jobId', ['productId', 'status', 'createdAt']],
+          ['attempts', 'attemptId', ['jobId', 'status', 'submittedAt']],
+          ['generatedAssets', 'assetId', ['attemptId', 'productId']],
+          ['qaReports', 'qaId', ['assetId', 'createdAt']],
+          ['userSettings', 'key', []],
+          ['migrations', 'version', ['appliedAt']],
+        ];
+        if (event.oldVersion === 0) {
+          const products = db.createObjectStore('products', { keyPath: 'productId' });
+          products.createIndex('sku', 'sku', { unique: true });
+          products.createIndex('updatedAt', 'updatedAt');
+          for (const [name, key, indexes] of stores) {
+            const store = db.createObjectStore(name, { keyPath: key });
+            for (const index of indexes) store.createIndex(index, index);
+          }
+        } else if (event.oldVersion === 1) {
+          const required: Array<[string, string[]]> = [['products', ['sku', 'updatedAt']], ...stores.map(([name, , indexes]) => [name, indexes] as [string, string[]])];
+          for (const [name, indexes] of required) {
+            if (!db.objectStoreNames.contains(name)) throw new Error('The existing workspace schema is incomplete. No data was changed.');
+            const store = transaction.objectStore(name);
+            if (indexes.some((index) => !store.indexNames.contains(index))) throw new Error('The existing workspace indexes are incomplete. No data was changed.');
+          }
+        } else throw new Error('The existing workspace version is unsupported. No data was changed.');
+        transaction.objectStore('migrations').add({ version: DB_VERSION, appliedAt: new Date().toISOString() });
+      } catch (error) {
+        upgradeFailure = error instanceof Error ? error : new Error('Storage upgrade failed. No data was changed.');
+        transaction.abort();
       }
-      request.transaction!.objectStore('migrations').add({ version: DB_VERSION, appliedAt: new Date().toISOString() });
     };
     request.onblocked = () => {
       abandoned = true;
       reject(new Error('Storage upgrade is blocked by another open tab. Close the other tab and try again.'));
     };
-    request.onerror = () => reject(request.error?.name === 'VersionError'
+    request.onerror = () => reject(upgradeFailure ?? (request.error?.name === 'VersionError'
       ? new Error('This workspace requires a newer version of the app. No data was changed.')
-      : request.error ?? new Error('Could not open local storage.'));
+      : request.error ?? new Error('Could not open local storage.')));
     request.onsuccess = () => {
       const db = request.result;
       if (abandoned) { db.close(); return; }
@@ -2034,6 +2050,7 @@ async function strictCompositeTransaction(
                     if (!review || review.revision <= barrier) decision.current = false;
                   }
                 }
+                if (!protectedEvidence) for (const decision of history.decisions) { if (decision.decision === 'APPROVED') decision.current = false; }
                 if (visual.kind === 'list') result = { ...history, product, productSha256: provenance.productSha256, assetSha256: provenance.assetSha256,
                   importedReviewRequired: barrier !== undefined && history.reviews.length <= barrier,
                   ...(provenance.recipeSha256 ? { recipeSha256: provenance.recipeSha256 } : {}), ...(provenance.adSha256 ? { adSha256: provenance.adSha256 } : {}), ...(provenance.protectedEvidenceSha256 ? { protectedEvidenceSha256: provenance.protectedEvidenceSha256 } : {}) };
@@ -2076,6 +2093,7 @@ async function strictCompositeTransaction(
                       latest.report.hardVetoFindings.length || Object.values(latest.checks).some((check) => check !== 'MATCH'))) {
                     throw new Error('Only a fully verified pass candidate can be approved.');
                   }
+                  if (visual.decision === 'APPROVED' && !protectedEvidence) throw new Error('Approval requires a composite bound to protected mask areas.');
                   const decision: StoredVisualDecision = { kind: 'visual-decision', qaId: crypto.randomUUID(),
                     assetId: visual.assetId, productId, attemptId, reportId: latest.qaId,
                     decision: visual.decision, ...provenance, createdAt: new Date().toISOString() };
@@ -2341,6 +2359,10 @@ function exportRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+class MissingProtectedEvidenceError extends Error {
+  constructor() { super('Approved export requires a composite bound to protected mask areas.'); }
+}
+
 class StaleProtectedReviewError extends Error {
   constructor() { super('The protected evidence changed since approval. Record a new review and decision.'); }
 }
@@ -2514,6 +2536,7 @@ async function approvedExportTransaction(productId: string, selections: Approved
           const barrier = checkedImportReviewBarrier(importedBarrier, selection.assetId, history.reviews.length);
           if (barrier !== undefined && (!review || review.revision <= barrier)) throw new Error('Imported approvals are untrusted. Create a fresh local review and decision.');
           const decision = history.decisions.find((item) => item.qaId === selection.decisionId);
+          if (!protectedEvidence) throw new MissingProtectedEvidenceError();
           if (review && decision && review.qaId === selection.reviewId && decision.reportId === review.qaId &&
               review.protectedEvidenceSha256 !== provenance.protectedEvidenceSha256) throw new StaleProtectedReviewError();
           if (!review || review.qaId !== selection.reviewId || !sameProvenance(review, provenance) ||
@@ -2606,7 +2629,7 @@ export async function listApprovedExportCandidates(productId: string, signal?: A
     if (typeof selection.productSha256 === 'string' && hashPattern.test(selection.productSha256) &&
         selection.productSha256 !== productSha256 && selection.productSha256 !== versionedProductSha256) continue;
     try { await loadApprovedExportBatch(productId, [selection], cancellation); }
-    catch (error) { if (error instanceof StaleProtectedReviewError) continue; throw error; }
+    catch (error) { if (error instanceof StaleProtectedReviewError || error instanceof MissingProtectedEvidenceError) continue; throw error; }
     approved.push(selection);
   }
   return approved;

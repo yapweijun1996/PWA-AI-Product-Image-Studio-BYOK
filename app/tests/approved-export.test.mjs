@@ -33,7 +33,7 @@ globalThis.document = { createElement() { return {
 async function fixture() {
   const rendered = await renderApprovedOutput(png(1024, 1024), 'png', '4:5', signal());
   const selection = { attemptId: randomUUID(), assetId: randomUUID(), productSha256: 'a'.repeat(64), assetSha256: rendered.conversion.sourceSha256, reviewId: randomUUID(), decisionId: randomUUID() };
-  const provenance = { ...selection, jobId: randomUUID(), model: STUDIO_MODEL, promptVersion: STUDIO_PROMPT_VERSION, prompt: STUDIO_PROMPT, promptSha256: createHash('sha256').update(STUDIO_PROMPT).digest('hex'), quality: 'low', size: '1024x1024', styleId: 'studio', createdAt: '2026-01-01T00:00:00Z', usage: null, estimatedUSD: studioEstimateUSD(), observedUSD: null, pricingSnapshot: null, submittedAt: '2026-01-01T00:00:00Z', reviewedAt: '2026-01-01T00:00:00Z', decidedAt: '2026-01-01T00:00:00Z', sourceAssetId: randomUUID(), sourceSha256: 'b'.repeat(64), maskId: randomUUID(), maskSha256: 'c'.repeat(64), sceneAssetId: randomUUID(), sceneSha256: 'd'.repeat(64) };
+  const provenance = { ...selection, jobId: randomUUID(), model: STUDIO_MODEL, promptVersion: STUDIO_PROMPT_VERSION, prompt: STUDIO_PROMPT, promptSha256: createHash('sha256').update(STUDIO_PROMPT).digest('hex'), quality: 'low', size: '1024x1024', styleId: 'studio', createdAt: '2026-01-01T00:00:00Z', usage: null, estimatedUSD: studioEstimateUSD(), observedUSD: null, pricingSnapshot: null, submittedAt: '2026-01-01T00:00:00Z', reviewedAt: '2026-01-01T00:00:00Z', decidedAt: '2026-01-01T00:00:00Z', sourceAssetId: randomUUID(), sourceSha256: 'b'.repeat(64), maskId: randomUUID(), maskSha256: 'c'.repeat(64), protectedEvidenceSha256: 'a'.repeat(64), sceneAssetId: randomUUID(), sceneSha256: 'd'.repeat(64) };
   return { selection, provenance, rendered };
 }
 async function unpack(blob) {
@@ -130,6 +130,8 @@ test('output provenance preserves a valid protected evidence digest', async () =
     const contents = await unpack(await packageApprovedOutputs(randomUUID(), [entry], signal()));
     assert.equal(contents[`provenance/${entry.selection.assetId}.json`].protectedEvidenceSha256, 'a'.repeat(64));
     entry.provenance.protectedEvidenceSha256 = 'not-a-hash';
+    await assert.rejects(packageApprovedOutputs(randomUUID(), [entry], signal()), /provenance/i);
+    delete entry.provenance.protectedEvidenceSha256;
     await assert.rejects(packageApprovedOutputs(randomUUID(), [entry], signal()), /provenance/i);
   }
 });

@@ -112,7 +112,7 @@ function checkedProvenance(entry: ApprovedOutputEntry) {
   const s = entry.selection, p = entry.provenance;
   for (const id of [s.attemptId, s.assetId, s.reviewId, s.decisionId, p.attemptId, p.jobId, p.reviewId, p.decisionId, p.sourceAssetId, p.maskId, p.sceneAssetId]) if (typeof id !== 'string' || !uuid.test(id)) invalid();
   if ('retryOf' in p && (typeof p.retryOf !== 'string' || !uuid.test(p.retryOf) || p.retryOf === p.attemptId)) invalid();
-  if (p.protectedEvidenceSha256 !== undefined && (typeof p.protectedEvidenceSha256 !== 'string' || !hash.test(p.protectedEvidenceSha256))) invalid();
+  if (typeof p.protectedEvidenceSha256 !== 'string' || !hash.test(p.protectedEvidenceSha256)) invalid();
   for (const h of [s.productSha256, s.assetSha256, p.sourceSha256, p.maskSha256, p.sceneSha256, p.assetSha256, p.productSha256, p.promptSha256]) if (typeof h !== 'string' || !hash.test(h)) invalid();
   if (s.attemptId !== p.attemptId || s.reviewId !== p.reviewId || s.decisionId !== p.decisionId || s.assetSha256 !== p.assetSha256 || s.productSha256 !== p.productSha256 || p.model !== STUDIO_MODEL || p.quality !== STUDIO_QUALITY || p.size !== STUDIO_SIZE || !validUsage(p.usage) || !validDate(p.createdAt) || !validDate(p.submittedAt) || !validDate(p.reviewedAt) || !validDate(p.decidedAt)) invalid();
   const versioned = p.promptVersion === STUDIO_SCENE_PROMPT_VERSION;

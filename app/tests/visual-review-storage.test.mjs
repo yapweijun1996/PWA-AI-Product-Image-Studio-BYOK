@@ -93,21 +93,31 @@ const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
 const { createProduct, getProduct, saveSource, saveMask, loadSourceMask, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint,
   loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts,
-  createVisualReview, recordVisualDecision, listVisualReviews, getBackupSnapshot, validateBackupHistory, validateBackupMasks } =
+  createVisualReview: rawCreateVisualReview, recordVisualDecision, listVisualReviews, getBackupSnapshot, validateBackupHistory, validateBackupMasks } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
-async function fixture() {
+const evidenceByAsset = new Map();
+function createVisualReview(...args) {
+  if (evidenceByAsset.has(args[2]) && args.length <= 14) {
+    args.length = 15; args[14] = evidenceByAsset.get(args[2]);
+  }
+  return rawCreateVisualReview(...args);
+}
+
+async function fixture(withProtectedEvidence = false) {
   const product = await createProduct({ sku: randomUUID(), name: 'Synthetic product', category: 'Test', rightsAcknowledged: true });
   const source = { assetId: randomUUID(), sha256: hash(sourceBytes), mimeType: 'image/png', width: 2, height: 1, cameraView: 'FRONT', filename: 'source.png' };
   await saveSource(product.productId, { file: blob(sourceBytes), metadata: source, exifOrientation: 1, previewUrl: '' }, 'FRONT');
   const maskId = randomUUID(), maskSha256 = hash(sourceBytes);
+  const evidence = { version: 1, sourceSha256: source.sha256, maskSha256, width: 2, height: 1, regions: [{ x: 0, y: 0, width: 1, height: 1 }] };
   const db = await new Promise((resolve, reject) => { const request = indexedDB.open('product-image-studio'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
   await new Promise((resolve, reject) => {
     const tx = db.transaction(['products', 'masks'], 'readwrite'), products = tx.objectStore('products');
     const request = products.get(product.productId);
     request.onsuccess = () => { const value = request.result; value.brandLock.maskAssetId = maskId; products.put(value); };
     tx.objectStore('masks').add({ maskId, productId: product.productId, sourceAssetId: source.assetId, sourceSha256: source.sha256,
-      width: 2, height: 1, sha256: maskSha256, version: 1, blob: blob(sourceBytes) });
+      width: 2, height: 1, sha256: maskSha256, version: 1, blob: blob(sourceBytes),
+      ...(withProtectedEvidence ? { protectedEvidence: evidence, protectedEvidenceSha256: hash(Buffer.from(JSON.stringify(evidence))) } : {}) });
     tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
   });
   const attempt = { attemptId: randomUUID(), jobId: randomUUID(), productId: product.productId, sourceAssetId: source.assetId,
@@ -159,8 +169,9 @@ const scores = { design: '5', typography: '5', geometry: '5', realism: '5', styl
 const matches = { product: 'MATCH', typography: 'MATCH', claims: 'MATCH', viewpoint: 'MATCH', source: 'MATCH', mask: 'MATCH' };
 const finding = (severity) => ({ severity, description: 'Visible issue', unlocalized: true });
 async function ready() {
-  const f = await fixture();
+  const f = await fixture(true);
   f.composite = await save(f, await load(f));
+  evidenceByAsset.set(f.composite.assetId, f.composite.protectedEvidenceSha256);
   return f;
 }
 const review = async (f, checks = matches, variant = 'default', values = scores) =>

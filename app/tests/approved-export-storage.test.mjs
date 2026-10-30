@@ -93,10 +93,10 @@ const output = Array.isArray(built) ? built[0] : built;
 const code = output.output.find((entry) => entry.type === 'chunk').code;
 const { createProduct, saveSource, saveMask, addConfirmedFact, createStudioAttempt, updateStudioAttempt, globalStudioReviewFingerprint,
   loadStrictCompositeInputs, saveStrictComposite, listStrictComposites, listStudioAttempts,
-  createVisualReview, recordVisualDecision, listVisualReviews, listApprovedExportCandidates, loadApprovedExportBatch, commitApprovedExportBatch } =
+  createVisualReview, recordVisualDecision, listVisualReviews, getBackupSnapshot, listApprovedExportCandidates, loadApprovedExportBatch, commitApprovedExportBatch } =
   await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
-async function fixture(maskBytes = sourceBytes, withProtectedEvidence = false) {
+async function fixture(maskBytes = sourceBytes, withProtectedEvidence = true) {
   const product = await createProduct({ sku: randomUUID(), name: 'Synthetic product', category: 'Test', rightsAcknowledged: true });
   const source = { assetId: randomUUID(), sha256: hash(sourceBytes), mimeType: 'image/png', width: 2, height: 1, cameraView: 'FRONT', filename: 'source.png' };
   await saveSource(product.productId, { file: blob(sourceBytes), metadata: source, exifOrientation: 1, previewUrl: '' }, 'FRONT');
@@ -179,11 +179,10 @@ async function approved(f) {
     assetSha256: report.assetSha256, reviewId: report.qaId, decisionId: receipt.qaId } };
 }
 
-// BUG-007: enable this acceptance test when the protected-region lifecycle exists.
-// A TODO failure documents the current gap; it is not a passing safety gate.
-test('STRICT rejects an uncovered source region before approved export', { todo: 'BUG-007: protected-region evidence is not yet enforced' }, async () => {
+// This covers the missing-evidence gate; actual labelled SKU and device acceptance remain open.
+test('STRICT rejects an uncovered source region before approved export', async () => {
   const maskBytes = png(2, 1, Uint8Array.from([255, 255, 255, 255, 255, 255, 255, 0]));
-  const f = await fixture(maskBytes);
+  const f = await fixture(maskBytes, false);
   const canvas = new TestCanvas(); canvas.width = 1024; canvas.height = 1024;
   const ctx = canvas.getContext('2d'), scene = await createImageBitmap(blob(sceneBytes)), source = await createImageBitmap(blob(sourceBytes));
   ctx.drawImage(scene, 0, 0, 1024, 1024);
@@ -285,6 +284,43 @@ test('a changed evidence binding invalidates an undecided review', async () => {
   const fresh = await review(f);
   const receipt = await decision(f, fresh);
   assert.equal(receipt.protectedEvidenceSha256, digest);
+});
+
+test('historical approval without protected areas remains stored but cannot export', async () => {
+  const f = await fixture(sourceBytes, false);
+  f.composite = await save(f, await load(f));
+  const report = await review(f);
+  await assert.rejects(decision(f, report), /requires.*protected/i);
+  const legacy = { kind: 'visual-decision', qaId: randomUUID(), assetId: report.assetId, productId: report.productId,
+    attemptId: report.attemptId, reportId: report.qaId, decision: 'APPROVED', createdAt: new Date().toISOString(),
+    assetSha256: report.assetSha256, sourceSha256: report.sourceSha256, maskId: report.maskId, maskSha256: report.maskSha256,
+    sceneAssetId: report.sceneAssetId, sceneSha256: report.sceneSha256, productSha256: report.productSha256 };
+  await add(f.db, 'qaReports', legacy);
+  await mutate(f.db, 'userSettings', `visual-review-head:${f.composite.assetId}`, (head) => ({ ...head,
+    entries: [...head.entries, `${legacy.qaId}:${hash(Buffer.from(JSON.stringify(legacy)))}`].sort() }));
+  const selection = { attemptId: f.attemptId, assetId: f.composite.assetId, productSha256: report.productSha256,
+    assetSha256: report.assetSha256, reviewId: report.qaId, decisionId: legacy.qaId };
+  const historical = await history(f);
+  assert.equal(historical.decisions[0].current, false);
+  assert.deepEqual(await listApprovedExportCandidates(f.productId), []);
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /requires.*protected/i);
+  const backup = await getBackupSnapshot(f.productId);
+  assert.ok(backup.history.reviews.some((row) => row.qaId === legacy.qaId));
+  const fresh = await review(f);
+  assert.equal((await decision(f, fresh, 'REJECTED')).decision, 'REJECTED');
+});
+
+test('stripping a protected composite binding blocks its historical approval', async () => {
+  const f = await fixture();
+  f.composite = await save(f, await load(f));
+  const { selection } = await approved(f);
+  await mutate(f.db, 'generatedAssets', f.composite.assetId, (row) => { const { protectedEvidenceSha256, ...legacy } = row; return legacy; });
+  const historical = await history(f);
+  assert.equal(historical.decisions[0].current, false);
+  assert.deepEqual(await listApprovedExportCandidates(f.productId), []);
+  await assert.rejects(loadApprovedExportBatch(f.productId, [selection]), /requires.*protected/i);
+  const backup = await getBackupSnapshot(f.productId);
+  assert.ok(backup.history.reviews.some((row) => row.qaId === selection.decisionId));
 });
 
 test('only the latest explicit matching approval is discoverable and exported with allowlisted provenance', async () => {
