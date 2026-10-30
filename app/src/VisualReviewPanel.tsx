@@ -1,3 +1,4 @@
+import { pixelFieldMax } from './pixelCoordinates';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createVisualReview, listVisualReviews, recordVisualDecision, type StrictComposite, type VisualReviewRecord } from './products';
 import { evaluateVisualReview, STYLE_REVIEW_FIELDS, type ReviewCheck, type ReviewChecks, type ReviewFinding, type ReviewRegion, type ReviewScores, type ReviewVariant, type StyleReviewChecks, type VisualReviewEvaluation } from './visualReviewRules';
@@ -173,7 +174,7 @@ export function VisualReviewPanel({ productId, productVersion, attemptId, compos
             {(['source', 'output'] as const).filter((side) => finding.location === side || finding.location === 'both').map((side) => <fieldset key={side}>
               <legend>{side === 'source' ? 'Source' : 'Output'} pixel region</legend>
               <p>Whole pixels, measured from the top-left. {side === 'source' ? `Source bounds: ${source?.width ?? 'unknown'} × ${source?.height ?? 'unknown'}` : 'Output bounds: 1024 × 1024'}. Width and height must be at least 1; the rectangle must fit within the image.</p>
-              {regionFields.map((field) => <label key={field}>{side === 'source' ? 'Source' : 'Output'} {field}<input type="number" min={field === 'width' || field === 'height' ? 1 : 0} step="1" value={finding[side][field]} disabled={busy || disabled} onChange={(event) => updateFinding(index, (old) => ({ ...old, [side]: { ...old[side], [field]: event.target.value } }))} /></label>)}
+              {regionFields.map((field) => <label key={field}>{side === 'source' ? 'Source' : 'Output'} {field}<input type="number" min={field === 'width' || field === 'height' ? 1 : 0} max={side === 'source' ? (source ? pixelFieldMax(field, source.width, source.height) : undefined) : pixelFieldMax(field, 1024, 1024)} step="1" value={finding[side][field]} disabled={busy || disabled} onChange={(event) => updateFinding(index, (old) => ({ ...old, [side]: { ...old[side], [field]: event.target.value } }))} /></label>)}
             </fieldset>)}
             <button type="button" className="secondary-button" disabled={busy || disabled} onClick={() => { setFindings((old) => old.filter((_, i) => i !== index)); invalidateDecision(); }}>Remove finding {index + 1}</button>
           </fieldset>)}
