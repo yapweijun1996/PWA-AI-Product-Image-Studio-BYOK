@@ -269,3 +269,11 @@ This register tracks verified defects and their remediation. Application source 
 - **Fix:** Wrap long text within preview paragraphs and allow source actions to wrap as separate buttons, without truncating the filename or changing source data.
 - **Evidence and limits:** Synthetic Chromium checks preview and buttons at 320, 390 and 1280 px, checks the saved filename workspace at 320 px, preserves the original source hash and continues through mask, review and export. The 320 px after screenshot was inspected; the four-test browser suite and build pass. A later export-test reload wait was corrected after an initial stale-document race. Physical devices, screen readers and other unusual filenames remain open.
 - **Rollback:** Revert the preview text and action rules with their regression checks only if equivalent narrow-screen usability is retained; preserve source files and metadata.
+
+## BUG-033 — Macro and billboard rectangle inputs use ambiguous axis labels
+
+- **Status:** VERIFIED for the scoped synthetic Chromium layout. **Priority:** P2. **Related tasks:** T-051, T-070 and T-080.
+- **Finding:** Rectangle fields were labelled only `x`, `y`, `width` and `height`, without adjacent instructions explaining the origin or units. This made numeric crop and billboard placement harder to interpret, especially on mobile.
+- **Fix:** Label the fields Left, Top, Width and Height in pixels and explain that coordinates start at the top-left. Rectangle validation and protected-region enforcement remain unchanged.
+- **Evidence and limits:** A synthetic seven-style Chromium flow checks field names, 44 px input heights and no page overflow at 320, 390 and 1280 px. A Macro crop excluding the selected protected pixel is rejected; a crop containing it produces and saves an unapproved composite without another provider call. Screenshots at 320 and 1280 px were inspected; the four-test browser suite and build passed. A one-pixel synthetic region is not evidence that all real labels are selected or legible, and no real provider, physical device or screen reader was tested.
+- **Rollback:** Revert labels, instructions and regression together only with equivalent coordinate clarity; retain crop validation and protected-region gates.

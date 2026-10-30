@@ -242,6 +242,25 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client, `[...${billboardPanel}.querySelectorAll('button')].find(b=>b.textContent==='Save unapproved composite').click()`);
     await until(()=>evaluate(client,`${billboardPanel}?.innerText.includes('Unapproved composite saved locally')`),'saved billboard composite');
     assert.equal(providerCalls,10,'Local billboard composition makes no additional provider call.');
+    const macroId=queue.find(x=>x.style==='macro').id;
+    const macroPanel=`[...document.querySelectorAll('.studio-history > li')].find(li=>li.innerText.includes(${JSON.stringify(macroId)})).querySelector('.strict-composite')`;
+    await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(macroId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);
+    await until(()=>evaluate(client,`${macroPanel}?.innerText.includes('Choose an oriented source-pixel crop')`),'macro crop controls');
+    for (const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const layout=await evaluate(client, `(() => {const p=${macroPanel};return {labels:[...p.querySelectorAll('.strict-rect-fields label')].map(l=>l.innerText.trim()),heights:[...p.querySelectorAll('.strict-rect-fields input')].map(e=>e.getBoundingClientRect().height),instructions:p.innerText.includes('top-left corner'),overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      assert.deepEqual(layout.labels,['Left (px)','Top (px)','Width (px)','Height (px)']);
+      assert.ok(layout.instructions&&!layout.overflow&&layout.heights.every(h=>h>=44),`Crop controls fit at ${width}px.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client, `(() => {const p=${macroPanel};const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [input,value] of [...p.querySelectorAll('.strict-rect-fields input')].map((e,i)=>[e,['50','0','100','100'][i]])){set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}))}[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare local composite').click()})()`);
+    await until(()=>evaluate(client,`${macroPanel}?.innerText.includes('The crop excludes protected source pixels.')`),'protected macro crop rejection');
+    assert.equal(await evaluate(client,`[...${macroPanel}.querySelectorAll('button')].some(b=>b.textContent==='Save unapproved composite')`),false,'An excluded protected area cannot be saved.');
+    await evaluate(client, `(() => {const p=${macroPanel};const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [input,value] of [...p.querySelectorAll('.strict-rect-fields input')].map((e,i)=>[e,['0','0','200','100'][i]])){set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}))}[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare local composite').click()})()`);
+    await until(()=>evaluate(client,`${macroPanel}?.innerText.includes('Native crop: 200 × 100 source pixels')`),'valid macro preview');
+    await evaluate(client, `[...${macroPanel}.querySelectorAll('button')].find(b=>b.textContent==='Save unapproved composite').click()`);
+    await until(()=>evaluate(client,`${macroPanel}?.innerText.includes('Unapproved composite saved locally')`),'saved macro composite');
+    assert.equal(providerCalls,10,'Macro composition makes no additional provider call.');
 
     await client.call('Page.reload');await until(()=>evaluate(client,`document.querySelectorAll('.studio-history li').length>=10`),'persisted seven-style history');
     assert.equal(providerCalls,10,'Reload does not resend the seven-style queue.');
