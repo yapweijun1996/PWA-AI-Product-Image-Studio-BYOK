@@ -229,6 +229,27 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(client.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0,'No uncaught page exceptions occurred.');
 
     assert.equal(await evaluate(client,'document.documentElement.scrollWidth===innerWidth'),true);
+    await evaluate(client, `(() => {window.confirm=()=>true;const create=URL.createObjectURL;URL.createObjectURL=function(blob){window.__backup=blob;return create.call(this,blob)};const click=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download.startsWith('product-backup-')){window.__backupUrl=this.href;return}return click.call(this)};[...document.querySelectorAll('button')].find(b=>b.textContent==='Download full backup').click()})()`);
+    await until(()=>evaluate(client, `!!window.__backupUrl`),'synthetic backup');
+    await evaluate(client, `(async()=>{[...document.querySelectorAll('a')].find(a=>a.textContent.includes('All products')).click()})()`);
+    await until(()=>evaluate(client, `location.pathname==='/' && [...document.querySelectorAll('a')].some(a=>a.textContent==='Import backup')`),'workspace after backup');
+    await evaluate(client, `[...document.querySelectorAll('a')].find(a=>a.textContent==='Import backup').click()`);
+    await until(()=>evaluate(client, `!!document.querySelector('#backup-file')`),'backup import');
+    await evaluate(client, `(() => {const d=new DataTransfer();d.items.add(new File([window.__backup],'synthetic-backup.zip',{type:'application/zip'}));const input=document.querySelector('#backup-file');input.files=d.files;input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await until(()=>evaluate(client, `!!document.querySelector('.import-preview')`),'backup preview');
+    for (const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<600});
+      const preview=await evaluate(client, `(() => {const card=document.querySelector('.import-preview');const actions=[...card.querySelectorAll('.form-actions button')].map(b=>{const r=b.getBoundingClientRect();return {left:r.left,right:r.right,height:r.height,disabled:b.disabled}});const r=card.getBoundingClientRect();return {actions,card:{left:r.left,right:r.right},overflow:document.documentElement.scrollWidth>innerWidth,conflict:card.innerText.includes('conflicts with existing project data')}})()`);
+      assert.equal(preview.conflict,true,'The existing synthetic project is protected from overwrite.');
+      assert.equal(preview.actions[0].disabled,true,'Conflicting import is disabled.');
+      assert.equal(preview.overflow,false,`The backup preview fits at ${width}px.`);
+      assert.ok(preview.actions.every(b=>b.left>=preview.card.left&&b.right<=preview.card.right&&b.height>=44),`Both actions fit within the preview at ${width}px.`);
+    }
+    await evaluate(client, `[...document.querySelectorAll('.import-preview button')].find(b=>b.textContent==='Discard preview').click()`);
+    assert.equal(await evaluate(client, `!!document.querySelector('.import-preview')`),false,'Discard closes the preview.');
+    await evaluate(client, `[...document.querySelectorAll('a')].find(a=>a.textContent.includes('All products')).click()`);
+    await until(()=>evaluate(client, `location.pathname==='/' && document.body.innerText.includes('Synthetic direct gateway test')`),'original product remains after discard');
+    assert.equal(providerCalls,10,'Backup inspection and discard make no provider calls.');
   } finally {
     client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
