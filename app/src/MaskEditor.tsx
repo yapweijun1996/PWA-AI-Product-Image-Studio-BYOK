@@ -35,6 +35,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const previewSource = useRef<ImageData | null>(null);
   const strokes = useRef<MaskStroke[]>([]);
   const active = useRef<MaskStroke | null>(null);
+  const brushPointer = useRef<number | null>(null);
   const regionDrag = useRef<{ pointerId: number; start: MaskPoint } | null>(null);
   const points = useRef(0);
   const controller = useRef<AbortController | null>(null);
@@ -45,7 +46,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     let alive = true;
     let url = '';
     setLoading(true); setLoaded(null); setError(''); setStatus(''); setReview(false); setRegions([]);
-    strokes.current = []; points.current = 0; active.current = null; regionDrag.current = null; setRegionPreview(null); setSelectingRegion(false); setDirty(false);
+    strokes.current = []; points.current = 0; active.current = null; brushPointer.current = null; regionDrag.current = null; setRegionPreview(null); setSelectingRegion(false); setDirty(false);
     void (async () => {
       try {
         const current = await getProduct(product.productId);
@@ -182,18 +183,17 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     return { x: Math.max(0, Math.min(loaded!.source.width, (event.clientX - rect.left) / rect.width * loaded!.source.width)), y: Math.max(0, Math.min(loaded!.source.height, (event.clientY - rect.top) / rect.height * loaded!.source.height)) };
   }
   function pointerDown(event: PointerEvent<HTMLCanvasElement>) {
-    if (event.button !== 0 || !event.isPrimary || regionDrag.current || active.current || !loaded || !previewReady || saving || review || error) return;
+    if (event.button !== 0 || !event.isPrimary || regionDrag.current || active.current || brushPointer.current !== null || !loaded || !previewReady || saving || review || error) return;
     if (tool === 'region' && regions.length >= 32) { setStatus('A maximum of 32 protected areas is allowed.'); return; }
     event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
     if (tool === 'region') { regionDrag.current = { pointerId: event.pointerId, start: position(event) }; setRegionPreview(null); setSelectingRegion(true); }
-    else start(position(event));
+    else { start(position(event)); if (active.current) brushPointer.current = event.pointerId; }
   }
   function pointerMove(event: PointerEvent<HTMLCanvasElement>) {
-    if (!event.isPrimary) return;
     const drag = regionDrag.current;
     if (drag && drag.pointerId === event.pointerId && loaded) {
       event.preventDefault(); setRegionPreview(regionFromDrag(drag.start, position(event), loaded.source.width, loaded.source.height));
-    } else if (active.current) { event.preventDefault(); move(position(event)); }
+    } else if (active.current && brushPointer.current === event.pointerId) { event.preventDefault(); move(position(event)); }
   }
   function pointerUp(event: PointerEvent<HTMLCanvasElement>) {
     if (!event.isPrimary) return;
@@ -206,16 +206,15 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
         setDirty(true); setStatus('Protected area added. Check the outline and coordinates before saving.');
       } else setStatus('Drag across an area at least one source pixel wide and high, or enter coordinates below.');
     }
-    active.current = null;
+    if (brushPointer.current === event.pointerId) { active.current = null; brushPointer.current = null; }
   }
   function cancelPointer() {
     const abandoned = Boolean(regionDrag.current);
-    active.current = null; regionDrag.current = null; setRegionPreview(null); setSelectingRegion(false);
+    active.current = null; brushPointer.current = null; regionDrag.current = null; setRegionPreview(null); setSelectingRegion(false);
     if (abandoned) setStatus('Unfinished protected area discarded. Draw it again or enter coordinates below.');
   }
   function pointerCancel(event: PointerEvent<HTMLCanvasElement>) {
-    if (!event.isPrimary) return;
-    if (regionDrag.current && regionDrag.current.pointerId !== event.pointerId) return;
+    if (regionDrag.current?.pointerId !== event.pointerId && brushPointer.current !== event.pointerId) return;
     cancelPointer();
   }
   function parsedRegions(): StrictRect[] {
@@ -276,7 +275,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
         <button className="secondary-button" type="button" disabled={regions.length >= 32} onClick={() => { setRegions((current) => [...current, { id: crypto.randomUUID(), x: '0', y: '0', width: '1', height: '1' }]); setDirty(true); setStatus(''); }}>Add protected area</button>
       </fieldset>
       {error && review && <p className="error-message" role="alert">{error}</p>}
-      <div className="form-actions">{review ? <><button className="secondary-button" type="button" disabled={saving} onClick={() => { setError(''); setReview(false); }}>Continue editing</button><button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Rendering and saving…' : 'Save mask'}</button></> : <button className="primary-button" type="button" disabled={saving || !previewReady || selectingRegion} onClick={() => { if (regionDrag.current) return; active.current = null; setError(''); setShowMask(true); setReview(true); }}>Review mask</button>}</div>
+      <div className="form-actions">{review ? <><button className="secondary-button" type="button" disabled={saving} onClick={() => { setError(''); setReview(false); }}>Continue editing</button><button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Rendering and saving…' : 'Save mask'}</button></> : <button className="primary-button" type="button" disabled={saving || !previewReady || selectingRegion} onClick={() => { if (regionDrag.current) return; active.current = null; brushPointer.current = null; setError(''); setShowMask(true); setReview(true); }}>Review mask</button>}</div>
       {selectingRegion && <p role="status">Finish or cancel the current protected area before reviewing.</p>}
       {review && <p role="status">Review the white selection and its edges above before saving. Saving creates a separate full-resolution PNG mask.</p>}
     </>}

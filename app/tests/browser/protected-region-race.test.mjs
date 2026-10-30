@@ -119,7 +119,7 @@ test('protected area review and multi-touch brush gestures remain stable', { tim
     const initialSourceHash = await evaluate(client, `(async () => {const p=await import('/src/products.ts');const product=await p.getProduct(${JSON.stringify(productId)});return product.sourceAssets[0].sha256;})()`);
     await evaluate(client, `(() => {const t=document.querySelector('#mask-tool'); t.value='erase'; t.dispatchEvent(new Event('change',{bubbles:true})); document.querySelector('.mask-viewport').scrollIntoView({block:'center'});})()`);
     const brush = await evaluate(client, `(() => {const r=document.querySelector('canvas[aria-label="Mask drawing surface"]').getBoundingClientRect(); return {x:r.left+r.width*.1,y:r.top+r.height*.1,x2:r.left+r.width*.9,y2:r.top+r.height*.1};})()`);
-    await evaluate(client, `window.trace=[]; ['pointerdown','pointerup','pointermove','pointercancel','lostpointercapture'].forEach(n=>document.querySelector('canvas[aria-label="Mask drawing surface"]').addEventListener(n,e=>window.trace.push([n,e.pointerId,e.isPrimary,e.clientX,e.clientY])))`);
+    await evaluate(client, `window.trace=[]; ['pointerdown','pointerup','pointermove','pointercancel','lostpointercapture'].forEach(n=>document.querySelector('canvas[aria-label="Mask drawing surface"]').addEventListener(n,e=>window.trace.push([n,e.pointerId,e.isPrimary,e.clientX,e.clientY,e.pointerType])))`);
     await touch('touchStart', [{x:brush.x,y:brush.y,id:0}]);
     await touch('touchStart', [{x:brush.x,y:brush.y,id:0},{x:brush.x+3,y:brush.y+3,id:1}]);
     await evaluate(client, `document.querySelector('canvas[aria-label="Mask drawing surface"]').dispatchEvent(new PointerEvent('pointercancel', {bubbles:true, pointerId:999, pointerType:'touch', isPrimary:false}))`);
@@ -134,6 +134,19 @@ test('protected area review and multi-touch brush gestures remain stable', { tim
     assert.ok(trace.some(([type, , primary]) => type === 'pointerup' && !primary), 'The secondary pointer ended.');
     assert.ok(trace.some(([type, , primary, x]) => type === 'pointermove' && primary && x > brush.x2 - 1), 'The primary pointer moved after the secondary pointer ended.');
     assert.equal(alpha, 0, 'Primary brush continues after the secondary touch ends.');
+    const mixed = await evaluate(client, `(() => {const r=document.querySelector('canvas[aria-label="Mask drawing surface"]').getBoundingClientRect(); return {x:r.left+r.width*.1,y:r.top+r.height*.9,x2:r.left+r.width*.9,y2:r.top+r.height*.9};})()`);
+    await touch('touchStart', [{x:mixed.x,y:mixed.y,id:0}]);
+    await client.call('Input.dispatchMouseEvent', {type:'mousePressed',x:mixed.x+20,y:mixed.y,button:'left',buttons:1,clickCount:1});
+    await evaluate(client, `document.querySelector('canvas[aria-label="Mask drawing surface"]').dispatchEvent(new PointerEvent('pointercancel', {bubbles:true, pointerId:1, pointerType:'mouse', isPrimary:true}))`);
+    await client.call('Input.dispatchMouseEvent', {type:'mouseReleased',x:mixed.x+20,y:mixed.y,button:'left',buttons:0,clickCount:1});
+    await touch('touchMove', [{x:mixed.x2,y:mixed.y2,id:0}]);
+    await touch('touchEnd', []);
+    const mixedAlpha = await evaluate(client, `(() => {const c=document.querySelector('canvas[aria-label="Mask drawing surface"]');return c.getContext('2d').getImageData(Math.floor(c.width*.9),Math.floor(c.height*.9),1,1).data[3];})()`);
+    const mixedTrace = await evaluate(client, 'window.trace');
+    assert.ok(mixedTrace.some(([type, , primary, , , pointerType]) => type === 'pointerup' && primary && pointerType === 'mouse'), 'A primary mouse pointer ended.');
+    assert.ok(mixedTrace.some(([type, , primary, x, , pointerType]) => type === 'pointermove' && primary && pointerType === 'touch' && x > mixed.x2 - 1), 'The primary touch continued afterward.');
+    assert.equal(mixedAlpha,0,'Primary touch brush continues when a primary mouse pointer ends.');
+
     await evaluate(client, `[...document.querySelectorAll('button')].find((x) => x.textContent === 'Review mask').click()`);
     await until(() => evaluate(client, `[...document.querySelectorAll('button')].some((x) => x.textContent === 'Save mask')`), 'brush mask review');
     await evaluate(client, `[...document.querySelectorAll('button')].find((x) => x.textContent === 'Save mask').click()`);
