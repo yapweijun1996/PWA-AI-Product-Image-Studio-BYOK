@@ -26,8 +26,8 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const [zoom, setZoom] = useState(100);
   const [showMask, setShowMask] = useState(true);
   const [regions, setRegions] = useState<RegionDraft[]>([]);
-  const [x, setX] = useState(50);
-  const [y, setY] = useState(50);
+  const [x, setX] = useState('50');
+  const [y, setY] = useState('50');
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -40,6 +40,8 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const points = useRef(0);
   const controller = useRef<AbortController | null>(null);
   useUnsavedChanges(dirty || saving || selectingRegion);
+  const validStampCoordinate = (value: string) => /^\d+$/.test(value) && Number(value) <= 100;
+  const stampReady = validStampCoordinate(x) && validStampCoordinate(y);
 
   useEffect(() => {
     if (!sourceId) { setLoaded(null); return; }
@@ -262,7 +264,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
         if (![rx, ry, rw, rh].every(Number.isSafeInteger) || rw < 1 || rh < 1 || rx + rw > loaded.source.width || ry + rh > loaded.source.height) return null;
         return <div key={region.id} className="mask-region-outline" aria-hidden="true" style={{ left: `${rx / loaded.source.width * 100}%`, top: `${ry / loaded.source.height * 100}%`, width: `${rw / loaded.source.width * 100}%`, height: `${rh / loaded.source.height * 100}%` }}><span>{index + 1}</span></div>;
       })}</div></div>
-      <fieldset className="mask-stamp" disabled={saving || review || !previewReady || tool === 'region'}><legend>Place a brush mark without dragging</legend><label htmlFor="mask-x">Horizontal position (%)</label><input id="mask-x" type="number" min="0" max="100" value={x} onChange={(event) => setX(Number(event.target.value))} /><label htmlFor="mask-y">Vertical position (%)</label><input id="mask-y" type="number" min="0" max="100" value={y} onChange={(event) => setY(Number(event.target.value))} /><button className="secondary-button" type="button" onClick={() => { start({ x: Math.max(0, Math.min(100, x)) * loaded.source.width / 100, y: Math.max(0, Math.min(100, y)) * loaded.source.height / 100 }); active.current = null; }}>Apply brush mark</button></fieldset>
+      <fieldset className="mask-stamp" disabled={saving || review || !previewReady || tool === 'region'}><legend>Place a brush mark without dragging</legend><p id="mask-stamp-help">Enter a whole percentage from 0 to 100 for each position.</p><label htmlFor="mask-x">Horizontal position (%)</label><input id="mask-x" type="number" min="0" max="100" step="1" aria-describedby="mask-stamp-help" value={x} onChange={(event) => setX(event.target.value)} /><label htmlFor="mask-y">Vertical position (%)</label><input id="mask-y" type="number" min="0" max="100" step="1" aria-describedby="mask-stamp-help" value={y} onChange={(event) => setY(event.target.value)} /><button className="secondary-button" type="button" disabled={!stampReady} onClick={() => { if (!stampReady) return; start({ x: Number(x) * loaded.source.width / 100, y: Number(y) * loaded.source.height / 100 }); active.current = null; }}>Apply brush mark</button></fieldset>
       <fieldset className="mask-regions" disabled={saving || review || !previewReady || selectingRegion}>
         <legend>Protected areas (optional)</legend>
         <p>Select the protected-area tool and drag a rectangle, or enter source-pixel coordinates below to avoid dragging. Mark every visible label or other required detail. The mask must fully cover each area. Areas are saved with this mask version and required for approval and export. Selecting areas cannot guarantee you found every detail.</p>
