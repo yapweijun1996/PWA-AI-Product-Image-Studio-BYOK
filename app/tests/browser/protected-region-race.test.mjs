@@ -221,7 +221,41 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     }
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     await evaluate(client, `[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').click()`);
-    await until(() => evaluate(client, `![...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').parentElement.open`),'closed review');
+    assert.equal(await evaluate(client, `[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').parentElement.open`),false);
+    await evaluate(client, `[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').click()`);
+    await until(() => evaluate(client, `[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').parentElement.open`),'reopened review');
+    const newCompositeId=compositeIds.find(id=>id!==exportFixture.assetId);
+    assert.ok(newCompositeId);
+    assert.equal(await evaluate(client, `document.querySelector('.visual-review h5').id`), `review-heading-${newCompositeId}`);
+    await evaluate(client, `(() => {const form=document.querySelector('.visual-review form');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const input of form.querySelectorAll('input[type="number"]')) {setter.call(input,'5');input.dispatchEvent(new Event('input',{bubbles:true}));}for(const select of form.querySelectorAll('select')) {select.value=select.id.startsWith('qa-variant-')?'default':'MATCH';select.dispatchEvent(new Event('change',{bubbles:true}));}})()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review form')?.innerText.includes('Proposed status: PASS_CANDIDATE')`),'passing review evaluation');
+    await evaluate(client, `(() => {const f=document.querySelector('.visual-review form'),select=f.querySelectorAll('select')[2],note=f.querySelector('textarea');select.value='MISMATCH';select.dispatchEvent(new Event('change',{bubbles:true}));Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(note,'Synthetic label mismatch');note.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await evaluate(client, `[...document.querySelector('.visual-review form').querySelectorAll('button')].find(b=>b.textContent==='Add finding').click()`);
+    await until(() => evaluate(client, `[...document.querySelectorAll('.visual-review fieldset legend')].some(l=>l.textContent==='Finding 1')`),'blocker finding');
+    await evaluate(client, `(() => {const legend=[...document.querySelectorAll('.visual-review fieldset legend')].find(l=>l.textContent==='Finding 1'),f=legend.parentElement,note=f.querySelector('textarea'),location=f.querySelectorAll('select')[1],severity=f.querySelectorAll('select')[0];severity.value='BLOCKER';severity.dispatchEvent(new Event('change',{bubbles:true}));Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(note,'Synthetic label mismatch');note.dispatchEvent(new Event('input',{bubbles:true}));location.value='global';location.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review form')?.innerText.includes('Proposed status: REJECTED')`),'mismatch veto');
+    await evaluate(client, `(() => {const f=document.querySelector('.visual-review form');[...f.querySelectorAll('label')].find(x=>x.innerText.includes('I personally compared')).querySelector('input').click();})()`);
+    await until(() => evaluate(client, `![...document.querySelector('.visual-review form').querySelectorAll('button')].find(b=>b.textContent==='Save this human review').disabled`),'veto review confirmation');
+    await evaluate(client, `[...document.querySelector('.visual-review form').querySelectorAll('button')].find(b=>b.textContent==='Save this human review').click()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review')?.innerText.includes('Last checked review: REJECTED')`),'saved veto review');
+    assert.equal(await evaluate(client, `[...document.querySelectorAll('.visual-review button')].find(b=>b.textContent==='Choose approval').disabled`),true,'A maximum score cannot override the mismatch.');
+    assert.equal(await evaluate(client, `(async () => {const p=await import('/src/products.ts');return (await p.listApprovedExportCandidates(${JSON.stringify(productId)})).some(x=>x.assetId===${JSON.stringify(newCompositeId)});})()`),false,'The vetoed composite is not an export candidate.');
+    await evaluate(client, `(() => {const f=document.querySelector('.visual-review form');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const input of f.querySelectorAll('input[type="number"]')) {setter.call(input,'5');input.dispatchEvent(new Event('input',{bubbles:true}));}for(const select of f.querySelectorAll('select')) {select.value=select.id.startsWith('qa-variant-')?'default':'MATCH';select.dispatchEvent(new Event('change',{bubbles:true}));}})()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review form')?.innerText.includes('Proposed status: PASS_CANDIDATE')`),'fresh passing review');
+    await evaluate(client, `(() => {const f=document.querySelector('.visual-review form');[...f.querySelectorAll('label')].find(x=>x.innerText.includes('I personally compared')).querySelector('input').click();})()`);
+    await until(() => evaluate(client, `![...document.querySelector('.visual-review form').querySelectorAll('button')].find(b=>b.textContent==='Save this human review').disabled`),'review confirmation');
+    await evaluate(client, `[...document.querySelector('.visual-review form').querySelectorAll('button')].find(b=>b.textContent==='Save this human review').click()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review')?.innerText.includes('Review recorded.') && [...document.querySelectorAll('.visual-review button')].some(b=>b.textContent==='Choose approval' && !b.disabled)`),'saved review');
+    await evaluate(client, `[...document.querySelectorAll('.visual-review button')].find(b=>b.textContent==='Choose approval').click()`);
+    assert.equal(await evaluate(client, `[...document.querySelectorAll('.visual-review button')].find(b=>b.textContent==='Record approved decision').disabled`),true);
+    await evaluate(client, `[...document.querySelectorAll('.visual-review label')].find(l=>l.innerText.includes('I explicitly approve')).querySelector('input').click()`);
+    await until(() => evaluate(client, `![...document.querySelectorAll('.visual-review button')].find(b=>b.textContent==='Record approved decision').disabled`),'decision confirmation');
+    await evaluate(client, `[...document.querySelectorAll('.visual-review button')].find(b=>b.textContent==='Record approved decision').click()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review')?.innerText.includes('decision APPROVED')`),'recorded decision');
+    const uiDecision=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const h=await p.listVisualReviews(${JSON.stringify(productId)},${JSON.stringify(exportFixture.attemptId)},${JSON.stringify(newCompositeId)});const d=h.decisions.find(x=>x.current),r=h.reviews.find(x=>x.qaId===d.reportId);return {reviewId:r.qaId,decisionId:d.qaId,decision:d.decision};})()`);
+    assert.equal(uiDecision.decision,'APPROVED');Object.assign(exportFixture,{assetId:newCompositeId,reviewId:uiDecision.reviewId,decisionId:uiDecision.decisionId});
+    await client.call('Page.reload');
+    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`),'newly approved export candidate');
 
 
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
