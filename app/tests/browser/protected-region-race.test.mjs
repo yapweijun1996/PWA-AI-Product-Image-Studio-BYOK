@@ -178,6 +178,31 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     })()`);
     await client.call('Page.reload');
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
+    await until(() => evaluate(client, `[...document.querySelectorAll('summary')].some(s=>s.textContent==='Review this composite')`),'composite review disclosure');
+    await evaluate(client, `[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').click()`);
+    await until(() => evaluate(client, `document.querySelectorAll('.visual-review .strict-comparison .strict-zoom').length===2`),'review comparison');
+    const reviewLayout=await evaluate(client, `[...document.querySelectorAll('.visual-review .strict-comparison .strict-zoom')].map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})`);
+    assert.equal(await evaluate(client, `document.querySelectorAll('.visual-review .strict-comparison figcaption')[1].textContent`), 'Composite under review · 1024 × 1024');
+    assert.ok(reviewLayout.every(p=>p.width>=180),'Review previews need sufficient mobile width.');
+    assert.ok(reviewLayout[1].y>reviewLayout[0].y+reviewLayout[0].height,'Mobile review previews stack vertically.');
+    await evaluate(client, `(() => {const e=document.querySelector('.visual-review input[type="range"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'200');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review [aria-label="Review composite zoom area"] img')?.style.width==='200%'`),'review zoom');
+    await evaluate(client, `document.querySelector('.visual-review label.checkbox-label input').click()`);
+    await until(() => evaluate(client, `document.querySelector('.visual-review [aria-label="Review composite zoom area"] img')?.style.width==='1024px'`),'native-pixel review');
+    const native=await evaluate(client, `(() => {const e=document.querySelector('.visual-review [aria-label="Review composite zoom area"]');return {client:e.clientWidth,scroll:e.scrollWidth,tab:e.tabIndex};})()`);
+    assert.ok(native.scroll>native.client && native.tab===0,'Native review is scrollable and keyboard focusable.');
+    for (const width of [390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const state=await evaluate(client, `(() => {const panes=[...document.querySelectorAll('.visual-review .strict-comparison .strict-zoom')].map(e=>{const r=e.getBoundingClientRect();return {y:r.y,width:r.width,height:r.height}});return {panes,overflow:document.documentElement.scrollWidth>innerWidth};})()`);
+      assert.equal(state.overflow,false);
+      if(width===390) assert.ok(state.panes[1].y>state.panes[0].y+state.panes[0].height && state.panes.every(p=>p.width>=250));
+      else assert.ok(Math.abs(state.panes[0].y-state.panes[1].y)<1);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client, `[...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').click()`);
+    await until(() => evaluate(client, `![...document.querySelectorAll('summary')].find(s=>s.textContent==='Review this composite').parentElement.open`),'closed review');
+
+
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'converted preview');
     await evaluate(client, `document.querySelector('.approved-export .strict-comparison').scrollIntoView({block:'start'})`);

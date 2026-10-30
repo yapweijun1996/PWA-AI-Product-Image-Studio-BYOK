@@ -180,7 +180,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 22px
   .app-shell { display: block; }.sidebar { padding: calc(16px + env(safe-area-inset-top)) 20px 0; gap: 14px; border-right: 0; border-bottom: 1px solid var(--border); }.brand { min-height: 44px; }.brand-mark { width: 38px; height: 38px; flex-basis: 38px; }.navigation { flex-direction: row; gap: 2px; }.navigation a { padding: 0 11px; min-width: 0; }.sidebar-note { display: none; }.topbar { height: 52px; padding: 0 24px; }.topbar > span:first-child { display: none; }main { padding: 42px 24px 60px; }footer { padding-left: 24px; padding-right: 24px; }
 }
 @media (max-width: 540px) {
-  .approved-export .strict-comparison { grid-template-columns: minmax(0, 1fr); }
+  .strict-comparison { grid-template-columns: minmax(0, 1fr); }
   .page-heading, .section-heading { flex-direction: column; }.page-heading .lead { margin-bottom: 0; }.page-actions { margin-bottom: 30px; }.product-layout { grid-template-columns: 1fr; }.product-section, .form-card { padding: 22px; }.settings-card { flex-direction: column; gap: 20px; padding: 24px; }.setting-control { width: 100%; min-width: 0; }.topbar { justify-content: flex-end; }footer { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; }.update-spinner { animation: none; } }
