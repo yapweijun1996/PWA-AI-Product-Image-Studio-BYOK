@@ -86,14 +86,17 @@ function Settings({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) 
 function Help() {
   return <>
     <div className="eyebrow">GUIDE</div>
-    <h1>Working with care</h1>
-    <p className="lead">A few principles for creating product imagery without losing sight of the original.</p>
+    <h1>Get started</h1>
+    <p className="lead">Create and review a product image in your local workspace.</p>
+    <section className="notice" aria-labelledby="availability-heading"><h2 id="availability-heading">Current availability</h2><p>This is a local development build. The Pi agent and remote mobile gateway are not available yet. The current gateway works only on the same device at its 127.0.0.1 address; use synthetic credentials until the required security review is complete.</p></section>
     <div className="guide-list">
-      <section><span className="guide-index">01</span><div><h2>Keep the source</h2><p>Product appearance, readable labels and SKU details matter. A generated image cannot establish product authenticity on its own.</p></div></section>
-      <section><span className="guide-index">02</span><div><h2>Know the limits</h2><p>STRICT is intended to preserve the original product foreground while allowing a generated background. It cannot prove an unseen angle or unreadable label.</p></div></section>
-      <section><span className="guide-index">03</span><div><h2>Review charges and results</h2><p>Each generation attempt can incur a provider charge. Review the cost and inspect the image before approving it for use.</p></div></section>
+      <section><span className="guide-index">01</span><div><h2>Create a product</h2><p>In the workspace, create one project per SKU and confirm that you have rights to use its images and artwork. Add only facts you can verify.</p><Link className="text-link" to="/products/new">Create a product <span aria-hidden="true">→</span></Link></div></section>
+      <section><span className="guide-index">02</span><div><h2>Add the original and mask</h2><p>Upload an original image, choose its view and save it. Edit the mask to keep the product, then mark every visible label and required detail as a protected area. Review and save the mask; the original remains unchanged.</p></div></section>
+      <section><span className="guide-index">03</span><div><h2>Connect the local gateway</h2><p>On the device running the development gateway, use Settings to sign in with the separate local app access token and connect the provider session. Never enter an OpenAI API key in the browser. A phone cannot reach a computer's gateway using the phone's own loopback address.</p><Link className="text-link" to="/settings">Open provider settings <span aria-hidden="true">→</span></Link></div></section>
+      <section><span className="guide-index">04</span><div><h2>Authorize scene attempts</h2><p>Choose styles and inspect each prompt and estimate. Each authorized attempt can incur a charge; the product name, category and selected confirmed facts are sent to the provider, while the original and mask stay local. A timeout may still be charged, so review the attempt before a separately authorized retry.</p></div></section>
+      <section><span className="guide-index">05</span><div><h2>Compose and review</h2><p>Compose the saved product selection over a generated scene. Compare it with the original, record findings and make a separate approval decision. Protected areas do not prove every label was selected or remains readable; do not approve a mismatched or unclear product.</p></div></section>
+      <section><span className="guide-index">06</span><div><h2>Export and back up</h2><p>Inspect each converted output before downloading an approved-output bundle. For the complete project, use its full backup separately. Backups and output bundles are unencrypted and can contain sensitive images and text; browser data can be cleared or evicted.</p><Link className="text-link" to="/">Open workspace <span aria-hidden="true">→</span></Link></div></section>
     </div>
-    <p className="guide-footnote">Masking, composition, human review and output conversion are local. Each opt-in style attempt sends its displayed prompt, including selected confirmed facts, to the provider to create a scene. Output bundles are not complete project backups.</p>
   </>;
 }
 

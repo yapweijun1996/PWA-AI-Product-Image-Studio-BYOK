@@ -521,3 +521,43 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await rm(userDir, { recursive: true, force: true });
   }
 });
+
+
+test('guide describes current local workflow and supports keyboard navigation', {timeout: 45000}, async () => {
+  assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable.');
+  const profile=await mkdtemp(join(tmpdir(),'studio-guide-browser-'));
+  const vite=await createServer({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',server:{host:'127.0.0.1',port:0}});
+  let browser,client;
+  try {
+    await vite.listen();
+    browser=spawn(chrome,['--headless=new','--remote-debugging-port=0',`--user-data-dir=${profile}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','about:blank'],{stdio:'ignore'});
+    const port=await until(async()=>{try{return Number((await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0])}catch{return null}},'guide Chromium');
+    const target=(await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(item=>item.type==='page');
+    client=await connect(target.webSocketDebuggerUrl);await client.call('Runtime.enable');await client.call('Page.enable');
+    await client.call('Page.addScriptToEvaluateOnNewDocument',{source:`window.__apiRequests=[];const originalFetch=window.fetch;window.fetch=function(input,...args){const url=typeof input==='string'?input:input.url;if(String(url).includes('/api/v2'))window.__apiRequests.push(url);return originalFetch.call(this,input,...args)}`});
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await client.call('Page.navigate',{url:`http://localhost:${vite.httpServer.address().port}/help`});
+    await until(()=>evaluate(client, `document.querySelector('h1')?.innerText==='Get started' && document.querySelectorAll('.guide-list section').length===6`),'local onboarding guide');
+    assert.equal(await evaluate(client, `document.querySelector('#availability-heading').parentElement.innerText.includes('Pi agent and remote mobile gateway are not available yet')`),true);
+    for(const width of [320,390,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const layout=await evaluate(client, `(() => ({overflow:document.documentElement.scrollWidth>innerWidth, links:[...document.querySelectorAll('.guide-list a')].map(a=>a.getBoundingClientRect().height)}))()`);
+      assert.equal(layout.overflow,false,`The guide fits ${width}px.`);
+      assert.ok(layout.links.length===3 && layout.links.every(height=>height>=44),`Guide links have usable height at ${width}px.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client, `[...document.querySelectorAll('.guide-list a')].find(a=>a.textContent.includes('Create a product')).focus()`);
+    await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+    await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+    assert.equal(await evaluate(client, `document.activeElement?.textContent.includes('Open provider settings')`),true);
+    await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+    await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+    await until(()=>evaluate(client, `location.pathname==='/settings' && document.querySelector('.provider-session')?.innerText.includes('Remote mobile gateway access is not available yet.')`),'guide settings link');
+    assert.equal(await evaluate(client, `window.__apiRequests.length`),0);
+  } finally {
+    client?.close();
+    if(browser && browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(resolve=>browser.once('exit',resolve)),delay(3000)]);}
+    await vite.close();
+    await rm(profile,{recursive:true,force:true});
+  }
+});
