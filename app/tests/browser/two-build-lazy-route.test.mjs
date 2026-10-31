@@ -80,8 +80,14 @@ test('an old tab loads its cached lazy route after a user-activated two-build up
     await evaluate(newTab,`navigator.serviceWorker.getRegistration().then(r=>r.update())`);
     await until(()=>evaluate(newTab,`navigator.serviceWorker.getRegistration().then(r=>!!r.waiting)`),'waiting version B');
     await until(()=>evaluate(newTab,`[...document.querySelectorAll('.update-notice button')].some(x=>x.textContent==='Update now')`),'user update prompt');
+    await newTab.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+    await evaluate(newTab,`(() => {const observer=new MutationObserver(()=>{const spinner=document.querySelector('.update-spinner');if(spinner){sessionStorage.setItem('synthetic-update-motion',JSON.stringify({reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,animation:getComputedStyle(spinner).animationName,notice:document.querySelector('.update-notice')?.innerText}));observer.disconnect()}});observer.observe(document.body,{subtree:true,childList:true})})()`);
     await evaluate(newTab,`[...document.querySelectorAll('.update-notice button')].find(x=>x.textContent==='Update now').click()`);
     await until(()=>evaluate(oldTab,`document.querySelector('.update-notice')?.innerText.includes('Reload when ready')`),'other tab update notice');
+    const motion=await until(()=>evaluate(newTab,`JSON.parse(sessionStorage.getItem('synthetic-update-motion')||'null')`),'reduced-motion update indicator');
+    assert.equal(motion.reduced,true,'The browser emulates reduced motion.');
+    assert.equal(motion.animation,'none','The actual update indicator does not animate with reduced motion.');
+    assert.ok(motion.notice.includes('Updating application'),'The updating state remains visible without animation.');
     assert.equal(await evaluate(oldTab,`window.__oldTabSentinel`),'still-loaded','The old tab was not silently reloaded.');
     assert.equal(await evaluate(oldTab,`document.querySelector('#product-name').value`),'Synthetic old tab','The old tab retains its unsaved draft.');
     assert.ok(await evaluate(oldTab,`document.querySelector('.update-notice').innerText.includes('Save or discard your changes')`),'The update notice explains the draft hold.');

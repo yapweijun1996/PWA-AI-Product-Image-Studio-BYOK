@@ -14,6 +14,8 @@ The direct-gateway journey also injects a synthetic transport failure, checks th
 
 The direct-gateway test also checks first use of the cached product route while offline and simulates a blocked backup route to verify the explicit error and reload flow. A separate synthetic two-build test checks that an old tab retains a draft and can load its cached lazy page after another tab activates an update. These checks do not replace installed-device or suspended-tab testing.
 
+The two-build journey also emulates reduced motion and captures the actual update indicator before reload, checking that the status remains visible while its CSS animation is disabled. This is not a complete reduced-motion or assistive-technology audit.
+
 A single-tab two-build cache-limit test fills the shell-cache slots with synthetic fixtures, checks the draft and confirmation guards, and verifies that confirmed cleanup preserves the active shell and unrelated cached data before a separate user-triggered update. It uses simulated confirmation responses and does not reproduce natural quota exhaustion or replace multi-tab/device acceptance.
 
 A two-tab variant checks that an open tab and its synthetic draft prevent cleanup. After that disposable tab closes, the test permits either completed cleanup or a reported partial stop if an update begins concurrently; activation remains a separate user action. Suspended-tab and physical-device acceptance remain open.
