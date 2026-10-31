@@ -132,6 +132,32 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.equal(await evaluate(client, `(async()=> (await import('/src/useUnsavedChanges.ts')).hasUnsavedChanges())()`),false,'Confirmed discard clears the draft guard.');
     await evaluate(client, `(() => {window.confirm=window.__oldConfirm;const s=document.querySelector('#mask-source');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
     await until(() => evaluate(client, `document.querySelector('#mask-tool') && !document.querySelector('.mask-regions')?.disabled`),'reopened mask editor');
+    const key = async (name, code, keyCode) => {
+      await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:name,code,windowsVirtualKeyCode:keyCode});
+      await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:name,code,windowsVirtualKeyCode:keyCode});
+    };
+    await evaluate(client, `[...document.querySelectorAll('.mask-regions button')].find(b=>b.textContent==='Add protected area').focus()`);
+    await key(' ','Space',32);
+    await until(()=>evaluate(client, `document.querySelectorAll('.mask-region').length===1`),'keyboard added protected area');
+    await evaluate(client, `document.querySelector('.mask-region input').focus()`);
+    for (let i=0;i<4;i++) {
+      assert.equal(await evaluate(client, `document.activeElement===document.querySelectorAll('.mask-region input')[${i}]`),true,`Keyboard reaches protected coordinate ${i+1}.`);
+      await key('ArrowUp','ArrowUp',38);
+      if (i<3) await key('Tab','Tab',9);
+    }
+    assert.deepEqual(await evaluate(client, `[...document.querySelectorAll('.mask-region input')].map(input=>Number(input.value))`),[1,1,2,2]);
+    await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Review mask').focus()`);
+    await key(' ','Space',32);
+    await until(()=>evaluate(client, `[...document.querySelectorAll('.mask-editor button')].some(b=>b.textContent==='Save mask')`),'keyboard mask review');
+    await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask').focus()`);
+    await key(' ','Space',32);
+    await until(()=>evaluate(client, `document.querySelector('.mask-editor [role=status]')?.innerText.includes('Mask saved locally')`),'keyboard protected mask save');
+    const keyboardRegion=await evaluate(client, `(async()=>{const p=await import('/src/products.ts');const product=await p.getProduct(${JSON.stringify(productId)});return (await p.loadSourceMask(product.productId,product.sourceAssets[0])).protectedEvidence.regions})()`);
+    assert.deepEqual(keyboardRegion,[{x:1,y:1,width:2,height:2}],'Keyboard-selected source coordinates are persisted.');
+    await evaluate(client, `[...document.querySelectorAll('.mask-regions button')].find(b=>b.textContent==='Remove area 1').click()`);
+    await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Review mask').click()`);
+    await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask').click()`);
+    await until(()=>evaluate(client, `document.querySelector('.mask-editor [role=status]')?.innerText.includes('Mask saved locally')`),'cleared keyboard fixture');
     await evaluate(client, `(() => {const tool = document.querySelector('#mask-tool'); tool.value = 'region'; tool.dispatchEvent(new Event('change', { bubbles: true })); document.querySelector('.mask-viewport').scrollIntoView({ block: 'center' });})()`);
     const point = await evaluate(client, `(() => {const r = document.querySelector('canvas[aria-label="Mask drawing surface"]').getBoundingClientRect(); return {x: r.left + r.width * 0.2, y: r.top + r.height * 0.2, x2: r.left + r.width * 0.7, y2: r.top + r.height * 0.7};})()`);
     const touch = async (type, points) => client.call('Input.dispatchTouchEvent', { type, touchPoints: points });
