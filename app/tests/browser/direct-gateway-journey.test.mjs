@@ -240,7 +240,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-panel [role=alert]')].some(e=>e.innerText.includes('This retry is no longer eligible'))`),'stale retry error');
     const staleError=await evaluate(client,`(() => {const el=[...document.querySelectorAll('.studio-panel [role=alert]')].find(e=>e.innerText.includes('This retry is no longer eligible'));const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight,focused:document.activeElement===el}})()`);
     assert.ok(staleError.top>=0 && staleError.top<staleError.height && staleError.focused,`The stale retry explanation is visible and focused: ${JSON.stringify(staleError)}`);
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       await evaluate(client,`document.querySelector('#studio-error').scrollIntoView({block:'start'})`);
       const layout=await evaluate(client,`(() => {const r=document.querySelector('#studio-error').getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,overflow:document.documentElement.scrollWidth>innerWidth,focused:document.activeElement?.id}})()`);
@@ -256,7 +256,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Retry of attempt ${unknownId}')`),'prepared retry');
     const retryVisibility=await evaluate(client,`(() => {const target=document.querySelector('#retry-review-heading') || [...document.querySelectorAll('.studio-panel form strong')].find(e=>e.textContent.startsWith('Retry of attempt'));const r=target?.getBoundingClientRect();return {top:r?.top,viewport:innerHeight,focused:document.activeElement===target}})()`);
     assert.ok(retryVisibility.top>=0 && retryVisibility.top<retryVisibility.viewport && retryVisibility.focused,`The prepared retry is visible and focused: ${JSON.stringify(retryVisibility)}`);
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       await evaluate(client,`document.querySelector('#retry-review-heading').scrollIntoView({block:'start'})`);
       const layout=await evaluate(client,`(() => {const r=document.querySelector('#retry-review-heading').getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,overflow:document.documentElement.scrollWidth>innerWidth,focused:document.activeElement?.id}})()`);
@@ -300,7 +300,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client, `window.confirm=window.__oldConfirm`);
 
     assert.match(await evaluate(client,`document.querySelector('.queue-consent-progress').innerText`),/Style authorizations: 0 of 7/);
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<600});
       const layout=await evaluate(client, `(() => {const p=document.querySelector('.style-plan > p');const submit=document.querySelector('.studio-panel button[type="submit"]');const comparison=document.querySelector('.studio-scene-comparison');const labels=[...comparison.querySelectorAll(':scope > label')];const rect=e=>e.getBoundingClientRect();return {lineHeight:parseFloat(getComputedStyle(p).lineHeight),fontSize:parseFloat(getComputedStyle(p).fontSize),gap:rect(comparison).top-rect(submit).bottom,labelGap:rect(labels[1]).top-rect(labels[0]).bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
       assert.ok(layout.lineHeight >= layout.fontSize*1.49, `Readable plan text at ${width}px`);
@@ -355,7 +355,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     const macroPanel=`[...document.querySelectorAll('.studio-history > li')].find(li=>li.innerText.includes(${JSON.stringify(macroId)})).querySelector('.strict-composite')`;
     await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history > li')].find(x=>x.innerText.includes(${JSON.stringify(macroId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);
     await until(()=>evaluate(client,`${macroPanel}?.innerText.includes('Choose an oriented source-pixel crop')`),'macro crop controls');
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       const layout=await evaluate(client, `(() => {const p=${macroPanel};return {labels:[...p.querySelectorAll('.strict-rect-fields label')].map(l=>l.innerText.trim()),heights:[...p.querySelectorAll('.strict-rect-fields input')].map(e=>e.getBoundingClientRect().height),instructions:p.innerText.includes('top-left corner'),overflow:document.documentElement.scrollWidth>innerWidth}})()`);
       assert.deepEqual(layout.labels,['Left (px)','Top (px)','Width (px)','Height (px)']);
@@ -402,7 +402,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client, `!!document.querySelector('#backup-file')`),'backup import');
     await evaluate(client, `(() => {const d=new DataTransfer();d.items.add(new File([window.__backup],'synthetic-backup.zip',{type:'application/zip'}));const input=document.querySelector('#backup-file');input.files=d.files;input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
     await until(()=>evaluate(client, `!!document.querySelector('.import-preview')`),'backup preview');
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<600});
       const preview=await evaluate(client, `(() => {const card=document.querySelector('.import-preview');const actions=[...card.querySelectorAll('.form-actions button')].map(b=>{const r=b.getBoundingClientRect();return {left:r.left,right:r.right,height:r.height,disabled:b.disabled}});const r=card.getBoundingClientRect();return {actions,card:{left:r.left,right:r.right},overflow:document.documentElement.scrollWidth>innerWidth,conflict:card.innerText.includes('conflicts with existing project data')}})()`);
       assert.equal(preview.conflict,true,'The existing synthetic project is protected from overwrite.');
@@ -526,7 +526,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     const importedMarkers=await evaluate(untrustedClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('userSettings'),s=tx.objectStore('userSettings'),requests=${JSON.stringify(untouched)}.map(id=>s.get('backup-import-unresolved:'+id));tx.oncomplete=()=>resolve(requests.map(q=>q.result?.reviewed));tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
     assert.deepEqual(importedMarkers,[false,false,false,false],'Imported pre-send claims require fresh external billing review.');
     assert.equal(await evaluate(untrustedClient, `document.querySelector('.studio-panel [role=status] a')?.innerText`),'Open local attempt history','Local blockers have a recovery link.');
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await untrustedClient.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       assert.equal(await evaluate(untrustedClient, `document.documentElement.scrollWidth<=innerWidth`),true,`Local blocker notice fits at ${width}px.`);
     }

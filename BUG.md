@@ -464,3 +464,10 @@ This register tracks verified defects and their remediation. Application source 
 - **Finding:** After product facts changed, preparing a retry correctly failed without sending a request, but the explanation appeared above the mobile viewport and did not receive focus. A synthetic 320 px test measured its top approximately 547 px above the viewport.
 - **Remediation:** A retry-preparation error moves into view and receives focus if focus remains on the initiating control or body. Existing eligibility, consent and gateway checks are unchanged; other errors do not trigger this retry-specific focus action.
 - **Evidence and limits:** A synthetic browser journey adds a confirmed fact through the UI, attempts a stale retry and verifies no request was sent. The failure assertion passed after the change, with responsive checks at 320, 390 and 1280 px; mobile and desktop screenshots were inspected. The test removes its temporary fact and continues through a separately authorized retry. The focused journey, six-test browser suite and production build passed. Screen readers, real devices and focus changes during a slow failing operation remain unverified.
+
+## BUG-059 — Comparison test assumes all widths below 800 px stack vertically
+
+- **Status:** IMPLEMENTED_UNVERIFIED. **Priority:** P2. **Related tasks:** T-080 and T-084.
+- **Finding:** Adding a 768 px viewport exposed a test failure: the comparison assertion expected vertically stacked panes below 800 px, while the stylesheet switches this component at 540 px. This was a test assumption, not an established product layout defect.
+- **Remediation and evidence:** The test checks stacked panes at or below 540 px, aligned panes above it, a minimum width for both panes, and no document overflow. Eleven existing responsive checkpoints across the browser journeys now include 768 px. The synthetic Chromium browser suite passed 7/7 after the change.
+- **Limits:** These are DOM geometry checks in an emulated viewport, not a visual approval, full layout audit or physical tablet test. No application layout changed.

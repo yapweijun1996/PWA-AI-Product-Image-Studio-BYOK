@@ -101,7 +101,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(() => evaluate(client, `!!document.querySelector('#source-file')`),'source upload');
     const originalHash=await evaluate(client, `(async () => {const canvas=document.createElement('canvas');canvas.width=200;canvas.height=100;const ctx=canvas.getContext('2d');ctx.fillStyle='#a31';ctx.fillRect(0,0,200,100);ctx.fillStyle='#fff';ctx.fillRect(48,24,84,20);ctx.fillStyle='#000';ctx.font='bold 14px sans-serif';ctx.fillText('SKU 123',52,40);const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');const files=new DataTransfer();files.items.add(new File([blob],'x'.repeat(180)+'.png',{type:'image/png'}));const input=document.querySelector('#source-file');input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));return hash;})()`);
     await until(() => evaluate(client, `!!document.querySelector('#camera-view')`),'source preview');
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       const layout=await evaluate(client, `(() => {const p=document.querySelector('.source-preview');const box=p.getBoundingClientRect();return {overflow:document.documentElement.scrollWidth>innerWidth,buttons:[...p.querySelectorAll('button')].map(b=>{const r=b.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height}}),box:{left:box.left,right:box.right},name:p.innerText.includes('x'.repeat(180)+'.png')}})()`);
       assert.ok(layout.name && !layout.overflow && layout.buttons.every(b=>b.left>=layout.box.left&&b.right<=layout.box.right&&b.width>=100&&b.height>=44),`Long filename and preview actions fit at ${width}px.`);
@@ -186,7 +186,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(() => evaluate(client, `document.querySelectorAll('.mask-region').length===2`),'second protected area');
     await evaluate(client, `(() => {const fields=document.querySelectorAll('.mask-region')[1].querySelectorAll('input');for(const [field,value] of [[fields[0],'199'],[fields[1],'99']]){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
     await until(() => evaluate(client, `document.querySelectorAll('.mask-region-outline:not(.mask-region-preview)').length===2`),'edge area outline');
-    for(const width of [320,390,1280]) {
+    for(const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       const edge=await evaluate(client, `(() => {const surface=document.querySelector('.mask-surface').getBoundingClientRect(),badge=[...document.querySelectorAll('.mask-region-outline span')].find(e=>e.textContent==='2').getBoundingClientRect();return {left:badge.left>=surface.left,right:badge.right<=surface.right,top:badge.top>=surface.top,bottom:badge.bottom<=surface.bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
       assert.deepEqual(edge,{left:true,right:true,top:true,bottom:true,overflow:false},`Edge area label stays within the image at ${width}px.`);
@@ -290,11 +290,12 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await evaluate(client, `[...document.querySelectorAll('.strict-composite button')].find(b=>b.textContent==='Prepare local composite').click()`);
     await until(() => evaluate(client, `!!document.querySelector('.strict-composite [aria-label="Original source zoom area"]')`),'unsaved composite preview');
     assert.ok(await evaluate(client, `document.querySelector('.strict-composite input[type="range"]').getBoundingClientRect().height`) >= 44, 'Composite zoom has a usable touch target.');
-    for (const width of [320,390,1280]) {
+    for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       const state=await evaluate(client, `(() => {const panes=['Original source zoom area','Composite zoom area'].map(name=>{const r=document.querySelector('[aria-label="'+name+'"]').getBoundingClientRect();return {y:r.y,width:r.width,height:r.height};});return {panes,overflow:document.documentElement.scrollWidth>innerWidth};})()`);
       assert.equal(state.overflow,false);
-      if(width<800) assert.ok(state.panes[1].y>state.panes[0].y+state.panes[0].height && state.panes.every(p=>p.width>=220));
+      assert.ok(state.panes.every(p=>p.width>=220),`Comparison panes remain usable at ${width}px.`);
+      if(width<=540) assert.ok(state.panes[1].y>state.panes[0].y+state.panes[0].height);
       else assert.ok(Math.abs(state.panes[0].y-state.panes[1].y)<1);
     }
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
@@ -589,7 +590,7 @@ test('guide describes current local workflow and supports keyboard navigation', 
     assert.equal(await evaluate(client, `document.title`),'Help & guide | Product Image Studio','The browser tab identifies the guide.');
     assert.equal(await evaluate(client, `document.querySelector('#availability-heading').parentElement.innerText.includes('Pi agent and remote mobile gateway are not available yet')`),true);
     assert.equal(await evaluate(client, `(() => {const section=document.querySelector('#install-heading').parentElement;return section.innerText.includes('Installing does not connect a phone') && section.querySelectorAll('a').length===2})()`),true,'Install guidance distinguishes installation from gateway access.');
-    for(const width of [320,390,1280]) {
+    for(const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       const layout=await evaluate(client, `(() => ({overflow:document.documentElement.scrollWidth>innerWidth, links:[...document.querySelectorAll('.guide-list a, .install-links a')].map(a=>a.getBoundingClientRect().height)}))()`);
       assert.equal(layout.overflow,false,`The guide fits ${width}px.`);
@@ -609,7 +610,7 @@ test('guide describes current local workflow and supports keyboard navigation', 
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
     assert.equal(await evaluate(client, `document.activeElement?.id`),'theme','The next Tab reaches the first Settings control.');
     assert.equal(await evaluate(client, `document.querySelector('h1').getBoundingClientRect().top >= 0`),true,'The destination heading is visible after navigating from the guide.');
-    for(const width of [320,390,1280]) {
+    for(const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
       await evaluate(client, `document.querySelector('.navigation a[href="/help"]').click()`);
       await until(()=>evaluate(client, `location.pathname==='/help' && !!document.querySelector('.guide-list')`),'return to guide');
