@@ -143,6 +143,16 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`[...document.querySelectorAll('.mask-editor button')].some(b=>b.textContent==='Save mask')`),'mask review');
     await evaluate(client,`[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask').click()`);
     await until(()=>evaluate(client,`document.querySelector('.mask-editor')?.innerText.includes('Mask saved')`),'saved mask');
+    const offlineMaskId=await evaluate(client,`(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const q=db.transaction('products').objectStore('products').get(${JSON.stringify(productId)});q.onsuccess=()=>resolve(q.result.brandLock.maskAssetId);q.onerror=()=>reject(q.error)})}finally{db.close()}})()`);
+    assert.ok(offlineMaskId,'The saved offline mask has an active identity.');
+    await evaluate(client,`window.__beforeOfflineMaskReload=true`);await client.call('Page.reload');
+    await until(()=>evaluate(client,`!window.__beforeOfflineMaskReload && !navigator.onLine && document.querySelector('h1')?.innerText==='Synthetic direct gateway test' && document.querySelector('#mask-source')?.options.length>1`),'offline product reload');
+    await evaluate(client,`(() => {const s=document.querySelector('#mask-source');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await until(()=>evaluate(client,`document.querySelectorAll('.mask-region input').length===4 && !document.querySelector('.mask-regions').disabled`),'offline protected mask reload');
+    assert.deepEqual(await evaluate(client,`[...document.querySelectorAll('.mask-region input')].map(e=>Number(e.value))`),[0,0,1,1],'The protected source-pixel coordinates survive offline reload.');
+    const offlineRestore=await evaluate(client,`(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{const [product,sources]=await Promise.all(['products','sourceAssets'].map(name=>new Promise((resolve,reject)=>{const q=db.transaction(name).objectStore(name).getAll();q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)})));const p=product.find(x=>x.productId===${JSON.stringify(productId)}),source=sources.find(x=>x.assetId===p.sourceAssets[0].assetId);return {mask:p.brandLock.maskAssetId,hash:[...new Uint8Array(await crypto.subtle.digest('SHA-256',await source.blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join(''),offline:!navigator.onLine,overflow:document.documentElement.scrollWidth>innerWidth}}finally{db.close()}})()`);
+    assert.deepEqual(offlineRestore,{mask:offlineMaskId,hash:sourceHash,offline:true,overflow:false},'Offline reload preserves original bytes and active mask without mobile overflow.');
+    assert.equal(providerCalls,0,'Offline editing and reload send no provider request.');
     await client.call('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
     await until(()=>evaluate(client, `navigator.onLine`),'online state');
     await client.call('Page.navigate',{url:`${origin}/settings`});
@@ -393,6 +403,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(client.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0,'No uncaught page exceptions occurred.');
 
     assert.equal(await evaluate(client,'document.documentElement.scrollWidth===innerWidth'),true);
+    await until(()=>evaluate(client,`[...document.querySelectorAll('button')].some(b=>b.textContent==='Download full backup'&&!b.disabled)`),'backup download control');
     await evaluate(client, `(() => {window.confirm=()=>true;const create=URL.createObjectURL;URL.createObjectURL=function(blob){window.__backup=blob;return create.call(this,blob)};const click=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download.startsWith('product-backup-')){window.__backupUrl=this.href;return}return click.call(this)};[...document.querySelectorAll('button')].find(b=>b.textContent==='Download full backup').click()})()`);
     await until(()=>evaluate(client, `!!window.__backupUrl`),'synthetic backup');
     const backupData=await evaluate(client, `new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(window.__backup)})`);
