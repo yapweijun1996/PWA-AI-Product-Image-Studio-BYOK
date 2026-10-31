@@ -572,8 +572,9 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
                 const envelope = record(record(await json(approvalResponse)).error);
                 const failure = approvalFailure(approvalResponse.status, envelope);
                 failureDetail = sanitizedStudioFailure(approvalResponse.status, envelope, true);
-                if (failure.stale) { gatewayCheck.current++; setGateway('unavailable'); }
-                message = failure.message;
+                const sessionInvalid = approvalResponse.status === 401 && envelope.code === 'UNAUTHENTICATED';
+                if (failure.stale || sessionInvalid) { gatewayCheck.current++; setGateway('unavailable'); }
+                message = sessionInvalid ? 'The app or provider session expired or was disconnected. Check the gateway; no image request was sent.' : failure.message;
               } catch { /* use safe generic message */ }
               throw new Error(message ?? 'Authorization was not granted. No image request was sent.');
             }

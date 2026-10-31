@@ -100,7 +100,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient,legacyClient,recoveryClient,detailsRecoveryClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
+  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient,legacyClient,recoveryClient,detailsRecoveryClient,sessionClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
@@ -691,8 +691,41 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history > li')].some(li=>li.innerText.includes('Lifestyle · Scene generated; unapproved')&&li.innerText.includes('Retry of attempt ${interruptedId}'))`),'successful interrupted attempt retry');
     assert.equal(providerCalls,14,'Only the explicitly authorized retry is sent.');
     assert.equal(await evaluate(client, `(${JSON.stringify(untouched)}).every(id=>{const li=[...document.querySelectorAll('.studio-history > li')].find(e=>e.innerText.includes(id));return li?.innerText.includes('The image request was not sent.')})`),true,'Remaining unsent attempts retain their outcomes.');
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.style-plan label')].some(l=>l.innerText.includes('I authorize this single Lifestyle attempt')&&!l.querySelector('input').disabled)`),'new consent after retry');
+    await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').click()`);
+    await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'cross-tab consent ready');
+    const {targetId:sessionId}=await browserClient.call('Target.createTarget',{url:'about:blank'});
+    const sessionTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===sessionId),'shared session tab');
+    sessionClient=await connect(sessionTarget.webSocketDebuggerUrl);await sessionClient.call('Runtime.enable');await sessionClient.call('Page.enable');
+    await sessionClient.call('Page.navigate',{url:`${origin}/settings`});
+    await until(()=>evaluate(sessionClient,`[...document.querySelectorAll('.provider-session button')].some(b=>b.textContent==='Disconnect provider'&&!b.disabled)`),'shared provider session');
+    await evaluate(sessionClient,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Disconnect provider').click()`);
+    await until(()=>evaluate(sessionClient,`document.querySelector('.provider-session')?.innerText.includes('Provider authorization is disconnected.')`),'shared provider disconnected');
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel [role=alert]')?.innerText.toLowerCase().includes('no image request was sent')`),'revoked provider approval rejected');
+    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-panel button')].some(b=>b.textContent==='Authorize and generate selected scenes')`),'revoked attempt finished');
+    assert.equal(providerCalls,14,'Revoked provider authorization never reaches the fake provider.');
+    assert.equal(await evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Local app and provider session active.')`),false,'A rejected provider session must not remain displayed as active.');
+    assert.match(await evaluate(client,`document.querySelector('.studio-panel [role=alert]')?.innerText`),/session expired or was disconnected.*Check the gateway/i);
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').checked`),false,'A rejected session clears the attempt consent.');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'A revoked session cannot be authorized again without a gateway check.');
+    for (const width of [320,390,768,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const layout=await evaluate(client,`(() => {const el=document.querySelector('.studio-panel [role=alert]'),r=el.getBoundingClientRect();return {left:r.left,right:r.right,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      assert.ok(layout.left>=0 && layout.right<=width && !layout.overflow,`The revoked-session explanation fits at ${width}px: ${JSON.stringify(layout)}.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Check gateway').click()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Connect the configured provider session in settings first.')`),'recheck reveals disconnected provider');
+    await evaluate(sessionClient,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Connect provider').click()`);
+    await until(()=>evaluate(sessionClient,`document.querySelector('.provider-session')?.innerText.includes('Provider authorization active')`),'shared provider reconnected');
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Check gateway').click()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Local app and provider session active.')`),'gateway rechecked after shared reconnect');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').checked`),false,'Reconnection does not restore prior consent.');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Fresh consent is required after reconnecting.');
+    assert.equal(providerCalls,14,'Recovery checks never send another provider request.');
   } finally {
-    detailsRecoveryClient?.close();recoveryClient?.close();legacyClient?.close();observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    sessionClient?.close();detailsRecoveryClient?.close();recoveryClient?.close();legacyClient?.close();observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
     await rm(root,{recursive:true,force:true});
   }
