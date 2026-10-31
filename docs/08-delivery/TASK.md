@@ -34,7 +34,7 @@ For proposed research experiments and their dependencies, see [Spike Test Catalo
 | T-081 | EP-07 | Security/privacy/backup/perf regression and remediation | T-071,T-080 | IMPLEMENTED_UNVERIFIED — synthetic auth/XSS/secret checks and bounded cancellable archive validation exercised; production threat review, device performance and complete SEC/PERF gates remain open. |
 | T-082 | EP-07 | Five-category SKU pilot, real brand QA and measured cost | T-081 | documented approval/veto & economics |
 | T-083 | EP-07 | Validate seller setup, BYOK comprehension and single-SKU task with consenting target users | T-010,T-084 | PENDING — synthetic or rights-cleared task script; record completion, time and friction; separate proposed findings from population claims. No outreach without authorization |
-| T-084 | EP-06 | Review the proposed visual anchors and accessibility paths for the MVP | T-010 | IN_PROGRESS — owner accepted the overall direction represented by desktop 01, tablet 30 and mobile 43; individual anchors, interactions, critical states and accessibility remain to be reviewed. See the owner direction record below. |
+| T-084 | EP-06 | Review the proposed visual anchors and accessibility paths for the MVP | T-010 | IN_PROGRESS — owner accepted the overall direction represented by desktop 01, tablet 30 and mobile 43 and separately accepted the current mobile UNKNOWN retry sequence; individual anchors, other interactions, critical states and accessibility remain to be reviewed. See the owner direction and retry records below. |
 | T-090 | EP-07 | Production deployment + rollback runbook with explicit owner approval | T-082 | release gates A–F, URL and post-deploy smoke |
 
 ## Prioritized remaining work and acceptance criteria — 2026-10-30
@@ -64,7 +64,7 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 | T-060 | Complete E2E-011..013 and QA-004/005 with real or rights-cleared cases, including a wrong-label hard veto at a high score and explicit human approval. Restore safe read-only legacy review access after mask changes ([BUG-012](../../BUG.md)); resolve OPEN-009 before enabling unsupported unbranded scoring. |
 | T-061 | Complete E2E-013/021/022: export approved outputs only in supported formats/ratios, exclude rejected assets, retain accurate provenance after retry/import and verify no credentials in bundles; test real SKU and installed-device cases. |
 | T-070 | Exercise 1-of-7 and 7-of-7 with real or rights-cleared SKU evidence and a controlled authorized provider; verify stable style IDs, independent jobs/attempts/statuses/receipts, suitable scene fit and no cross-style leakage (E2E-006/007/010). |
-| T-071 | Verify full E2E-015/023 error matrix, explicit billable retry consent, unique attempt lineage and source/output comparison on installed devices and a controlled provider; preserve history and UNKNOWN rather than silently resending. |
+| T-071 | Refine the wording of the owner-accepted mobile UNKNOWN retry sequence, preserving external billing/rate-limit review, recorded acknowledgment, retry preparation and separate fresh authorization; review revised copy without implying that an UNKNOWN outcome is resolved. Verify full E2E-015/023 error matrix, explicit billable retry consent, unique attempt lineage and source/output comparison on installed devices and a controlled provider; preserve history and UNKNOWN rather than silently resending. |
 
 ### P2 — recovery, device and release quality
 
@@ -1339,7 +1339,13 @@ Do not mark production deployed from CI green alone. Human permission required f
 ## T-084 owner visual direction — 2026-10-31
 
 - **Decision:** The owner accepted the overall visual direction represented by desktop 01, tablet 30 and mobile 43, and requested separate review of specific interactions. The authoritative scope and image links are in [Design System: Owner direction](../10-design/DESIGN_SYSTEM.md#owner-direction--2026-10-31).
-- **Remaining acceptance:** This is not individual image or interaction approval. Review critical states and component specimen, correct known misleading generated copy and controls, and verify keyboard, non-drag, real zoom, accessibility and target-device behavior. T-084 is IN_PROGRESS; T-083 remains dependent on its acceptance. No application behavior or release approval changed.
+- **Remaining acceptance:** This direction decision is not individual image or interaction approval; the mobile UNKNOWN retry interaction was separately accepted in the later record below. Review other critical states and component specimen, correct known misleading generated copy and controls, and verify keyboard, non-drag, real zoom, accessibility and target-device behavior. T-084 is IN_PROGRESS; T-083 remains dependent on its acceptance. No application behavior or release approval changed.
+
+## T-041 / T-071 / T-084 owner acceptance of mobile UNKNOWN retry — 2026-10-31
+
+- **Decision:** The owner accepted the current interaction sequence reviewed using a synthetic screenshot: check provider billing and rate limits, confirm and record the review, prepare the retry, and separately authorize the new request. Refine wording later. [DEC-018](../00-governance/DECISION_REGISTER.md) owns this decision.
+- **Next work and acceptance:** Propose and review clearer wording while preserving the sequence, the possible-charge warning, unresolved UNKNOWN history, no automatic resend and separate authorization for a new attempt. Do not treat this as approval of specific new copy or other interactions.
+- **Evidence and limits:** The existing direct-gateway journey covers the sequence with synthetic transport and simulated review; see the T-041 / T-071 record above. No real billing, provider, physical-device or screen-reader acceptance follows from the owner's decision. T-041/T-071 remain IMPLEMENTED_UNVERIFIED and T-084 remains IN_PROGRESS. This record changes no application behavior or release approval.
 
 ## T-080 / T-084 real browser zoom sample — 2026-10-31
 

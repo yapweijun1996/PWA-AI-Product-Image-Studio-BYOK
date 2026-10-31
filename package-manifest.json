@@ -102,8 +102,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 5680,
-      "sha256": "8bc490b24d82a1da3e94013c907f0e703592884dda08940bc1c1bb43e48d5ab1"
+      "bytes": 6196,
+      "sha256": "d2ab0ef715948664bf6688b0a17fd95b07482fa9ecf54d0f0f7480026dd3052e"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -152,8 +152,8 @@
     },
     {
       "path": "docs/01-product/UX_SPEC.md",
-      "bytes": 3790,
-      "sha256": "4cff58dbc2ba77b5d587fc0e3e104f428ddd8d3f5a40069dac099f79cd8af356"
+      "bytes": 4169,
+      "sha256": "54170908e3cee8428d7452588c3ac781c529f5e46b1848968d98cb398c1b7145"
     },
     {
       "path": "docs/02-architecture/ADR.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 311591,
-      "sha256": "cbcabe0a63073ff322fe58812a158bad4d8e212705d940f79c101784e5b10341"
+      "bytes": 313175,
+      "sha256": "b90b0b9957cdc6410c6071ec6f3ffde048f8cb7a0d866a648312fa8f59588d25"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
@@ -362,8 +362,8 @@
     },
     {
       "path": "docs/10-design/DESIGN_SYSTEM.md",
-      "bytes": 6332,
-      "sha256": "f3b208e7c5b0754cacd23888b1be8036078b08fce66298af014b8624d8f728ba"
+      "bytes": 6652,
+      "sha256": "0c9d0df11389a42844e31018a1dc686540c854cbaf644713587cc1d7760ce17e"
     },
     {
       "path": "docs/10-design/VISUAL_ANCHORS.md",

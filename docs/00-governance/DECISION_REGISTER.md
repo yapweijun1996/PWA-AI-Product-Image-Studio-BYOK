@@ -21,6 +21,7 @@
 | DEC-015 | No automatic retry for UNKNOWN outcome after provider request | PROPOSED RELIABILITY GATE | Billing/duplication risk; escalate explicit consent to retry |
 | DEC-016 | Browser-facing product uses a Pi-based agent and the user's OpenAI key for image generation | CONFIRMED PRODUCT DIRECTION; IMPLEMENTATION OPEN | Explicit owner direction 2026-10-29. Pi execution environment, restricted tool interface and provider/session isolation remain to be designed and verified. |
 | DEC-017 | Use one UUID for each image request and its `clientAttemptId`; persist non-secret attempt state to prevent duplicate submission | CONFIRMED DIRECTION | Owner selected the unified-ID option. Repeated attempts must not resend; an ambiguous retry needs a new UUID and approval. This does not authorize a paid call or deployment. |
+| DEC-018 | Accept the current mobile retry flow after an UNKNOWN outcome; refine wording later | CONFIRMED INTERACTION DIRECTION | Owner accepted the sequence reviewed with a synthetic screenshot on 2026-10-31: check provider billing and rate limits, confirm and record the review, prepare the retry, then separately authorize the new request. Wording improvements remain pending. This decision does not establish real billing, device or accessibility acceptance, or approve other interactions or visual anchors. |
 
 ## Approval-needed decisions before implementation / public release
 

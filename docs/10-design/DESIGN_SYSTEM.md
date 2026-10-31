@@ -1,10 +1,12 @@
 # Visual Design System — Proposed Candidate
 
-**Status:** Overall visual direction CONFIRMED; individual anchors and interactions remain PROPOSED. Version `0.1.0`, created 2026-10-29. This folder is the single index for the current *candidate visual anchors*, not evidence of an implemented UI, a functioning component library or verified accessibility. Existing [UX specification](../01-product/UX_SPEC.md), [SSOT policy](../00-governance/SSOT_POLICY.md), [decision register](../00-governance/DECISION_REGISTER.md), and [style presets](../../contracts/style-presets.json) take precedence over anything drawn or written in a generated image. The [image catalog](VISUAL_ANCHORS.md) tracks individual references and status.
+**Status:** Overall visual direction CONFIRMED; individual anchors and other interactions remain PROPOSED except where separately accepted. Version `0.1.0`, created 2026-10-29. This folder is the single index for the current *candidate visual anchors*, not evidence of an implemented UI, a functioning component library or verified accessibility. Existing [UX specification](../01-product/UX_SPEC.md), [SSOT policy](../00-governance/SSOT_POLICY.md), [decision register](../00-governance/DECISION_REGISTER.md), and [style presets](../../contracts/style-presets.json) take precedence over anything drawn or written in a generated image. The [image catalog](VISUAL_ANCHORS.md) tracks individual references and status.
 
 ## Owner direction — 2026-10-31
 
 The owner accepted the **overall visual direction** represented by desktop workspace [01](visual-anchors/01-desktop-product-workspace.png), tablet comparison [30](visual-anchors/30-tablet-compare.png) and mobile comparison [43](visual-anchors/43-mobile-compare.png), with specific interactions to be reviewed separately. This is an initial direction decision, not individual approval of these images, their generated copy, controls, features, fidelity claims or QA results. Known inaccuracies remain subject to correction; critical states, component specimen, individual anchors and accessibility verification remain open under T-084.
+
+The owner separately accepted the current mobile UNKNOWN retry interaction, with wording to be refined later; [DEC-018](../00-governance/DECISION_REGISTER.md) records the accepted sequence and scope. This decision does not approve individual visual anchors or other interactions.
 
 ## Design intent
 

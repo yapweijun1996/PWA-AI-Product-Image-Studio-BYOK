@@ -34,6 +34,8 @@ For research-backed layout hypotheses, structural wireframes and a proposed vali
 - `CREATIVE`: "Concept image — product facts and appearance may be fictional."
 - `BUDGET`: provider's official billing is authoritative; estimated token charges may differ.
 
+For the owner-accepted mobile UNKNOWN retry sequence, see [DEC-018](../00-governance/DECISION_REGISTER.md). Improve its wording in a later task while preserving the separate external review, recorded acknowledgment, retry preparation and fresh authorization. Acceptance of this interaction does not complete device, accessibility, real-provider or full error-matrix validation.
+
 ## Standard PWA requirements
 
 Apply KB `pwa:product-standard`:
