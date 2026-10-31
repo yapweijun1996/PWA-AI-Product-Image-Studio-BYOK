@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { notifyGatewayRevoked, onGatewayRevoked } from '../src/gatewayEvents.ts';
+import { notifyGatewayChanged, onGatewayChanged } from '../src/gatewayEvents.ts';
 
-test('gateway notifications only carry revocation and unavailable channels are safe', () => {
+test('gateway notifications only carry invalidation and unavailable channels are safe', () => {
   const original = globalThis.BroadcastChannel, instances = [];
   class FakeChannel {
     constructor(name) { this.name = name; this.closed = false; instances.push(this); }
@@ -12,8 +12,8 @@ test('gateway notifications only carry revocation and unavailable channels are s
   try {
     globalThis.BroadcastChannel = FakeChannel;
     let invalidations = 0;
-    const unsubscribe = onGatewayRevoked(() => { invalidations++; });
-    notifyGatewayRevoked();
+    const unsubscribe = onGatewayChanged(() => { invalidations++; });
+    notifyGatewayChanged();
     assert.equal(instances[0].name, instances[1].name);
     assert.equal(instances[1].message, 'session-revoked');
     assert.equal(instances[1].closed, true);
@@ -25,8 +25,8 @@ test('gateway notifications only carry revocation and unavailable channels are s
     unsubscribe();
     assert.equal(instances[0].closed, true);
     globalThis.BroadcastChannel = undefined;
-    assert.doesNotThrow(() => { notifyGatewayRevoked(); onGatewayRevoked(() => {})(); });
+    assert.doesNotThrow(() => { notifyGatewayChanged(); onGatewayChanged(() => {})(); });
     globalThis.BroadcastChannel = class { constructor() { throw new Error('unavailable'); } };
-    assert.doesNotThrow(() => { notifyGatewayRevoked(); onGatewayRevoked(() => {})(); });
+    assert.doesNotThrow(() => { notifyGatewayChanged(); onGatewayChanged(() => {})(); });
   } finally { globalThis.BroadcastChannel = original; }
 });

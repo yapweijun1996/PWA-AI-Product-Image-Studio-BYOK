@@ -8,7 +8,7 @@ import { useUnsavedChanges } from './useUnsavedChanges';
 import { StrictCompositePanel } from './StrictCompositePanel';
 import { LocalImage } from './LocalImage';
 import { gatewayOriginSupported, unsupportedGatewayMessage } from './gatewayAccess';
-import { onGatewayRevoked } from './gatewayEvents';
+import { onGatewayChanged } from './gatewayEvents';
 
 type Entry = Awaited<ReturnType<typeof listStudioAttempts>>[number];
 type LegacyWait = { clientAttemptId: string; retryNotBefore: number };
@@ -387,9 +387,9 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null), listOtherStudioBlockers(product.productId)]).then(([value, fingerprint, total, blockers]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); setOtherBlockers(blockers); } }).catch((reason: unknown) => { if (active) setError(reason instanceof Error && reason.message.startsWith('The local attempt history has inconsistent') ? reason.message : 'Local attempt history is unavailable. Generation is disabled. Preserve your local data and backups; seek recovery assistance.'); });
     void refreshGateway();
     const offline = () => { gatewayCheck.current++; clearQueueConsent(); setGateway(gatewayOriginSupported() ? 'unavailable' : 'unsupported-origin'); };
-    const stopRevocationListener = onGatewayRevoked(() => { gatewayCheck.current++; clearQueueConsent(); setGateway(gatewayOriginSupported() ? 'session-changed' : 'unsupported-origin'); });
+    const stopSessionListener = onGatewayChanged(() => { gatewayCheck.current++; clearQueueConsent(); setGateway(gatewayOriginSupported() ? 'session-changed' : 'unsupported-origin'); });
     window.addEventListener('offline', offline);
-    return () => { active = false; gatewayCheck.current++; stopRevocationListener(); window.removeEventListener('offline', offline); };
+    return () => { active = false; gatewayCheck.current++; stopSessionListener(); window.removeEventListener('offline', offline); };
   }, [product.productId, budgetSessionId]);
 
   useEffect(() => {

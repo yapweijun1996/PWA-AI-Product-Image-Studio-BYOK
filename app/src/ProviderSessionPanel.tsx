@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
 import { useUnsavedChanges } from './useUnsavedChanges';
 import { gatewayOriginSupported, unsupportedGatewayMessage } from './gatewayAccess';
-import { notifyGatewayRevoked } from './gatewayEvents';
+import { notifyGatewayChanged } from './gatewayEvents';
 
 type Status = { connected: boolean; configured: boolean; provider: 'openai'; expiresAt: string | null; stale: boolean };
 type State = { kind: 'checking' | 'unavailable' | 'unsupported-origin' | 'signed-out' } | { kind: 'signed-in'; csrf: string; status: Status };
@@ -119,7 +119,9 @@ export function ProviderSessionPanel() {
     if (!tokenPattern.test(accessToken)) { setError('Enter the 43-character local app access token. Never enter a provider API key.'); return; }
     const active = start('login'); if (!active) return;
     try {
-      const app = session(await request('/auth/login', active.signal, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Request': 'login' }, body: JSON.stringify({ token: accessToken }) }));
+      const result = await request('/auth/login', active.signal, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Request': 'login' }, body: JSON.stringify({ token: accessToken }) });
+      notifyGatewayChanged();
+      const app = session(result);
       setAccessToken('');
       const status = provider(await request('/session/status', active.signal));
       if (mounted.current && !active.signal.aborted) { setState({ kind: 'signed-in', csrf: app.csrfToken, status }); setMessage('Signed in to the local app session.'); }
@@ -136,16 +138,18 @@ export function ProviderSessionPanel() {
       const headers: Record<string, string> = { 'X-CSRF-Token': state.csrf };
       if (action === 'connect') {
         headers['Content-Type'] = 'application/json'; headers['X-Client-Request-Id'] = crypto.randomUUID();
-        const status = provider(await request('/session/connect', active.signal, { method: 'POST', headers, body: JSON.stringify({ provider: 'openai' }) }));
+        const result = await request('/session/connect', active.signal, { method: 'POST', headers, body: JSON.stringify({ provider: 'openai' }) });
+        notifyGatewayChanged();
+        const status = provider(result);
         if (mounted.current && !active.signal.aborted) setState({ ...state, status });
       } else if (action === 'disconnect') {
         await request('/session', active.signal, { method: 'DELETE', headers });
-        notifyGatewayRevoked();
+        notifyGatewayChanged();
         const status = provider(await request('/session/status', active.signal));
         if (mounted.current && !active.signal.aborted) setState({ ...state, status });
       } else {
         await request('/auth/logout', active.signal, { method: 'POST', headers });
-        notifyGatewayRevoked();
+        notifyGatewayChanged();
         if (mounted.current && !active.signal.aborted) { setState({ kind: 'signed-out' }); setMessage('Signed out. Provider authorization was revoked.'); }
       }
     } catch (reason) { failed(reason, 'The local gateway could not complete the request.'); }
