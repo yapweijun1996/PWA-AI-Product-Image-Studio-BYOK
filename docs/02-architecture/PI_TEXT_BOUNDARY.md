@@ -38,6 +38,35 @@ Consequently, neither a shell-free image, `--network none` nor Node permissions 
 | Isolation and redaction | Actual sandbox attempts to read fake broker secret, environment, file and network fail; fake credentials and raw provider error bodies are absent from browser, Pi transcript, logs and backups. |
 | Integration | Fake transport and separate isolated principals exercise a browser-to-Pi-to-broker run end to end. A security reviewer signs off on threat model, IPC, secret lifecycle and evidence before a separately authorized bounded live call. |
 
+## Candidate reservation and recovery contract
+
+This section specifies acceptance properties, not an implemented ledger, a selected IPC protocol or approval to use a provider key. Text requests have independent accounting from image attempts; the existing image journal is useful prior art but is not a verified text-budget ledger. Exact budget units, pricing snapshot ownership, retention and review authority remain open decisions.
+
+Before dispatch, the trusted broker must atomically associate one unique request identity with the authenticated principal, run, immutable request digest, policy version and a conservative maximum charge reservation. Authorization, a valid current policy, and available run and principal allowance must all hold at the point the reservation is committed. Concurrent requests and multiple broker processes must not each spend the same remaining allowance. A duplicate identity or a mismatched replay must never cause another provider dispatch, including after restart. If the authoritative store or the bound authorization state cannot be checked, reject without dispatch.
+
+| Evidence available to the broker | Required accounting and next action |
+|---|---|
+| Refused before any possible dispatch | Record the refusal or safely release the unused reservation; no provider request is made. |
+| Dispatch may have occurred but no durable terminal result exists, including crash or cancellation after dispatch began | Keep a durable unresolved hold and show UNKNOWN. Do not release the reservation, infer non-billing or resend automatically. |
+| A definitive result and trustworthy complete usage are durably recorded | Reconcile once against the applicable reviewed pricing policy; retain the immutable result and accounting evidence. If usage exceeds the reserved amount or policy cannot price it, preserve a hold and require review rather than silently claiming the budget was respected. |
+| A definitive result has missing, partial, malformed or otherwise unpriceable usage | Preserve a reviewable accounting hold; do not treat missing usage as zero or silently return reserved allowance. |
+| Authorized external review resolves an unknown or unpriceable case | Record a durable, non-secret, revision-bound review receipt with its scope and evidence category. Resolution does not itself dispatch another request. Any new request uses a new identity and separately authorized budget. |
+
+The implementation must establish durable ordering across reservation, dispatch and terminal recording. A failure between durable steps must recover conservatively; a crash after a provider response but before its terminal record is not proof of a recorded result. Revocation blocks new dispatches, but cannot retrospectively prove an in-flight request was not billed. A client disconnect or retry must not erase unresolved records. Stored metadata must be minimal and exclude secrets, raw provider errors and private prompts; the chosen retention policy requires review.
+
+### Synthetic acceptance cases
+
+Use isolated fake principals, fake models, a deterministic in-process transport and an independently inspectable durable test store; never use real credentials or send external requests. At minimum, verify:
+
+1. Two concurrent requests near the same run and principal limits result in no over-reservation. Repeat across processes and after restart; unavailable or stale policy and store failures make zero transport calls.
+2. Forged or expired authorization, cross-principal/run reuse, duplicate request IDs and changed-payload replays are refused before transport. Verify authorization again at the dispatch boundary, including revocation while a request waits.
+3. Inject failures before reservation, after reservation but before dispatch, during possible dispatch, after a fake provider result and before terminal persistence, and after persistence. Restart each case and assert the correct release, terminal record or unresolved hold, without a second fake call.
+4. Cover complete, missing, partial, malformed and unexpectedly high usage, pricing-policy unavailability and simultaneous reconciliation. Accounting changes at most once; ambiguous costs cannot become zero through retry or restart.
+5. Cancel before and after dispatch and disconnect the client; verify only a proven pre-dispatch case releases the reservation and no event automatically resends. Require a fresh authorization and request identity for any deliberate next attempt.
+6. Search the browser-facing response, Pi-visible messages, persisted accounting records and captured logs for fake secret and raw-error markers. Exercise invalid model, unexpected endpoint/header fields, oversized input/output and prompt-injection text as data; reject unsupported routing before fake transport.
+
+These cases are a future acceptance matrix. Fake identities and in-process tests alone cannot establish OS isolation, authenticated peer identity, actual billing, production concurrency or a safe credential boundary. Complete the T-032 isolation and T-030 security prerequisites and independent review before enabling an implementation.
+
 ## Open design questions
 
 Select a supported OS sandbox and authenticated IPC transport; define approval UX and exact text-budget units, durable reservation storage/recovery, rate snapshot ownership, transcript retention, model capability and streaming semantics. Decide whether/how browser disconnect cancels an active run. These are unresolved design questions, not product decisions or evidence of implementation.

@@ -177,8 +177,8 @@
     },
     {
       "path": "docs/02-architecture/PI_TEXT_BOUNDARY.md",
-      "bytes": 15610,
-      "sha256": "e46bb4c368ae6c2c64ce03658691aca1e611315de8452a62535b58c69eca2092"
+      "bytes": 20733,
+      "sha256": "b19fda8ee367348266b51b0b952a775a42081f620e96f12fcf8bb26ce6ca5498"
     },
     {
       "path": "docs/02-architecture/PWA_OFFLINE.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 299087,
-      "sha256": "68f18167570560bec9c3a0a26cee01d6b752fb0b37e29750ddb011a7182cec1e"
+      "bytes": 300346,
+      "sha256": "b4a590d57c17953372dcc5485185cc55109e861f34ea80338ca3e41f51889677"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",
