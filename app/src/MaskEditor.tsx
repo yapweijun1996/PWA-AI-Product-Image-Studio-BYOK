@@ -42,6 +42,8 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
   const saveButton = useRef<HTMLButtonElement>(null);
   const savedStatus = useRef<HTMLParagraphElement>(null);
   const saveFocusOrigin = useRef<Element | null>(null);
+  const saveError = useRef<HTMLParagraphElement>(null);
+  const errorFocusOrigin = useRef<Element | null>(null);
   useUnsavedChanges(dirty || saving || selectingRegion);
   const validStampCoordinate = (value: string) => /^\d+$/.test(value) && Number(value) <= 100;
   const stampReady = validStampCoordinate(x) && validStampCoordinate(y);
@@ -54,6 +56,15 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
       savedStatus.current?.focus({ preventScroll: true });
     }
   }, [status]);
+
+  useLayoutEffect(() => {
+    const origin = errorFocusOrigin.current;
+    errorFocusOrigin.current = null;
+    if (error && origin && (document.activeElement === origin || document.activeElement === document.body)) {
+      saveError.current?.scrollIntoView({ block: 'start' });
+      saveError.current?.focus({ preventScroll: true });
+    }
+  }, [error]);
 
   useEffect(() => {
     setLoaded(null); setError(''); setStatus(''); setReview(false); setRegions([]);
@@ -259,7 +270,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
       setLoaded({ ...loaded, base: blob, expectedMaskId: saved.brandLock.maskAssetId });
       saveFocusOrigin.current = focusOrigin;
       setDirty(false); setReview(false); setStatus('Mask saved locally. The original source was not changed.');
-    } catch (reason) { if (!abort.signal.aborted) setError(reason instanceof Error ? reason.message : 'The mask could not be saved.'); }
+    } catch (reason) { if (!abort.signal.aborted) { errorFocusOrigin.current = focusOrigin; setError(reason instanceof Error ? reason.message : 'The mask could not be saved.'); } }
     finally { if (!abort.signal.aborted) setSaving(false); if (controller.current === abort) controller.current = null; }
   }
   return <section className="product-section mask-editor" aria-labelledby="mask-heading">
@@ -291,7 +302,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
         </fieldset>)}
         <button className="secondary-button" type="button" disabled={regions.length >= 32} onClick={() => { setRegions((current) => [...current, { id: crypto.randomUUID(), x: '0', y: '0', width: '1', height: '1' }]); setDirty(true); setStatus(''); }}>Add protected area</button>
       </fieldset>
-      {error && review && <p className="error-message" role="alert">{error}</p>}
+      {error && review && <p ref={saveError} tabIndex={-1} className="error-message mask-save-error" role="alert">{error}</p>}
       <div className="form-actions">{review ? <><button className="secondary-button" type="button" disabled={saving} onClick={() => { setError(''); setReview(false); }}>Continue editing</button><button ref={saveButton} className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Rendering and saving…' : 'Save mask'}</button></> : <button className="primary-button" type="button" disabled={saving || !previewReady || selectingRegion} onClick={() => { if (regionDrag.current) return; active.current = null; brushPointer.current = null; setError(''); setShowMask(true); setReview(true); }}>Review mask</button>}</div>
       {selectingRegion && <p role="status">Finish or cancel the current protected area before reviewing.</p>}
       {review && <p role="status">Review the white selection and its edges above before saving. Saving creates a separate full-resolution PNG mask.</p>}

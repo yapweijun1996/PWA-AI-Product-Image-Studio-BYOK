@@ -215,10 +215,29 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await evaluate(client, `(() => {const tool=document.querySelector('#mask-tool');tool.value='erase';tool.dispatchEvent(new Event('change',{bubbles:true}));for(const id of ['mask-x','mask-y']){const input=document.getElementById(id);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'50');input.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('.mask-stamp button').click()})()`);
     assert.equal(await evaluate(client, `document.querySelector('canvas[aria-label="Mask drawing surface"]').getContext('2d').getImageData(100,50,1,1).data[3]`),0,'Synthetic label region was erased.');
     await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Review mask').click()`);
-    await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask').click()`);
+    await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask').focus()`);
+    await key(' ','Space',32);
     await until(() => evaluate(client, `document.querySelector('.mask-editor [role=alert]')?.innerText.includes('protected mask region is not fully covered')`),'uncovered protected area rejection');
+    const rejectionFocus=await evaluate(client, `(() => {const alert=document.querySelector('.mask-editor [role=alert]'),r=alert.getBoundingClientRect();return {focused:document.activeElement===alert,top:r.top,bottom:r.bottom}})()`);
+    assert.equal(rejectionFocus.focused,true,`Keyboard focus reaches the rejection: ${JSON.stringify(rejectionFocus)}.`);
+    assert.ok(rejectionFocus.top>=0 && rejectionFocus.bottom<=800,`The rejection is visible: ${JSON.stringify(rejectionFocus)}.`);
+    await key('Tab','Tab',9);
+    assert.equal(await evaluate(client, `document.activeElement?.textContent`),'Continue editing','Tab reaches the correction action after the rejection.');
+    for (const width of [320,390,768,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const layout=await evaluate(client, `(() => {const el=document.querySelector('.mask-save-error');el.scrollIntoView({block:'start'});const r=el.getBoundingClientRect();return {top:r.top,left:r.left,right:r.right,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      assert.ok(layout.top>=8 && layout.top<800 && layout.left>=0 && layout.right<=width && !layout.overflow,`The rejection fits at ${width}px: ${JSON.stringify(layout)}.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
     assert.equal(await evaluate(client, `(async()=> (await (await import('/src/products.ts')).getProduct(${JSON.stringify(productId)})).brandLock.maskAssetId)()`),initialMaskId,'Rejected save retains the previously active mask.');
     assert.equal(await evaluate(client, `document.documentElement.scrollWidth<=innerWidth`),true,'Protected-area rejection fits the mobile viewport.');
+    await evaluate(client, `(() => {const original=crypto.subtle.digest.bind(crypto.subtle);let first=true;crypto.subtle.digest=(...args)=>{if(!first)return original(...args);first=false;window.__maskErrorDigestHeld=true;return new Promise(resolve=>{window.__releaseMaskErrorDigest=()=>resolve(original(...args))})};window.__restoreMaskErrorDigest=()=>{crypto.subtle.digest=original}})()`);
+    await evaluate(client, `(() => {const b=[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Save mask');b.focus();b.click()})()`);
+    await until(()=>evaluate(client, `!!window.__maskErrorDigestHeld`),'held rejected mask save');
+    await evaluate(client, `document.querySelector('.brand').focus();window.__releaseMaskErrorDigest()`);
+    await until(()=>evaluate(client, `document.querySelector('.mask-save-error')?.innerText.includes('protected mask region is not fully covered')`),'slow protected area rejection');
+    assert.equal(await evaluate(client, `document.activeElement?.classList.contains('brand')`),true,'A slow rejected save does not steal focus moved by the user.');
+    await evaluate(client, `window.__restoreMaskErrorDigest()`);
     await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Continue editing').click()`);
     await evaluate(client, `(() => {const tool=document.querySelector('#mask-tool');tool.value='draw';tool.dispatchEvent(new Event('change',{bubbles:true}));const size=document.querySelector('#mask-size');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(size,'30');size.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.mask-stamp button').click()})()`);
     await evaluate(client, `[...document.querySelectorAll('.mask-editor button')].find(b=>b.textContent==='Review mask').click()`);
