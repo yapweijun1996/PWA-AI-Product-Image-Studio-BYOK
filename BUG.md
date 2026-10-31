@@ -472,3 +472,10 @@ This register tracks verified defects and their remediation. Application source 
 - **Finding:** Adding a 768 px viewport exposed a test failure: the comparison assertion expected vertically stacked panes below 800 px, while the stylesheet switches this component at 540 px. This was a test assumption, not an established product layout defect.
 - **Remediation and evidence:** The test checks stacked panes at or below 540 px, aligned panes above it, a minimum width for both panes, and no document overflow. Eleven existing responsive checkpoints across the browser journeys now include 768 px. The synthetic Chromium browser suite passed 7/7 after the change.
 - **Limits:** These are DOM geometry checks in an emulated viewport, not a visual approval, full layout audit or physical tablet test. No application layout changed.
+
+## BUG-060 — Mask save loses keyboard focus
+
+- **Status:** IMPLEMENTED_UNVERIFIED. **Priority:** P2. **Related tasks:** T-050, T-052 and T-080.
+- **Finding:** At 320 px, after entering protected coordinates and activating Review and Save by keyboard, the mask saved but the removed Save button left focus on the document body. The focus assertion failed before the fix.
+- **Remediation:** On a successful save initiated while Save has focus, the visible save confirmation receives focus if focus still belongs to the initiating button or body. If the user has moved focus elsewhere during the asynchronous save, it is preserved. Mask data, coverage checks and save authorization are unchanged.
+- **Evidence and limits:** Synthetic Chromium exercises keyboard traversal through the coordinate fields, review and save; checks confirmation focus, outline and geometry at 320, 390, 768 and 1280 px; and holds a digest operation to check that user-moved focus is not stolen. The full browser suite passed 7/7 and the production build passed with its existing chunk-size warning. Initial Add and the first field are focused programmatically. Screen readers, physical devices, screenshot inspection for this change and every asynchronous focus transition remain untested.
