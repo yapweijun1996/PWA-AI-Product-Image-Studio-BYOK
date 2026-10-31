@@ -326,8 +326,8 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.deepEqual({regions:persisted.regions,middle:persisted.middle,end:persisted.end,protected:persisted.protected}, {regions:[{x,y,width,height}],middle:0,end:0,protected:255});
     assert.equal(persisted.actualHash, initialSourceHash);
     assert.equal(persisted.sourceHash, initialSourceHash);
-    await client.call('Page.reload');
-    await until(() => evaluate(client, `document.querySelector('#mask-source')?.options.length > 1`), 'reloaded source');
+    await evaluate(client, `window.__beforeMaskReload=true`);await client.call('Page.reload');
+    await until(() => evaluate(client, `window.__beforeMaskReload!==true && document.querySelector('#mask-source')?.options.length > 1`), 'reloaded source');
     await evaluate(client, `(() => {const s=document.querySelector('#mask-source');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await until(() => evaluate(client, `document.querySelectorAll('.mask-region').length === 1 && document.querySelector('canvas[aria-label="Mask drawing surface"]')?.width === 200 && [...document.querySelectorAll('button')].some(b => b.textContent === 'Review mask' && !b.disabled)`), 'reloaded mask');
     const reopened = await until(() => evaluate(client, `(async () => {const c=document.querySelector('canvas[aria-label="Mask drawing surface"]'); const alpha=c.getContext('2d').getImageData(100,10,1,1).data[3]; if(alpha!==0) return null; const p=await import('/src/products.ts');const product=await p.getProduct(${JSON.stringify(productId)});return {middle:alpha,end:c.getContext('2d').getImageData(180,10,1,1).data[3],protected:c.getContext('2d').getImageData(100,50,1,1).data[3],sourceHash:product.sourceAssets[0].sha256,regions:[...document.querySelector('.mask-region').querySelectorAll('input')].map(i=>Number(i.value))};})()`), 'reloaded brush pixels');
@@ -346,8 +346,8 @@ test('protected mask gestures and approved export bundle remain consistent', { t
       const report=await p.createVisualReview(product.productId,attempt.attemptId,composite.assetId,scores,matches,'default','Synthetic fixture',history.productSha256,composite.sha256,undefined,undefined,undefined,undefined,[],composite.protectedEvidenceSha256);
       const decision=await p.recordVisualDecision(product.productId,attempt.attemptId,composite.assetId,report.qaId,'APPROVED');return {attemptId:attempt.attemptId,assetId:composite.assetId,reviewId:report.qaId,decisionId:decision.qaId,sourceHash:source.sha256,mapping:rendered.mapping};
     })()`);
-    await client.call('Page.reload');
-    await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
+    await evaluate(client, `window.__beforeCandidateReload=true`);await client.call('Page.reload');
+    await until(() => evaluate(client, `window.__beforeCandidateReload!==true && document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
     await until(() => evaluate(client, `[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(exportFixture.attemptId)})&&li.querySelector('.studio-scene-disclosure > summary'))`),'saved scene disclosure');
     await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.attemptId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);
     await until(() => evaluate(client, `[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Prepare local composite' && !b.disabled)`),'composite inputs');
@@ -549,8 +549,8 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.equal(generated.source,originalHash);
     assert.equal(generated.scene,createHash('sha256').update(Buffer.from(imageData,'base64')).digest('hex'));
     assert.equal(await evaluate(client, `document.body.innerText.includes('synthetic-provider-fixture') || JSON.stringify(localStorage).includes('synthetic-provider-fixture') || JSON.stringify(sessionStorage).includes('synthetic-provider-fixture')`),false);
-    await client.call('Page.reload');
-    await until(() => evaluate(client, `document.querySelector('.studio-history')?.innerText.includes('Studio · Scene generated; unapproved')`),'persisted synthetic scene');
+    await evaluate(client, `window.__beforeSceneReload=true`);await client.call('Page.reload');
+    await until(() => evaluate(client, `window.__beforeSceneReload!==true && document.querySelector('.studio-history')?.innerText.includes('Studio · Scene generated; unapproved')`),'persisted synthetic scene');
     assert.equal(providerCalls,1,'Reload does not resend the synthetic request.');
     const attemptSelector=`.studio-history li`;
     await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(generated.attemptId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);

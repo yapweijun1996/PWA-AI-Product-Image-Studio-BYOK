@@ -163,6 +163,17 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(providerCalls,0,'Offline editing and reload send no provider request.');
     await client.call('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
     await until(()=>evaluate(client, `navigator.onLine`),'online state');
+    assert.match(await evaluate(client,`[...document.querySelectorAll('.studio-panel [role=status]')].find(e=>e.innerText.includes('Offline or local gateway unavailable'))?.innerText`),/Check gateway/,'Reconnection guidance explains the manual gateway recheck.');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Coming online alone does not authorize a request.');
+    for (const width of [320,390,768,1280]) {
+      await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
+      const layout=await evaluate(client,`(() => {const p=document.querySelector('.studio-panel'),s=[...p.querySelectorAll('[role=status]')].find(e=>e.innerText.includes('Offline or local gateway unavailable')),b=[...p.querySelectorAll('button')].find(e=>e.textContent==='Check gateway'),r=s.getBoundingClientRect(),button=b.getBoundingClientRect();return {left:r.left,right:r.right,height:button.height,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      assert.ok(layout.left>=0&&layout.right<=width&&layout.height>=44&&!layout.overflow,`Reconnection guidance and action fit at ${width}px: ${JSON.stringify(layout)}.`);
+    }
+    await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Check gateway').click()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Sign in to the local app in provider settings first.')`),'gateway recheck after reconnect');
+    assert.equal(providerCalls,0,'Checking the gateway does not make a provider request.');
     await client.call('Page.navigate',{url:`${origin}/settings`});
     await until(()=>evaluate(client,`!!document.querySelector('#local-access-token')`),'local sign-in');
     await evaluate(client,`(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'  sk-synthetic-not-a-key');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
@@ -222,7 +233,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`![...document.querySelectorAll('.visual-review button')].find(b=>b.textContent==='Record approved decision').disabled`),'approval consent');
     await evaluate(client,`[...document.querySelectorAll('.visual-review button')].find(b=>b.textContent==='Record approved decision').click()`);
     await until(()=>evaluate(client,`document.querySelector('.visual-review')?.innerText.includes('decision APPROVED')`),'approved composite');
-    await client.call('Page.reload');await until(()=>evaluate(client,`document.querySelectorAll('.approved-export fieldset input[type="checkbox"]').length===1`),'export candidate');
+    await evaluate(client,`window.__beforeApprovedReload=true`);await client.call('Page.reload');await until(()=>evaluate(client,`window.__beforeApprovedReload!==true && document.querySelectorAll('.approved-export fieldset input[type="checkbox"]').length===1`),'export candidate');
     await evaluate(client,`(() => {const p=document.querySelector('.approved-export');p.querySelector('fieldset input').click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click()})()`);
     await until(()=>evaluate(client,`document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`),'converted output');
     await client.call('Page.setDownloadBehavior',{behavior:'allow',downloadPath:root});
@@ -242,8 +253,8 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`document.querySelector('.studio-history')?.innerText.includes('Studio · Outcome unknown')`),'unknown outcome');
     assert.equal(providerCalls,2,'An ambiguous response causes no automatic resend.');
     const unknownId=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes('Studio · Outcome unknown')).innerText.match(/[0-9a-f-]{36}/i)[0]`);
-    await client.call('Page.reload');
-    await until(()=>evaluate(client,`[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('Outcome unknown'))`),'persisted unknown');
+    await evaluate(client,`window.__beforeUnknownReload=true`);await client.call('Page.reload');
+    await until(()=>evaluate(client,`window.__beforeUnknownReload!==true && [...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('Outcome unknown'))`),'persisted unknown');
     assert.equal(providerCalls,2,'Reload does not resend an unknown attempt.');
     const unknownSelector=`.studio-history li`;
     assert.equal(await evaluate(client,`[...[...document.querySelectorAll(${JSON.stringify(unknownSelector)})].find(li=>li.innerText.includes(${JSON.stringify(unknownId)})).querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').disabled`),true,'Unreviewed uncertainty cannot be acknowledged.');
@@ -389,7 +400,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`${macroPanel}?.innerText.includes('Unapproved composite saved locally')`),'saved macro composite');
     assert.equal(providerCalls,10,'Macro composition makes no additional provider call.');
 
-    await client.call('Page.reload');await until(()=>evaluate(client,`document.querySelectorAll('.studio-history li').length>=10`),'persisted seven-style history');
+    await evaluate(client,`window.__beforeSevenStyleReload=true`);await client.call('Page.reload');await until(()=>evaluate(client,`window.__beforeSevenStyleReload!==true && document.querySelectorAll('.studio-history li').length>=10`),'persisted seven-style history');
     assert.equal(providerCalls,10,'Reload does not resend the seven-style queue.');
 
 
@@ -639,8 +650,8 @@ test('production gateway serves a synthetic creation-to-export journey without o
     const preserved=await evaluate(untrustedClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{return await new Promise((resolve,reject)=>{const tx=db.transaction('attempts'),q=tx.objectStore('attempts').get(${JSON.stringify(orphan.attemptId)});tx.oncomplete=()=>resolve(q.result);tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
     assert.deepEqual(preserved,orphan,'Detection leaves the inconsistent synthetic record intact.');
     await evaluate(untrustedClient, `(async()=>{const db=await new Promise((resolve,reject)=>{const q=indexedDB.open('product-image-studio');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)});try{await new Promise((resolve,reject)=>{const tx=db.transaction('attempts','readwrite');tx.objectStore('attempts').delete(${JSON.stringify(orphan.attemptId)});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error)})}finally{db.close()}})()`);
-    await untrustedClient.call('Page.reload');
-    await until(()=>evaluate(untrustedClient, `!!document.querySelector('#other-blockers-heading') && document.querySelector('.studio-panel')?.innerText.includes('No attempts yet.')`),'synthetic fixture cleanup and history recovery');
+    await evaluate(untrustedClient,`window.__beforeRecoveryReload=true`);await untrustedClient.call('Page.reload');
+    await until(()=>evaluate(untrustedClient, `window.__beforeRecoveryReload!==true && !!document.querySelector('#other-blockers-heading') && document.querySelector('.studio-panel')?.innerText.includes('No attempts yet.')`),'synthetic fixture cleanup and history recovery');
     assert.equal(providerCalls,13,'Backup and restore do not send provider requests.');
     await evaluate(client,`window.__beforeQueueReload=true`);await client.call('Page.reload');
     await until(()=>evaluate(client,`window.__beforeQueueReload!==true && document.querySelector('.studio-history')?.innerText.includes('Lifestyle · Outcome unknown')`),'persisted interrupted queue');
