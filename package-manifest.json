@@ -32,8 +32,8 @@
     },
     {
       "path": "BUG.md",
-      "bytes": 104584,
-      "sha256": "511611ad306d5c27481824c3d62a5856afed59d737ff9a9821c900a4ef5060ab"
+      "bytes": 105152,
+      "sha256": "e8ec2cd0f1ba46c8678670bcd291af373c48a1e246e3c1a701361e6786cfef78"
     },
     {
       "path": "DESIGN.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 307861,
-      "sha256": "10639cde869ac925dc0c92982be1f33e308dc83ad2e1f1dea53f2131e9c326ea"
+      "bytes": 309187,
+      "sha256": "7e580d524a828117bf5ca6fc6ef71f3600079b9551930eb8c346c2c110d5b6f9"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

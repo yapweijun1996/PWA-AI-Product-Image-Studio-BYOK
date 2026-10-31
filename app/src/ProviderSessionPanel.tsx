@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
 import { useUnsavedChanges } from './useUnsavedChanges';
 import { gatewayOriginSupported, unsupportedGatewayMessage } from './gatewayAccess';
+import { notifyGatewayRevoked } from './gatewayEvents';
 
 type Status = { connected: boolean; configured: boolean; provider: 'openai'; expiresAt: string | null; stale: boolean };
 type State = { kind: 'checking' | 'unavailable' | 'unsupported-origin' | 'signed-out' } | { kind: 'signed-in'; csrf: string; status: Status };
@@ -139,10 +140,12 @@ export function ProviderSessionPanel() {
         if (mounted.current && !active.signal.aborted) setState({ ...state, status });
       } else if (action === 'disconnect') {
         await request('/session', active.signal, { method: 'DELETE', headers });
+        notifyGatewayRevoked();
         const status = provider(await request('/session/status', active.signal));
         if (mounted.current && !active.signal.aborted) setState({ ...state, status });
       } else {
         await request('/auth/logout', active.signal, { method: 'POST', headers });
+        notifyGatewayRevoked();
         if (mounted.current && !active.signal.aborted) { setState({ kind: 'signed-out' }); setMessage('Signed out. Provider authorization was revoked.'); }
       }
     } catch (reason) { failed(reason, 'The local gateway could not complete the request.'); }
