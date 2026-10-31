@@ -14,7 +14,7 @@ The direct-gateway journey also injects a synthetic transport failure, checks th
 
 The direct-gateway test also checks first use of the cached product route while offline and simulates a blocked backup route to verify the explicit error and reload flow. A separate synthetic two-build test checks that an old tab retains a draft and can load its cached lazy page after another tab activates an update. These checks do not replace installed-device or suspended-tab testing.
 
-The offline journey also reloads a synthetic product with its original and protected mask while offline, checking the source hash, active mask identity and one small region after reopening the editor. It does not establish full mask fidelity or device storage behavior.
+The offline journey also reloads a synthetic product with its original and edited protected mask while offline, checking source and mask hashes, active mask identity, selected alpha samples and one small region after reopening the editor. It does not establish realistic product fidelity or device storage behavior.
 
 The two-build journey also emulates reduced motion and captures the actual update indicator before reload, checking that the status remains visible while its CSS animation is disabled. This is not a complete reduced-motion or assistive-technology audit.
 
