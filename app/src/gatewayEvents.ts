@@ -2,6 +2,10 @@ const CHANNEL = 'product-image-studio-gateway';
 // Keep the existing marker so older open tabs also invalidate their state.
 const INVALIDATE = 'session-revoked';
 
+export function sessionMutationMayHaveCommitted(status: number | null): boolean {
+  return status === null || status === 408 || status >= 500;
+}
+
 // Notifications only invalidate local UI state; the gateway remains authoritative.
 export function notifyGatewayChanged(): void {
   if (typeof BroadcastChannel === 'undefined') return;

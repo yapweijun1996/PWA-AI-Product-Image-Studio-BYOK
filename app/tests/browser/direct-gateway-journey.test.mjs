@@ -100,7 +100,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
   const root=await mkdtemp(join(tmpdir(),'studio-direct-browser-'));
   const web=join(root,'web'),journal=join(root,'journal'),profile=join(root,'profile');
   await mkdir(journal,{mode:0o700});await mkdir(profile);
-  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient,legacyClient,recoveryClient,detailsRecoveryClient,sessionClient,secondSessionClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
+  let gateway,browser,client,browserClient,restoreClient,untrustedClient,observerClient,legacyClient,recoveryClient,detailsRecoveryClient,sessionClient,secondSessionClient,ambiguousClient;let providerCalls=0,providerImage='', failNext=false, failAt=-1;const providerPrompts=[];
   const token=randomBytes(32).toString('base64url');
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:web,emptyOutDir:true}});
@@ -701,13 +701,13 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(sessionClient,`[...document.querySelectorAll('.provider-session button')].some(b=>b.textContent==='Disconnect provider'&&!b.disabled)`),'shared provider session');
     await evaluate(sessionClient,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Disconnect provider').click()`);
     await until(()=>evaluate(sessionClient,`document.querySelector('.provider-session')?.innerText.includes('Provider authorization is disconnected.')`),'shared provider disconnected');
-    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a session change.')`),'cross-tab disconnection invalidates gateway');
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a possible session change.')`),'cross-tab disconnection invalidates gateway');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').checked`),false,'A cross-tab disconnect clears unsent consent.');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'A cross-tab disconnect disables generation.');
     assert.equal(providerCalls,14,'Cross-tab invalidation makes no provider request.');
     for (const width of [320,390,768,1280]) {
       await client.call('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:width<800});
-      const layout=await evaluate(client,`(() => {const el=[...document.querySelectorAll('.studio-panel [role=status]')].find(x=>x.innerText.includes('Another tab reported a session change.')),r=el.getBoundingClientRect();return {left:r.left,right:r.right,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+      const layout=await evaluate(client,`(() => {const el=[...document.querySelectorAll('.studio-panel [role=status]')].find(x=>x.innerText.includes('Another tab reported a possible session change.')),r=el.getBoundingClientRect();return {left:r.left,right:r.right,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
       assert.ok(layout.left>=0 && layout.right<=width && !layout.overflow,`The session-change status fits at ${width}px: ${JSON.stringify(layout)}.`);
     }
     await client.call('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:true});
@@ -716,6 +716,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
     secondSessionClient=await connect(secondSessionTarget.webSocketDebuggerUrl);await secondSessionClient.call('Runtime.enable');await secondSessionClient.call('Page.enable');
     await secondSessionClient.call('Page.navigate',{url:`${origin}/settings`});
     await until(()=>evaluate(secondSessionClient,`[...document.querySelectorAll('.provider-session button')].some(b=>b.textContent==='Connect provider'&&!b.disabled)`),'second settings sees disconnected provider');
+    const {targetId:ambiguousId}=await browserClient.call('Target.createTarget',{url:'about:blank'});
+    const ambiguousTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(x=>x.id===ambiguousId),'ambiguous response settings tab');
+    ambiguousClient=await connect(ambiguousTarget.webSocketDebuggerUrl);await ambiguousClient.call('Runtime.enable');await ambiguousClient.call('Page.enable');
+    await ambiguousClient.call('Page.navigate',{url:`${origin}/settings`});
+    await until(()=>evaluate(ambiguousClient,`[...document.querySelectorAll('.provider-session button')].some(b=>b.textContent==='Connect provider'&&!b.disabled)`),'ambiguous settings sees disconnected provider');
     await evaluate(sessionClient,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Connect provider').click()`);
     await until(()=>evaluate(sessionClient,`document.querySelector('.provider-session')?.innerText.includes('Provider authorization active')`),'shared provider reconnected for rejection check');
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Check gateway').click()`);
@@ -724,7 +729,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'consent before external revocation');
     await evaluate(secondSessionClient,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Connect provider').click()`);
     await until(()=>evaluate(secondSessionClient,`document.querySelector('.provider-session')?.innerText.includes('Provider authorization active')`),'second settings reconnects provider');
-    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a session change.')`),'cross-tab connection invalidates consent');
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a possible session change.')`),'cross-tab connection invalidates consent');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').checked`),false,'A replaced provider session clears consent.');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'A replaced provider session requires a gateway recheck.');
     assert.equal(providerCalls,14,'Replacing the session does not call the provider.');
@@ -732,6 +737,16 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Local app and provider session active.')`),'gateway rechecked after session replacement');
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'fresh consent after session replacement');
+    await evaluate(ambiguousClient,`(() => {const original=window.fetch;window.fetch=async (...args)=>{const response=await original(...args);if(String(args[0]).endsWith('/session/connect') && response.ok)return new Response('{invalid',{status:201,headers:{'content-type':'application/json'}});return response}})()`);
+    await evaluate(ambiguousClient,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Connect provider').click()`);
+    await until(()=>evaluate(ambiguousClient,`document.querySelector('.provider-session [role=alert]')?.innerText.includes('could not complete')`),'synthetic malformed connect response');
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a possible session change.')`),'ambiguous session replacement invalidates consent');
+    assert.equal(await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').checked`),false,'An ambiguous response clears the old consent.');
+    assert.equal(providerCalls,14,'The ambiguous connection makes no provider request.');
+    await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Check gateway').click()`);
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Local app and provider session active.')`),'gateway rechecked after ambiguous replacement');
+    await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').click()`);
+    await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'fresh consent after ambiguous response');
     await evaluate(sessionClient,`(async()=>{const auth=await (await fetch('/api/v2/auth/session',{cache:'no-store'})).json();const result=await fetch('/api/v2/session',{method:'DELETE',headers:{'X-CSRF-Token':auth.csrfToken}});if(!result.ok)throw new Error('Synthetic out-of-band disconnect failed.')})()`);
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
     await until(()=>evaluate(client,`document.querySelector('.studio-panel [role=alert]')?.innerText.toLowerCase().includes('no image request was sent')`),'revoked provider approval rejected');
@@ -761,7 +776,7 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').click()`);
     await until(()=>evaluate(client,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'consent before cross-tab sign-out');
     await evaluate(sessionClient,`[...document.querySelectorAll('.provider-session button')].find(b=>b.textContent==='Sign out').click()`);
-    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a session change.')`),'cross-tab sign-out invalidates gateway');
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a possible session change.')`),'cross-tab sign-out invalidates gateway');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.style-plan label')].find(l=>l.innerText.includes('I authorize this single Lifestyle attempt')).querySelector('input').checked`),false,'Cross-tab sign-out clears unsent consent.');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'Cross-tab sign-out disables generation.');
     await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Check gateway').click()`);
@@ -769,11 +784,11 @@ test('production gateway serves a synthetic creation-to-export journey without o
     assert.equal(providerCalls,14,'Cross-tab sign-out and recheck make no provider request.');
     await until(()=>evaluate(sessionClient,`!!document.querySelector('#local-access-token')`),'signed-out settings form');
     await evaluate(sessionClient,`(() => {const e=document.querySelector('#local-access-token');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(token)});e.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.provider-login button').click()})()`);
-    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a session change.')`),'cross-tab sign-in invalidates cached state');
+    await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Another tab reported a possible session change.')`),'cross-tab sign-in invalidates cached state');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),true,'A cross-tab sign-in never activates generation.');
     assert.equal(providerCalls,14,'Cross-tab sign-in does not make a provider request.');
   } finally {
-    secondSessionClient?.close();sessionClient?.close();detailsRecoveryClient?.close();recoveryClient?.close();legacyClient?.close();observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    ambiguousClient?.close();secondSessionClient?.close();sessionClient?.close();detailsRecoveryClient?.close();recoveryClient?.close();legacyClient?.close();observerClient?.close();untrustedClient?.close();restoreClient?.close();browserClient?.close();client?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(gateway)await new Promise((resolve,reject)=>gateway.close(e=>e?reject(e):resolve()));
     await rm(root,{recursive:true,force:true});
   }

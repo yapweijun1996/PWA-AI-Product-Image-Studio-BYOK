@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { notifyGatewayChanged, onGatewayChanged } from '../src/gatewayEvents.ts';
+import { notifyGatewayChanged, onGatewayChanged, sessionMutationMayHaveCommitted } from '../src/gatewayEvents.ts';
+
+test('ambiguous session mutations invalidate and definite client rejections do not', () => {
+  for (const status of [null, 408, 500, 503]) assert.equal(sessionMutationMayHaveCommitted(status), true);
+  for (const status of [400, 401, 403, 409, 429]) assert.equal(sessionMutationMayHaveCommitted(status), false);
+});
 
 test('gateway notifications only carry invalidation and unavailable channels are safe', () => {
   const original = globalThis.BroadcastChannel, instances = [];
