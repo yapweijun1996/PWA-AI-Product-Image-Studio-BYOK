@@ -23,3 +23,5 @@ A single-tab two-build cache-limit test fills the shell-cache slots with synthet
 A two-tab variant checks that an open tab and its synthetic draft prevent cleanup. After that disposable tab closes, the test permits either completed cleanup or a reported partial stop if an update begins concurrently; activation remains a separate user action. Suspended-tab and physical-device acceptance remain open.
 
 The direct-gateway journey also exercises a seven-style queue, requiring individual synthetic consent and verifying separate attempt, job and scene records. The fake provider returns the same synthetic image for every style.
+
+Before the first synthetic generation, the journey also interrupts the network after consent, verifies consent is cleared and no provider call is made, then explicitly rechecks the gateway and gives fresh consent. This covers one pre-dispatch interruption, not in-flight billing or every cross-tab/session case.
