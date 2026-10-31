@@ -105,10 +105,10 @@ test('an old tab loads its cached lazy route after a user-activated two-build up
 });
 async function clientNavigate(tab,origin,productId){await until(()=>evaluate(tab,`!!navigator.serviceWorker.controller`),'new controller');await tab.call('Page.navigate',{url:`${origin}/products/${productId}`})}
 
-test('cache-limit recovery protects a draft and requires explicit cleanup and update', {timeout: 90000}, async () => {
+for (const withOtherTab of [false,true]) test(`cache-limit recovery protects drafts ${withOtherTab ? 'and other tabs ' : ''}before explicit update`, {timeout: 90000}, async () => {
   assert.ok(chrome && existsSync(chrome), 'Set CHROME_BIN to a Chromium executable.');
   const root=await mkdtemp(join(tmpdir(),'studio-cache-recovery-')),a=join(root,'a'),b=join(root,'b'),profile=join(root,'profile');
-  await mkdir(profile);let served=a,server,browser,tab;
+  await mkdir(profile);let served=a,server,browser,tab,otherTab;
   const variation={name:'synthetic-cache-recovery-build-b',enforce:'pre',transform(code,id){if(id.endsWith('/src/ProductDetails.tsx')){const needle='<h1>{product.name}</h1>';assert.ok(code.includes(needle));return code.replace(needle,`${needle}<span data-test-cache-build="b">Synthetic build B</span>`)}}};
   try {
     await build({root:appRoot,configFile:join(appRoot,'vite.config.ts'),logLevel:'silent',build:{outDir:a,emptyOutDir:true}});
@@ -138,19 +138,38 @@ test('cache-limit recovery protects a draft and requires explicit cleanup and up
     await until(()=>evaluate(tab,`!!document.querySelector('#source-file')`),'saved product page');
     await evaluate(tab,`(() => {window.confirm=()=>false;[...document.querySelectorAll('.update-notice button')].find(b=>b.textContent==='Clear old app caches').click()})()`);
     assert.deepEqual(await evaluate(tab,`caches.keys().then(a=>a.filter(n=>n.startsWith('image-studio-shell-')).sort())`),namesBefore,'Canceling cleanup preserves the caches.');
+    if (withOtherTab) {
+      const otherTarget=await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(origin)}`,{method:'PUT'})).json();
+      otherTab=await connect(otherTarget.webSocketDebuggerUrl);await otherTab.call('Page.enable');
+      await until(()=>evaluate(otherTab,`location.origin===${JSON.stringify(origin)} && !!navigator.serviceWorker.controller`),'other controlled tab');
+      await until(()=>evaluate(otherTab,`[...document.querySelectorAll('a')].some(a=>a.textContent==='Create product')`),'other tab workspace');
+      await evaluate(otherTab,`[...document.querySelectorAll('a')].find(a=>a.textContent==='Create product').click()`);
+      await until(()=>evaluate(otherTab,`!!document.querySelector('#product-name')`),'other tab draft form');
+      await evaluate(otherTab,`(() => {const e=document.querySelector('#product-name');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'Other synthetic draft');e.dispatchEvent(new Event('input',{bubbles:true}));window.__otherSentinel='unchanged'})()`);
+      await evaluate(tab,`(() => {window.confirm=()=>true;[...document.querySelectorAll('.update-notice button')].find(b=>b.textContent==='Clear old app caches').click()})()`);
+      await until(()=>evaluate(tab,`document.querySelector('.update-notice [role=status]')?.innerText.includes('Close other app tabs')`),'other tab blocks cleanup');
+      assert.deepEqual(await evaluate(tab,`caches.keys().then(a=>a.filter(n=>n.startsWith('image-studio-shell-')).sort())`),namesBefore,'The other open tab prevents cache deletion.');
+      assert.deepEqual(await evaluate(otherTab,`({controlled:!!navigator.serviceWorker.controller,draft:document.querySelector('#product-name').value,sentinel:window.__otherSentinel})`),{controlled:true,draft:'Other synthetic draft',sentinel:'unchanged'},'The other tab and its draft remain intact.');
+      assert.equal((await fetch(`http://127.0.0.1:${port}/json/close/${otherTarget.id}`)).ok,true,'The isolated second tab closes.');
+      otherTab.close();otherTab=undefined;
+      await until(async()=>!(await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).some(target=>target.id===otherTarget.id),'second tab closed');
+    }
     await evaluate(tab,`(() => {window.confirm=()=>true;[...document.querySelectorAll('.update-notice button')].find(b=>b.textContent==='Clear old app caches').click()})()`);
     await until(()=>evaluate(tab,`navigator.serviceWorker.getRegistration().then(r=>!!r.waiting)`),'version B waits after cleanup');
     await until(()=>evaluate(tab,`[...document.querySelectorAll('.update-notice button')].some(b=>b.textContent==='Update now')`),'explicit update after cleanup');
     assert.equal(await evaluate(tab,`!!document.querySelector('[data-test-cache-build="b"]')`),false,'Cleanup does not activate the new build.');
     const remaining=await evaluate(tab,`caches.keys().then(a=>a.filter(n=>n.startsWith('image-studio-shell-')))`);
-    assert.ok(remaining.every(n=>!n.includes('synthetic-old-')),'Confirmed cleanup removed only the synthetic old shell fixtures.');
+    if (remaining.some(n=>n.includes('synthetic-old-'))) {
+      assert.equal(withOtherTab,true,'Single-tab cleanup removes all synthetic old shell fixtures.');
+      assert.ok(await evaluate(tab,`document.querySelector('.update-notice')?.innerText.includes('cleanup stopped')`),'A partial cleanup is reported when an update starts during cleanup.');
+    }
     assert.ok(remaining.includes(namesBefore.find(n=>!n.includes('synthetic-old-'))),'The active shell cache remains available.');
     assert.equal(await evaluate(tab,`caches.open('synthetic-unrelated-data').then(c=>c.match('/synthetic-marker')).then(r=>r?.text())`),'preserved','Unrelated cached data remains available.');
     await evaluate(tab,`[...document.querySelectorAll('.update-notice button')].find(b=>b.textContent==='Update now').click()`);
     await until(()=>evaluate(tab,`location.pathname===${JSON.stringify('/products/')}+${JSON.stringify(productId)} && !!document.querySelector('[data-test-cache-build="b"]')`),'product after explicit update');
     assert.equal(await evaluate(tab,`document.querySelector('h1').textContent`),'Synthetic cache recovery','The saved product survives cleanup and update.');
   } finally {
-    tab?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
+    otherTab?.close();tab?.close();if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(r=>browser.once('exit',r)),delay(3000)])}
     if(server)await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));await rm(root,{recursive:true,force:true});
   }
 });

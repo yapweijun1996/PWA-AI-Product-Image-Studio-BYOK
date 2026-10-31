@@ -16,4 +16,6 @@ The direct-gateway test also checks first use of the cached product route while 
 
 A single-tab two-build cache-limit test fills the shell-cache slots with synthetic fixtures, checks the draft and confirmation guards, and verifies that confirmed cleanup preserves the active shell and unrelated cached data before a separate user-triggered update. It uses simulated confirmation responses and does not reproduce natural quota exhaustion or replace multi-tab/device acceptance.
 
+A two-tab variant checks that an open tab and its synthetic draft prevent cleanup. After that disposable tab closes, the test permits either completed cleanup or a reported partial stop if an update begins concurrently; activation remains a separate user action. Suspended-tab and physical-device acceptance remain open.
+
 The direct-gateway journey also exercises a seven-style queue, requiring individual synthetic consent and verifying separate attempt, job and scene records. The fake provider returns the same synthetic image for every style.
