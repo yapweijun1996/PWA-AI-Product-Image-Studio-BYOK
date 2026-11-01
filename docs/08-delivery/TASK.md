@@ -64,7 +64,7 @@ This is a planning snapshot for `main` at `e66b135`, not a new runtime or releas
 | T-060 | Complete E2E-011..013 and QA-004/005 with real or rights-cleared cases, including a wrong-label hard veto at a high score and explicit human approval. Restore safe read-only legacy review access after mask changes ([BUG-012](../../BUG.md)); resolve OPEN-009 before enabling unsupported unbranded scoring. |
 | T-061 | Complete E2E-013/021/022: export approved outputs only in supported formats/ratios, exclude rejected assets, retain accurate provenance after retry/import and verify no credentials in bundles; test real SKU and installed-device cases. |
 | T-070 | Exercise 1-of-7 and 7-of-7 with real or rights-cleared SKU evidence and a controlled authorized provider; verify stable style IDs, independent jobs/attempts/statuses/receipts, suitable scene fit and no cross-style leakage (E2E-006/007/010). |
-| T-071 | Refine the wording of the owner-accepted mobile UNKNOWN retry sequence, preserving external billing/rate-limit review, recorded acknowledgment, retry preparation and separate fresh authorization; review revised copy without implying that an UNKNOWN outcome is resolved. Verify full E2E-015/023 error matrix, explicit billable retry consent, unique attempt lineage and source/output comparison on installed devices and a controlled provider; preserve history and UNKNOWN rather than silently resending. |
+| T-071 | Review the revised mobile UNKNOWN copy with users. Verify the full E2E-015/023 error matrix, explicit billable retry consent, unique attempt lineage and source/output comparison on installed devices and a controlled provider; preserve history and UNKNOWN rather than silently resending. |
 
 ### P2 — recovery, device and release quality
 
@@ -1346,6 +1346,12 @@ Do not mark production deployed from CI green alone. Human permission required f
 - **Decision:** The owner accepted the current interaction sequence reviewed using a synthetic screenshot: check provider billing and rate limits, confirm and record the review, prepare the retry, and separately authorize the new request. Refine wording later. [DEC-018](../00-governance/DECISION_REGISTER.md) owns this decision.
 - **Next work and acceptance:** Propose and review clearer wording while preserving the sequence, the possible-charge warning, unresolved UNKNOWN history, no automatic resend and separate authorization for a new attempt. Do not treat this as approval of specific new copy or other interactions.
 - **Evidence and limits:** The existing direct-gateway journey covers the sequence with synthetic transport and simulated review; see the T-041 / T-071 record above. No real billing, provider, physical-device or screen-reader acceptance follows from the owner's decision. T-041/T-071 remain IMPLEMENTED_UNVERIFIED and T-084 remains IN_PROGRESS. This record changes no application behavior or release approval.
+
+## T-041 / T-071 mobile UNKNOWN retry wording — 2026-11-01
+
+- **Change:** Clarified the possible prior charge, external provider billing and rate-limit check, recorded review, unresolved outcome and separately authorized new attempt. The retry review now states that preparation has not sent a request and that the new attempt may also be charged. The accepted interaction and existing restrictions are unchanged.
+- **Verification:** The synthetic direct-gateway Chromium suite passed 4/4, including copy assertions and the no-resend, review, preparation, separate consent and retry-lineage journey; layout/focus checks cover 320, 390, 768 and 1280 CSS px. The production build passed with its existing large-chunk warning. No real provider or paid request was used.
+- **Remaining acceptance and rollback:** Revised copy has not been user-tested or separately approved. Installed devices, screen readers, real billing and the complete error matrix remain open; T-041 and T-071 stay IMPLEMENTED_UNVERIFIED. Revert the copy and its assertions without changing the review, history or authorization controls if needed.
 
 ## T-080 / T-084 real browser zoom sample — 2026-10-31
 

@@ -102,8 +102,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 6196,
-      "sha256": "d2ab0ef715948664bf6688b0a17fd95b07482fa9ecf54d0f0f7480026dd3052e"
+      "bytes": 6243,
+      "sha256": "4ab8b1b305498bfc734d4255a456b1e287f6d9f5d50741e8792d94cdeace475e"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -302,8 +302,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 313175,
-      "sha256": "b90b0b9957cdc6410c6071ec6f3ffde048f8cb7a0d866a648312fa8f59588d25"
+      "bytes": 314078,
+      "sha256": "69987f1a8179860aef7301a83db48c5f67463a4b241deac60519a3327189c2b2"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

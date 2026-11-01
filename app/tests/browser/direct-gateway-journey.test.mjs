@@ -271,11 +271,16 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await until(()=>evaluate(client,`window.__beforeUnknownReload!==true && [...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(unknownId)})&&li.innerText.includes('Outcome unknown'))`),'persisted unknown');
     assert.equal(providerCalls,2,'Reload does not resend an unknown attempt.');
     const unknownSelector=`.studio-history li`;
+    const unknownCopy=await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes(${JSON.stringify(unknownId)})).innerText`);
+    assert.match(unknownCopy,/provider may have charged you/);
+    assert.match(unknownCopy,/Check your provider billing and rate limits outside this app/);
+    assert.match(unknownCopy,/does not resolve the outcome or send a request/);
     assert.equal(await evaluate(client,`[...[...document.querySelectorAll(${JSON.stringify(unknownSelector)})].find(li=>li.innerText.includes(${JSON.stringify(unknownId)})).querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').disabled`),true,'Unreviewed uncertainty cannot be acknowledged.');
     await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('label')].find(l=>l.innerText.includes('I have reviewed provider billing')).querySelector('input').click()})()`);
     await until(()=>evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));return [...li.querySelectorAll('button')].some(b=>b.textContent==='Record review of this attempt'&&!b.disabled)})()`),'unknown review ready');
     await evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));[...li.querySelectorAll('button')].find(b=>b.textContent==='Record review of this attempt').click()})()`);
     await until(()=>evaluate(client,`(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(unknownId)}));return li.innerText.includes('Reviewed at')&&[...li.querySelectorAll('button')].some(b=>b.textContent.startsWith('Prepare retry for Studio')&&!b.disabled)})()`),'unknown reviewed');
+    assert.match(await evaluate(client,`[...document.querySelectorAll('.studio-history li')].find(li=>li.innerText.includes(${JSON.stringify(unknownId)})).innerText`),/Local outcome remains UNKNOWN.*separately authorize the new attempt/s);
     assert.equal(providerCalls,2,'Reviewing an unknown attempt does not send a request.');
     await evaluate(client,`(() => {const name=document.querySelector('#fact-name'),value=document.querySelector('#fact-value');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(name,'Synthetic changed fact');name.dispatchEvent(new Event('input',{bubbles:true}));Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(value,'Temporary value');value.dispatchEvent(new Event('input',{bubbles:true}));const f=name.form;f.querySelector('input[type=checkbox]').click();f.requestSubmit()})()`);
     await until(()=>evaluate(client,`document.querySelector('.facts-list')?.innerText.includes('Synthetic changed fact')`),'synthetic changed fact saved');
@@ -297,6 +302,10 @@ test('production gateway serves a synthetic creation-to-export journey without o
     await client.call('Input.dispatchKeyEvent',{type:'keyDown',key:' ',code:'Space',windowsVirtualKeyCode:32});
     await client.call('Input.dispatchKeyEvent',{type:'keyUp',key:' ',code:'Space',windowsVirtualKeyCode:32});
     await until(()=>evaluate(client,`document.querySelector('.studio-panel')?.innerText.includes('Retry of attempt ${unknownId}')`),'prepared retry');
+    const retryCopy=await evaluate(client,`document.querySelector('#retry-review-heading').parentElement.innerText`);
+    assert.match(retryCopy,/Preparing this retry has not sent a request/);
+    assert.match(retryCopy,/new attempt is separate and may also be charged/);
+    assert.match(retryCopy,/authorize it below to send it/);
     const retryVisibility=await evaluate(client,`(() => {const target=document.querySelector('#retry-review-heading') || [...document.querySelectorAll('.studio-panel form strong')].find(e=>e.textContent.startsWith('Retry of attempt'));const r=target?.getBoundingClientRect();return {top:r?.top,viewport:innerHeight,focused:document.activeElement===target}})()`);
     assert.ok(retryVisibility.top>=0 && retryVisibility.top<retryVisibility.viewport && retryVisibility.focused,`The prepared retry is visible and focused: ${JSON.stringify(retryVisibility)}`);
     for (const width of [320,390,768,1280]) {
