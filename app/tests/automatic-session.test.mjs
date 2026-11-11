@@ -1,0 +1,65 @@
+import test, { after } from "node:test";
+import assert from "node:assert/strict";
+import { createServer } from "vite";
+globalThis.window = new EventTarget();
+const server = await createServer({
+  root: new URL("..", import.meta.url).pathname,
+  server: { middlewareMode: true },
+  appType: "custom",
+});
+after(() => server.close());
+const keys = await server.ssrLoadModule("/src/browserByok.ts"),
+  sessions = await server.ssrLoadModule("/src/automaticSession.ts"),
+  imaging = await server.ssrLoadModule("/src/autoImaging.ts");
+test("automatic uploads require key and explicit session spending consent", () => {
+  assert.throws(() => sessions.authorizeAutomaticSession("1.00", true));
+  keys.setBrowserKey("sk-synthetic-auto-session-test");
+  assert.throws(() => sessions.authorizeAutomaticSession("1.00", false));
+  assert.throws(() => sessions.authorizeAutomaticSession("NaN", true));
+  sessions.authorizeAutomaticSession("0.10", true);
+  assert.ok(sessions.reserveAutomaticRun("0.059000"));
+  assert.throws(() => sessions.reserveAutomaticRun("0.059000"));
+  assert.equal(sessions.automaticSessionStatus().reserved, 59000);
+  keys.clearBrowserKey();
+  assert.equal(sessions.automaticSessionStatus(), null);
+  assert.throws(() => sessions.reserveAutomaticRun("0.001000"));
+});
+test("automatic foreground checks reject empty, invalid or tiny selections", () => {
+  assert.throws(() => imaging.matteBounds(new Float32Array(16), 4, 4));
+  assert.throws(() => imaging.matteBounds(new Float32Array([NaN]), 1, 1));
+  assert.throws(() => imaging.matteBounds(new Float32Array(4), 2, 3));
+  const a = new Float32Array(100);
+  for (let y = 2; y <= 7; y++) for (let x = 3; x <= 8; x++) a[y * 10 + x] = 1;
+  assert.deepEqual(imaging.matteBounds(a, 10, 10), {
+    left: 3,
+    top: 2,
+    right: 8,
+    bottom: 7,
+  });
+});
+
+test("automatic downloads reject missing machine evidence and resealed invalid image data", async () => {
+  const store = await server.ssrLoadModule("/src/automaticStore.ts");
+  await assert.rejects(() =>
+    store.checkedOutput({
+      status: "READY",
+      output: new Blob(["bad"], { type: "image/png" }),
+    }),
+  );
+  const blob = new Blob(["not-an-image"], { type: "image/png" }),
+    hash = [
+      ...new Uint8Array(
+        await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()),
+      ),
+    ]
+      .map((n) => n.toString(16).padStart(2, "0"))
+      .join("");
+  await assert.rejects(() =>
+    store.checkedOutput({
+      status: "READY",
+      output: blob,
+      sha256: hash,
+      qa: { status: "AUTOMATIC_CHECKS_PASSED", outputSha256: hash },
+    }),
+  );
+});

@@ -26,9 +26,14 @@ jobs:
         working-directory: app
       - run: npm test
         working-directory: app
-      - name: Verify Pages navigation and offline behavior
+      - name: Verify upload-to-download and offline behavior
         run: node --test tests/browser/pages-preview.test.mjs
         working-directory: app
+      - name: Verify automatic cutout with the bundled model
+        run: node --test tests/browser/pages-preview.test.mjs
+        working-directory: app
+        env:
+          STUDIO_MATTE_SMOKE: '1'
       - name: Build repository-scoped static preview
         working-directory: app
         env:

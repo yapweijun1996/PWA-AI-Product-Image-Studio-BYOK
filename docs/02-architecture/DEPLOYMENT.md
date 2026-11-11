@@ -47,3 +47,9 @@ Local Chromium verifies direct settings navigation, reload, worker scope, manife
 ### Pages BYOK update — 2026-11-11
 
 The owner subsequently authorized in-browser key entry and direct OpenAI generation (DEC-019 / ADR-019). Settings holds the key in tab memory only; `pages` generation reuses local attempt, composition, review and export paths through a browser transport. The workflow supplies no key and no server key vault is involved. Existing preview URLs now offer BYOK generation rather than only a disconnected static shell. Actual paid generation remains unverified until separately authorized and observed.
+
+### Automatic Pages studio — 2026-11-11
+
+DEC-020 / ADR-020 replace the Pages landing flow with upload-to-output automation. Settings now establishes current-tab key, rights acknowledgement, seven-call consent and a session estimate limit. The workflow verifies transparent-source and actual bundled U2NETP model paths using synthetic photos and mocked image responses. U2NETP weights, license and SHA-256 ship as static assets; ONNX WASM/module assets and the model are included in the Pages shell cache. Root gateway builds keep their original static-cache whitelist and do not require the new model assets for installation.
+
+The new `image-studio-automatic` database is separate from legacy projects and is not rolled back by changing static artifacts. Preserve both databases and request uncertainty markers. Automatic ZIPs are output bundles with technical evidence, not legacy human-approved exports or editable-project backups. A rollback to the prior compatible Pages build restores the old landing screen; user-driven worker activation remains required.

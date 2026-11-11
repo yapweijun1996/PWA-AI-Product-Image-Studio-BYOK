@@ -8,7 +8,7 @@
   "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 133,
+  "fileCountHashed": 134,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -22,8 +22,8 @@
     },
     {
       "path": ".github/workflows/pages.yml",
-      "bytes": 1539,
-      "sha256": "62abc92b96ef04fbbb9655973b64235406c918b8aba41f7e6f0c6d8e8a1d505b"
+      "bytes": 1742,
+      "sha256": "743a857edbaa8a3aaf8fa3272c57d810eea55781bc1afc418ade790d275302c2"
     },
     {
       "path": ".gitignore",
@@ -52,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 11105,
-      "sha256": "bb6ce600309778c2db6ebee4564101cdfb6a43f5d9cd0910d42ee9dc02805542"
+      "bytes": 12878,
+      "sha256": "662ad743cfea65ac3deca7a7775ea451eb0521a7e111832577bad653e546e01e"
     },
     {
       "path": "ROADMAP.md",
@@ -107,8 +107,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 6611,
-      "sha256": "afbaf1dea6145d6f5dc129449e30e40a18cde23bc62d97bcb26d1c5901f7f868"
+      "bytes": 7065,
+      "sha256": "c1f63ff783dd7ffca85c01f221fd10f969becd31c78d870e70665c2160c779b6"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -162,13 +162,13 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 40367,
-      "sha256": "33409af738806204a046b36ad7241c9ffc3bdffdbf66b3cec227dbefb79202c0"
+      "bytes": 43786,
+      "sha256": "6b061d4c6fc2e1e0af6f6752b99336b2708d0fbb43f871e713178e2d6ce60687"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
-      "bytes": 5017,
-      "sha256": "b8b6a5cd1fcef6a470e4ccc56bbbdb99f64aa3c86624d82565e67dc5961c6a40"
+      "bytes": 6082,
+      "sha256": "56492ffa4ac98645e26ddc52c32b9d9e758372cabdfd199880f5ab030f904446"
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
@@ -307,8 +307,13 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 317866,
-      "sha256": "c8a33744f770afacb2e3157c8b7ab488f0a181b9cecf88977d52cf1f6906e4ef"
+      "bytes": 320394,
+      "sha256": "ac9b4d5a817f964e84c9acd849b3c82a882764ad7d4c587316ffa8bbcb32d6bd"
+    },
+    {
+      "path": "docs/09-research/AUTO_CUTOUT_EXPERIMENT.md",
+      "bytes": 3093,
+      "sha256": "ea64dd96f90184fcee2d21e053a2559cb7fc6ca39d5c66d32173b47401bcbfdc"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

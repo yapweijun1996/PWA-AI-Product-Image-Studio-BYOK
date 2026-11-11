@@ -140,7 +140,7 @@ self.addEventListener('fetch', (event) => {
     // Navigation is read-only so quota exhaustion cannot prevent opening the app.
     event.respondWith(caches.open(CACHE_NAME).then(async (cache) =>
       (await cache.match(`${SHELL_BASE}index.html`)) || fetch(request)));
-  } else if (!url.search && (SHELL_PATHS.has(url.pathname) || (url.pathname.startsWith(`${SHELL_BASE}assets/`) && /\/[A-Za-z0-9_-]+\.(?:js|css)$/.test(url.pathname)))) {
+  } else if (!url.search && (SHELL_PATHS.has(url.pathname) || (url.pathname.startsWith(`${SHELL_BASE}assets/`) && /\/[A-Za-z0-9_-]+\.(?:js|css|mjs|wasm)$/.test(url.pathname)))) {
     // A claimed old client may still need its own hashed worker or module.
     event.respondWith(cachedShellAsset(request));
   }

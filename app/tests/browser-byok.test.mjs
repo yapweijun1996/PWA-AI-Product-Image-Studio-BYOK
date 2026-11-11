@@ -32,3 +32,6 @@ test('clearing a key aborts the in-flight request and preserves UNKNOWN without 
 test('401 is definitive and untrusted provider error text is not exposed',async()=>{
  setBrowserKey(key);let calls=0;globalThis.fetch=async()=>{calls++;return Response.json({error:{message:key}},{status:401})};const result=await(await request('/images/generate',await approved(body()))).json();assert.equal(result.error.outcome,'DEFINITIVE_FAILURE');assert.equal(calls,1);assert.ok(!JSON.stringify(result).includes(key));
 });
+test('pre-dispatch journal quota failure is definitively not sent and does not leave an unknown marker',async()=>{
+ setBrowserKey(key);let calls=0;globalThis.fetch=async()=>{calls++;throw new Error('must not send')};const b=body(),init=await approved(b),original=localStorage.setItem;localStorage.setItem=()=>{throw new DOMException('quota','QuotaExceededError')};try{const result=await(await request('/images/generate',init)).json();assert.equal(result.error.code,'RECOVERY_REQUIRED');assert.equal(result.error.outcome,'DEFINITIVE_FAILURE');assert.equal(calls,0);assert.equal(storage.size,0);}finally{localStorage.setItem=original}
+});

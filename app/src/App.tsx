@@ -4,6 +4,7 @@ import { useServiceWorker } from './useServiceWorker';
 import { NewProduct, Workspace } from './ProductPages';
 import { ProviderSessionPanel } from './ProviderSessionPanel';
 
+const UploadStudio = lazy(() => import('./UploadStudio').then(module => ({default:module.UploadStudio})));
 const ProductDetails = lazy(() => import('./ProductDetails').then((module) => ({ default: module.ProductDetails })));
 const BackupImport = lazy(() => import('./BackupPages').then((module) => ({ default: module.BackupImport })));
 
@@ -84,6 +85,7 @@ function Settings({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) 
 }
 
 function Help() {
+  if(import.meta.env.MODE === 'pages') return <><div className="eyebrow">GUIDE</div><h1>Upload. Get your images.</h1><p className="lead">One product photo becomes seven complete looks.</p><div className="guide-list"><section><div><h2>1. Set up this tab</h2><p>Add your OpenAI key and authorize a session estimate limit. Your key stays in memory and clears on refresh or exit.</p><Link to="/settings">Session settings</Link></div></section><section><div><h2>2. Upload a product photo</h2><p>Upload starts automatic selection, scene generation and product composition. No product forms, masks, scores or approval steps. First-use selection tools may take longer to download; no image request is sent until product preparation succeeds.</p></div></section><section><div><h2>3. Download your images</h2><p>Results appear as they finish. Download one image or all finished images as a ZIP. Partial failures keep successful results and do not cause automatic paid retries. Automated selection and resizing may affect fine details; outputs are not human-reviewed.</p><Link className="primary-button" to="/">Upload image</Link></div></section></div><details><summary>Previous projects and recovery</summary><p>Saved uploads and originals stay in this browser. Use the homepage’s previous uploads section to reopen them. A disconnected or ambiguous paid request pauses new uploads; check billing and use the exceptional recovery consent in Settings to authorize new requests. The original outcome remains unknown.</p><Link to="/workspace">Advanced workspace and existing projects</Link></details></>;
   return <>
     <div className="eyebrow">GUIDE</div>
     <h1>Get started</h1>
@@ -151,7 +153,7 @@ export function App() {
             : <button type="button" onClick={update.updateNow}>Update now</button>)}
       </section>}
       <main id="main-content" tabIndex={-1} ref={mainContent}>
-        <RouteErrorBoundary key={location.pathname}><Suspense fallback={<p role="status">Loading page…</p>}><Routes><Route path="/" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes></Suspense></RouteErrorBoundary>
+        <RouteErrorBoundary key={location.pathname}><Suspense fallback={<p role="status">Loading page…</p>}><Routes><Route path="/" element={import.meta.env.MODE === 'pages' ? <UploadStudio/> : <Workspace/>}/><Route path="/workspace" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes></Suspense></RouteErrorBoundary>
       </main>
       <footer><span>PRODUCT IMAGE STUDIO</span><span>Local-first by design</span></footer>
     </div>

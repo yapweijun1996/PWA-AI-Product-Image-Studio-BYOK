@@ -17,6 +17,7 @@ function journal(): Record<string, Marker> {
     ((m as Marker).waitUntil !== undefined && (!Number.isSafeInteger((m as Marker).waitUntil) || (m as Marker).waitUntil! < 0)))) throw new Error('Local request history requires recovery.');
   return value;
 }
+export function browserWaitReviewNeeded() { return Object.values(journal()).some(m=>m.waitReview===true); }
 function writeJournal(value: Record<string, Marker>) { localStorage.setItem(JOURNAL, JSON.stringify(value)); }
 export function browserKeyStatus() { return { connected: Boolean(key) && expires > Date.now(), expiresAt: expires ? new Date(expires).toISOString() : null }; }
 export function clearBrowserKey() {
@@ -89,7 +90,8 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
     const headers = new Headers(init.headers), approval = approvals.get(headers.get('X-Attempt-Approval') ?? '');
     approvals.delete(headers.get('X-Attempt-Approval') ?? '');
     if (!approval || approval.epoch !== epoch || approval.expires <= Date.now() || approval.body !== JSON.stringify(body) || headers.get('X-Client-Request-Id') !== id) return failure('APPROVAL_STALE');
-    markers[id] = { outcome: 'IN_FLIGHT' }; writeJournal(markers);
+    markers[id] = { outcome: 'IN_FLIGHT' };
+    try { writeJournal(markers); } catch { return failure('RECOVERY_REQUIRED','DEFINITIVE_FAILURE',503); }
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 300_000);
     active.add(controller);
     let httpStatus: number | undefined, waitSeconds: number | undefined, sent = false;

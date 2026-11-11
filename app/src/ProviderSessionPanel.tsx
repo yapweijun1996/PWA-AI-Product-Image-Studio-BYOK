@@ -1,5 +1,4 @@
-import { BrowserKeyPanel } from './BrowserKeyPanel';
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
 import { useUnsavedChanges } from './useUnsavedChanges';
 import { gatewayOriginSupported, unsupportedGatewayMessage } from './gatewayAccess';
 import { notifyGatewayChanged, sessionMutationMayHaveCommitted } from './gatewayEvents';
@@ -53,8 +52,9 @@ function provider(value: unknown): Status {
   return { connected, configured: record.configured, provider: 'openai', expiresAt: connected ? expiresAt : null, stale: record.connected && !connected };
 }
 
+const BrowserKeyPanel = lazy(()=>import('./BrowserKeyPanel').then(module=>({default:module.BrowserKeyPanel})));
 export function ProviderSessionPanel() {
-  return import.meta.env.MODE === 'pages' ? <BrowserKeyPanel /> : <GatewaySessionPanel />;
+  return import.meta.env.MODE === 'pages' ? <Suspense fallback={<p role="status">Loading session settings…</p>}><BrowserKeyPanel /></Suspense> : <GatewaySessionPanel />;
 }
 function GatewaySessionPanel() {
   const [state, setState] = useState<State>({ kind: 'checking' });
