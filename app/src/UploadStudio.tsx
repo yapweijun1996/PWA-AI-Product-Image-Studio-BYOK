@@ -308,7 +308,7 @@ export function UploadStudio() {
           <div className="section-heading">
             <div>
               <span className="section-kicker">YOUR IMAGES</span>
-              <h2 id="auto-results-heading">{completed.length} of 7 ready</h2>
+              <h2 id="auto-results-heading" aria-live="polite">{completed.length} of 7 ready</h2>
             </div>
             <button
               className="primary-button"
