@@ -40,6 +40,10 @@ Static PWA rollback must account for Service Worker controller/cache state and I
 
 ## Authorized GitHub Pages preview — 2026-11-11
 
-The owner selected GitHub Pages for a static preview and authorized GitHub Actions deployment, commit and push to main. The workflow publishes only `app/dist`, after unit and Pages browser checks, using Node 24 on Ubuntu 24.04 and pinned official Actions. The `pages` build uses a repository base path, hash routing, relative manifest URLs, scoped worker registration and scoped caches. It disables the development gateway even when served on loopback. Default root builds retain existing routing and cache names. No provider secret is provisioned by this workflow.
+The owner selected GitHub Pages for a static preview and authorized GitHub Actions deployment, commit and push to main. The workflow publishes only `app/dist`, after unit and Pages browser checks, using Node 24 on Ubuntu 24.04 and pinned official Actions. The `pages` build uses a repository base path, hash routing, relative manifest URLs, scoped worker registration and scoped caches. After DEC-019, Pages uses direct browser BYOK through AI SDK and never contacts the development gateway, even on loopback. Default root builds retain existing routing and cache names. No provider secret is provisioned by this workflow.
 
 Local Chromium verifies direct settings navigation, reload, worker scope, manifest start URL, offline reload and absence of gateway requests. Hosted Actions and live URL acceptance must be observed separately. This is preview acceptance only; T-090 production gates remain open. Rollback requires a reviewed database-compatible artifact and explicit user-driven worker activation; do not silently reload an editor.
+
+### Pages BYOK update — 2026-11-11
+
+The owner subsequently authorized in-browser key entry and direct OpenAI generation (DEC-019 / ADR-019). Settings holds the key in tab memory only; `pages` generation reuses local attempt, composition, review and export paths through a browser transport. The workflow supplies no key and no server key vault is involved. Existing preview URLs now offer BYOK generation rather than only a disconnected static shell. Actual paid generation remains unverified until separately authorized and observed.

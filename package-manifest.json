@@ -32,8 +32,8 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 3443,
-      "sha256": "1d658297b8cddb8c04727c09f9f9f160f86f67c0ddc233c2e832e00f1c232dfc"
+      "bytes": 3684,
+      "sha256": "64c7ab910b8fd8c78f68dd1ffccb015b09d246792bffde8a01b900ce696762e7"
     },
     {
       "path": "BUG.md",
@@ -52,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 9087,
-      "sha256": "0c8bd9ca37fb259fc39b0e33bc98e6f550bac88c342dca331c004d8471e0b729"
+      "bytes": 11105,
+      "sha256": "bb6ce600309778c2db6ebee4564101cdfb6a43f5d9cd0910d42ee9dc02805542"
     },
     {
       "path": "ROADMAP.md",
@@ -107,8 +107,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 6243,
-      "sha256": "4ab8b1b305498bfc734d4255a456b1e287f6d9f5d50741e8792d94cdeace475e"
+      "bytes": 6611,
+      "sha256": "afbaf1dea6145d6f5dc129449e30e40a18cde23bc62d97bcb26d1c5901f7f868"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -162,13 +162,13 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 37836,
-      "sha256": "db2313d74ebf67cc28873f6d5bf72b8afb09f74c426d841b1a08788de6815d00"
+      "bytes": 40367,
+      "sha256": "33409af738806204a046b36ad7241c9ffc3bdffdbf66b3cec227dbefb79202c0"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
-      "bytes": 4422,
-      "sha256": "542376db5b6a7b46c75047d0914810faeb4b5778543d81ec02d5b9df5cda3c40"
+      "bytes": 5017,
+      "sha256": "b8b6a5cd1fcef6a470e4ccc56bbbdb99f64aa3c86624d82565e67dc5961c6a40"
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
@@ -197,8 +197,8 @@
     },
     {
       "path": "docs/03-security/BYOK_SECURITY.md",
-      "bytes": 5980,
-      "sha256": "319bb79e6789e158f4d52ec7c14a9bd48f8cdcd246f8e8e059d02d25af340c1b"
+      "bytes": 6446,
+      "sha256": "a780a594f08e0afda74d95dadf235c333c84e80733422f6605435ad1f1107b25"
     },
     {
       "path": "docs/03-security/PRIVACY_DATA_LIFECYCLE.md",
@@ -307,8 +307,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 315481,
-      "sha256": "bddeb51830698197a7a23023d33d9c990e2094edaca78f80ec253f7e6efc4fc3"
+      "bytes": 317866,
+      "sha256": "c8a33744f770afacb2e3157c8b7ab488f0a181b9cecf88977d52cf1f6906e4ef"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

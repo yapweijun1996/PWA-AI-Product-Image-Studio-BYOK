@@ -1,3 +1,5 @@
+> **2026-11-11 scope update (DEC-019 / ADR-019):** The owner authorized current-tab memory-only key entry and direct OpenAI requests for GitHub Pages. The server-key requirements below describe the self-hosted gateway. Browser mode exposes keys to trusted page code and potentially extensions/XSS; it does not claim server-side custody or quotas. Keys must never enter persistent storage, logs, backup or export. No hosted multi-user key vault has been introduced.
+
 # BYOK Security and Key-Custody Contract
 
 **Risk class:** Security-critical. **Status:** a loopback-only development session subset exists; the complete design is NOT independently reviewed or deployed. Official OpenAI guidance forbids placing long-lived API Keys in public browser bundles.

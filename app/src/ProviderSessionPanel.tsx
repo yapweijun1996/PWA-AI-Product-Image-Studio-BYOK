@@ -1,3 +1,4 @@
+import { BrowserKeyPanel } from './BrowserKeyPanel';
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
 import { useUnsavedChanges } from './useUnsavedChanges';
 import { gatewayOriginSupported, unsupportedGatewayMessage } from './gatewayAccess';
@@ -53,6 +54,9 @@ function provider(value: unknown): Status {
 }
 
 export function ProviderSessionPanel() {
+  return import.meta.env.MODE === 'pages' ? <BrowserKeyPanel /> : <GatewaySessionPanel />;
+}
+function GatewaySessionPanel() {
   const [state, setState] = useState<State>({ kind: 'checking' });
   const [busy, setBusy] = useState<Busy | null>(null);
   const [accessToken, setAccessToken] = useState('');

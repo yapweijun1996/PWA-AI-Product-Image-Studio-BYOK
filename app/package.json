@@ -15,7 +15,9 @@
     "test:browser": "node --test tests/browser/*.test.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai": "4.0.115",
     "@zip.js/zip.js": "2.24.0",
+    "ai": "7.0.170",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "react": "19.3.1",

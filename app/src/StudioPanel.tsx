@@ -1,3 +1,4 @@
+import { browserStudioRequest, onBrowserKeyChange } from './browserByok';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_SCENE_PROMPT_VERSION, STUDIO_PRESET_VERSION, STUDIO_STYLE_IDS, STUDIO_MAX_PNG_BYTES, STUDIO_MAX_RETRY_AFTER_SECONDS, STUDIO_PRICING_SNAPSHOT, studioBuildPrompt, studioEstimateUSD, studioObservedUSD, type StudioStyleId, type StudioSceneContext } from '../studio-policy.mjs';
@@ -30,6 +31,7 @@ function gatewayAvailable(): boolean {
 }
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
   if (!gatewayAvailable()) throw new Error('Offline or local gateway unavailable. No request was sent.');
+  if (import.meta.env.MODE === 'pages') return browserStudioRequest(path, init);
   return fetch(`/api/v2${path}`, { ...init, credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
 }
 export function decodeAcknowledgement(value: unknown, attemptId: string): { acknowledgedAt: string; recordedOutcome: StudioRecordedOutcome } {
@@ -387,9 +389,10 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     Promise.all([listStudioAttempts(product.productId), globalStudioReviewFingerprint(), budgetSessionId ? studioSessionEstimate(budgetSessionId) : Promise.resolve(null), listOtherStudioBlockers(product.productId)]).then(([value, fingerprint, total, blockers]) => { if (active) { setEntries(value); setReviewFingerprint(fingerprint); setSessionTotal(total); setOtherBlockers(blockers); } }).catch((reason: unknown) => { if (active) setError(reason instanceof Error && reason.message.startsWith('The local attempt history has inconsistent') ? reason.message : 'Local attempt history is unavailable. Generation is disabled. Preserve your local data and backups; seek recovery assistance.'); });
     void refreshGateway();
     const offline = () => { gatewayCheck.current++; clearQueueConsent(); setGateway(gatewayOriginSupported() ? 'unavailable' : 'unsupported-origin'); };
+    const stopKeyListener = onBrowserKeyChange(() => { void refreshGateway(); });
     const stopSessionListener = onGatewayChanged(() => { gatewayCheck.current++; clearQueueConsent(); setGateway(gatewayOriginSupported() ? 'session-changed' : 'unsupported-origin'); });
     window.addEventListener('offline', offline);
-    return () => { active = false; gatewayCheck.current++; stopSessionListener(); window.removeEventListener('offline', offline); };
+    return () => { active = false; gatewayCheck.current++; stopKeyListener(); stopSessionListener(); window.removeEventListener('offline', offline); };
   }, [product.productId, budgetSessionId]);
 
   useEffect(() => {
@@ -602,6 +605,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
               try {
                 const envelope = record(record(await json(response)).error);
                 failure = sceneFailure(response.status, envelope);
+                if (import.meta.env.MODE === 'pages' && response.status === 401) failure.message = 'OpenAI rejected this key. Clear or replace it in Settings; no automatic retry occurred.';
                 failureDetail = sanitizedStudioFailure(response.status, envelope);
                 if (response.status === 409 && envelope.code === 'APPROVAL_STALE' && failure.definitive) { gatewayCheck.current++; setGateway('unavailable'); }
               } catch { /* malformed failure is ambiguous */ }
@@ -668,7 +672,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
     <p>Each selected style is an independent, potentially billable attempt. The original image and mask remain local; the product name, category and selected confirmed facts shown in each prompt are sent to the provider. Do not include secrets or information you do not want to share.</p>
     <p><strong>Backup warning:</strong> Full backups include generated scenes, local review records, prompts, cost estimates and other project history. ZIP files are not encrypted; protect them as sensitive data.</p>
     <p>Planned calls: <strong>{selectedStyles.length}</strong>; estimated total: <strong>{planError || !sources || sessionTotal === null ? 'unavailable' : `$${plannedTotal} USD`}</strong>. One call per selected scene; no automatic retry. Estimate only, not a cap or invoice. Model {STUDIO_MODEL}, {STUDIO_QUALITY}, {STUDIO_SIZE}, PNG; pricing snapshot 2026-10-29. <a href="https://developers.openai.com/api/docs/guides/image-generation" target="_blank" rel="noreferrer">Pricing evidence</a>.</p>
-    {gateway === 'checking' ? <p role="status">Checking local gateway…</p> : gateway === 'unavailable' ? <p role="status">Offline or local gateway unavailable. Generation is disabled. When online, select Check gateway to refresh its status.</p> : gateway === 'session-changed' ? <p role="status">Another tab reported a possible session change. Generation is disabled. Select Check gateway to verify its status.</p> : gateway === 'unsupported-origin' ? <p role="status">{unsupportedGatewayMessage} Generation is disabled.</p> : gateway === 'signed-out' ? <p>Sign in to the local app in provider settings first.</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>Local app and provider session active.</p>}
+    {gateway === 'checking' ? <p role="status">{import.meta.env.MODE === 'pages' ? 'Checking browser key…' : 'Checking local gateway…'}</p> : gateway === 'unavailable' ? <p role="status">{import.meta.env.MODE === 'pages' ? 'Offline or browser request history unavailable. Reconnect and check the connection. Preserve local data if the problem persists.' : 'Offline or local gateway unavailable. Generation is disabled. When online, select Check gateway to refresh its status.'}</p> : gateway === 'session-changed' ? <p role="status">Another tab reported a possible session change. Generation is disabled. Select Check gateway to verify its status.</p> : gateway === 'unsupported-origin' ? <p role="status">{unsupportedGatewayMessage} Generation is disabled.</p> : gateway === 'signed-out' ? <p>{import.meta.env.MODE === 'pages' ? 'Add your OpenAI key in Settings to generate in this tab.' : 'Sign in to the local app in provider settings first.'}</p> : gateway === 'disconnected' ? <p>Connect the configured provider session in settings first.</p> : <p>{import.meta.env.MODE === 'pages' ? 'Browser BYOK active. Request authorization and recovery are local records, not server billing verification.' : 'Local app and provider session active.'}</p>}
     {!navigator.locks && <p>Web Locks are unavailable in this browser. Generation and review of interrupted submissions are disabled; existing UNKNOWN attempts can still be reviewed.</p>}
     {entries === null && error && <p id="studio-error" ref={retryError} tabIndex={-1} className="error-message" role="alert">{error}</p>}
     {localBlockers.length > 0 && <p role="status">{localBlockers.length} {localBlockers.length === 1 ? 'attempt in this project needs' : 'attempts in this project need'} attention before generation. <Link to={{ pathname: location.pathname, hash: '#studio-history-heading' }}>Open local attempt history</Link>.</p>}
@@ -678,7 +682,7 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       <ul>{otherBlockers.map((item) => <li key={item.productId}>{item.name ? <Link to={`/products/${encodeURIComponent(item.productId)}#studio-history-heading`}>{item.name}</Link> : `Missing project ${item.productId}: preserve local data and seek recovery assistance`} — {item.count} {item.count === 1 ? 'attempt' : 'attempts'}</li>)}</ul>
       <button type="button" className="secondary-button" disabled={busy} onClick={() => { clearQueueConsent(); setOtherBlockers(null); void refreshEntries().catch(() => { setEntries(null); setError('Local attempt history is unavailable. Generation is disabled.'); }); }}>Refresh attempt history</button>
     </section>}
-    <button className="secondary-button" type="button" disabled={busy} onClick={() => void refreshGateway()}>Check gateway</button>
+    <button className="secondary-button" type="button" disabled={busy} onClick={() => void refreshGateway()}>{import.meta.env.MODE === 'pages' ? 'Check connection' : 'Check gateway'}</button>
     {typeof gateway === 'object' && gateway.legacyWaits.length > 0 && <section aria-labelledby="legacy-waits-heading">
       <h3 id="legacy-waits-heading">Earlier provider waits need review</h3>
       <p>These older records cannot prove how much time passed. Check the provider's current rate limits, the original wait and billing externally. Do not confirm until the provider's required wait has elapsed. This review does not send a request; a new attempt needs separate authorization.</p>
