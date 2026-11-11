@@ -1,10 +1,12 @@
 /* Build-time constants are replaced by the Vite shell-worker plugin. */
-const CACHE_PREFIX = 'image-studio-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}${__BUILD_ID__}`;
 const SHELL_FILES = __SHELL_FILES__;
+const SHELL_BASE = SHELL_FILES[0].replace(/index\.html$/, '');
+const SCOPE_SUFFIX = SHELL_BASE === '/' ? '' : `${encodeURIComponent(SHELL_BASE)}-`;
+const CACHE_PREFIX = `image-studio-shell-${SCOPE_SUFFIX}`;
+const CACHE_NAME = `${CACHE_PREFIX}${__BUILD_ID__}`;
 const SHELL_PATHS = new Set(SHELL_FILES);
 const MAX_SHELLS = 8;
-const META_CACHE = 'image-studio-worker-meta-v1';
+const META_CACHE = `image-studio-worker-meta-v1${SCOPE_SUFFIX}`;
 const ACTIVE_KEY = '/__image-studio-active-shell__';
 const MIGRATION_KEY = '/__image-studio-shell-migration__';
 
@@ -137,8 +139,8 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     // Navigation is read-only so quota exhaustion cannot prevent opening the app.
     event.respondWith(caches.open(CACHE_NAME).then(async (cache) =>
-      (await cache.match('/index.html')) || fetch(request)));
-  } else if (!url.search && (SHELL_PATHS.has(url.pathname) || /^\/assets\/[A-Za-z0-9_-]+\.(?:js|css)$/.test(url.pathname))) {
+      (await cache.match(`${SHELL_BASE}index.html`)) || fetch(request)));
+  } else if (!url.search && (SHELL_PATHS.has(url.pathname) || (url.pathname.startsWith(`${SHELL_BASE}assets/`) && /\/[A-Za-z0-9_-]+\.(?:js|css)$/.test(url.pathname)))) {
     // A claimed old client may still need its own hashed worker or module.
     event.respondWith(cachedShellAsset(request));
   }

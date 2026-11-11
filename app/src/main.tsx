@@ -1,11 +1,13 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, createHashRouter, RouterProvider } from 'react-router-dom';
 import { App } from './App';
 import './styles.css';
 import { UnsavedNavigationGuard } from './useUnsavedChanges';
 
-const router = createBrowserRouter([
+// Pages cannot provide an SPA navigation fallback.
+const createRouter = import.meta.env.MODE === 'pages' ? createHashRouter : createBrowserRouter;
+const router = createRouter([
   { path: '*', element: <><UnsavedNavigationGuard /><App /></> },
 ]);
 

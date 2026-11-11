@@ -73,3 +73,13 @@ Open `http://127.0.0.1:4173/settings`, sign in with the local app access token, 
 `contracts/openapi.yaml`, `contracts/schemas/*.json`, `contracts/style-presets.json`, `fixtures/*.json`, `package-manifest.json`, `SHA256SUMS.txt`, `validation-report.json`, `scripts/validate_ssot.py`.
 
 **Documentation package scope:** docs, contracts, fixtures and validators only; executable application source lives separately in `app/`. Neither the documentation checks nor the shell establish production security, real image fidelity or release readiness.
+
+## GitHub Pages static preview
+
+`.github/workflows/pages.yml` tests, builds and deploys the static preview on pushes to `main` or manual dispatch on `main`. Pages must use the GitHub Actions publishing source. Only `app/dist` is uploaded; no provider credentials are needed. The preview uses `#/` routes because Pages has no SPA fallback. The `pages` build explicitly disables the development gateway.
+
+Preview URL: https://yapweijun1996.github.io/PWA-AI-Product-Image-Studio-BYOK/
+
+Local equivalent: from `app/`, run `npm ci`, `npm test`, `node --test tests/browser/pages-preview.test.mjs`, and `npm run build -- --mode pages --base /PWA-AI-Product-Image-Studio-BYOK/`. The browser test requires Chrome/Chromium. Normal `npm run build` retains root hosting and browser-history routing for the local gateway.
+
+This preview supports local preparation and review; image generation requires the separate local gateway. A successful preview deployment does not complete production release task T-090. To roll back, redeploy a reviewed compatible revision; preserve local backups and database compatibility, and let users activate PWA updates explicitly.

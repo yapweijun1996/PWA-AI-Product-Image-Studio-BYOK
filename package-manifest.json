@@ -8,7 +8,7 @@
   "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 132,
+  "fileCountHashed": 133,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -19,6 +19,11 @@
       "path": ".env.example",
       "bytes": 542,
       "sha256": "b87502b961eaa0e41cd5f9b2c9befcccd02bf2399f555cc2d2f2378d69bb5b90"
+    },
+    {
+      "path": ".github/workflows/pages.yml",
+      "bytes": 1539,
+      "sha256": "62abc92b96ef04fbbb9655973b64235406c918b8aba41f7e6f0c6d8e8a1d505b"
     },
     {
       "path": ".gitignore",
@@ -47,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 7936,
-      "sha256": "7f856175f35bd7e9f0d28fa9652c25e3b21db02862fb5c2bb18b275d3fcfce7a"
+      "bytes": 9087,
+      "sha256": "0c8bd9ca37fb259fc39b0e33bc98e6f550bac88c342dca331c004d8471e0b729"
     },
     {
       "path": "ROADMAP.md",
@@ -162,8 +167,8 @@
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
-      "bytes": 3388,
-      "sha256": "43c91b5279dabfb1366944178c63dc7d3e5012edcdf4c4f157c1421793a7b8ed"
+      "bytes": 4422,
+      "sha256": "542376db5b6a7b46c75047d0914810faeb4b5778543d81ec02d5b9df5cda3c40"
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
@@ -302,8 +307,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 314078,
-      "sha256": "69987f1a8179860aef7301a83db48c5f67463a4b241deac60519a3327189c2b2"
+      "bytes": 315481,
+      "sha256": "bddeb51830698197a7a23023d33d9c990e2094edaca78f80ec253f7e6efc4fc3"
     },
     {
       "path": "docs/09-research/BYOK_FIDELITY_FOLLOWUP.md",

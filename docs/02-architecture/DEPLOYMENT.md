@@ -25,7 +25,7 @@ Official docs as of 2026-10 list Workers memory 128 MB and Free-plan CPU budget 
 - `preview`: restricted identity; staging secrets and dedicated test key; sanitized fixtures; domain isolated from prod.
 - `production`: authenticated users, approved custody/retention, redacted traces, rate limiting and owner-operated deployment review.
 
-The current static shell expects same-origin root deployment, SPA navigation fallback to `index.html`, HTTPS (localhost for development), and revalidation of `/sw.js` and HTML on every visit. Hashed JS/CSS may be served as immutable. CSP must allow local `blob:` images for previews while disallowing `unsafe-eval`; a scoped Chromium check exercised this policy. Only build-generated shell assets are precached; API responses and seller images are not. This is not approval to deploy.
+The default static build expects same-origin root deployment, SPA navigation fallback to `index.html`, HTTPS (localhost for development), and revalidation of `/sw.js` and HTML on every visit. Hashed JS/CSS may be served as immutable. CSP must allow local `blob:` images for previews while disallowing `unsafe-eval`; a scoped Chromium check exercised this policy. Only build-generated shell assets are precached; API responses and seller images are not. This is not approval to deploy.
 
 ## Production release gates
 
@@ -37,3 +37,9 @@ The current static shell expects same-origin root deployment, SPA navigation fal
 ## Rollback
 
 Static PWA rollback must account for Service Worker controller/cache state and IndexedDB schema compatibility. Keep down-level data readable or snapshot before migration. Revoke leaked secrets separately from code rollback.
+
+## Authorized GitHub Pages preview — 2026-11-11
+
+The owner selected GitHub Pages for a static preview and authorized GitHub Actions deployment, commit and push to main. The workflow publishes only `app/dist`, after unit and Pages browser checks, using Node 24 on Ubuntu 24.04 and pinned official Actions. The `pages` build uses a repository base path, hash routing, relative manifest URLs, scoped worker registration and scoped caches. It disables the development gateway even when served on loopback. Default root builds retain existing routing and cache names. No provider secret is provisioned by this workflow.
+
+Local Chromium verifies direct settings navigation, reload, worker scope, manifest start URL, offline reload and absence of gateway requests. Hosted Actions and live URL acceptance must be observed separately. This is preview acceptance only; T-090 production gates remain open. Rollback requires a reviewed database-compatible artifact and explicit user-driven worker activation; do not silently reload an editor.

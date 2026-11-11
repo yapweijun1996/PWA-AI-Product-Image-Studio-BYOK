@@ -76,7 +76,7 @@ export function useServiceWorker() {
     window.addEventListener(UNSAVED_CHANGES_EVENT, onDraftChange);
     document.addEventListener('visibilitychange', checkForUpdate);
     window.addEventListener('online', checkForUpdate);
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((value) => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { updateViaCache: 'none' }).then((value) => {
       if (disposed) return;
       current = value;
       registration.current = value;
