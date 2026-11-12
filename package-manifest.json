@@ -66,7 +66,7 @@
       "sha256": "f4743f2f6ce4d36f2739f063eaca1467eed3e9c14eceb7210c480d2309b8974f"
     },
     {
-      "path": "START_HERE_中文.md",
+      "path": "START_HERE_\u4e2d\u6587.md",
       "bytes": 3323,
       "sha256": "bf398d7e3af0568f5509c764cf963babd55fcb4f4e4d8f6dfb67bfcd8e6f7ef4"
     },
@@ -307,8 +307,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 320394,
-      "sha256": "ac9b4d5a817f964e84c9acd849b3c82a882764ad7d4c587316ffa8bbcb32d6bd"
+      "bytes": 321054,
+      "sha256": "fc2e6117c7948bbe4099f60ee3f5e7892c09f5808eed10b38220c2659c901951"
     },
     {
       "path": "docs/09-research/AUTO_CUTOUT_EXPERIMENT.md",

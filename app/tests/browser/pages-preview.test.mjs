@@ -67,6 +67,18 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,`!!document.querySelector('h1') && document.body.innerText.includes('Settings')`),'settings route');
   await until(()=>evaluate(tab,'!!navigator.serviceWorker.controller'),'worker');
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'loaded key form');
+  await evaluate(tab,`location.hash='#/help'`);
+  await until(()=>evaluate(tab,`document.querySelector('h1')?.textContent==='Upload. Get your images.'`),'Pages help route');
+  for(const width of [320,375,1280]){
+    await tab.call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<500});
+    const layout=await evaluate(tab,`({overflow:document.documentElement.scrollWidth>innerWidth,steps:[...document.querySelectorAll('.guide-list section')].map(s=>({index:s.firstElementChild?.textContent,contentWidth:s.querySelector('div')?.getBoundingClientRect().width}))})`);
+    assert.equal(layout.overflow,false,`Help page overflows at ${width}px`);
+    assert.deepEqual(layout.steps.map(step=>step.index),['01','02','03']);
+    assert.ok(layout.steps.every(step=>step.contentWidth>=Math.min(width-150,500)),`Help text is squeezed at ${width}px: ${JSON.stringify(layout.steps)}`);
+    if(process.env.STUDIO_HELP_SCREENSHOT && width===1280){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(process.env.STUDIO_HELP_SCREENSHOT,Buffer.from(shot.data,'base64'));}
+  }
+  await evaluate(tab,`location.hash='#/settings'`);
+  await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'return to settings from help');
   assert.equal(await evaluate(tab,'navigator.serviceWorker.ready.then(r=>new URL(r.scope).pathname)'),base);
   const manifest=JSON.parse(await readFile(join(out,'manifest.webmanifest'),'utf8'));assert.equal(new URL(manifest.start_url,`${origin}${base}manifest.webmanifest`).pathname,base);
   await evaluate(tab, `(() => {window.__providerCalls=0;const original=window.fetch;window.fetch=async(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'){window.__providerCalls++;const c=document.createElement('canvas');c.width=c.height=1024;c.getContext('2d').fillRect(0,0,1024,1024);return Response.json({data:[{b64_json:c.toDataURL('image/png').split(',')[1]}]})}return original(url,options)};const e=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'sk-synthetic-browser-key-not-real');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
