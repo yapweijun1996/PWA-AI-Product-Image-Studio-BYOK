@@ -5,29 +5,29 @@ import {
   STUDIO_SIZE,
   STUDIO_SCENE_PROMPT_VERSION,
   STUDIO_PRESET_VERSION,
-  studioBuildPrompt,
-  studioEstimateUSD,
 } from "../studio-policy.mjs";
-import { browserStudioRequest } from "./browserByok";
-import { prepareForeground, composeAutomatic } from "./autoImaging";
+import { browserStudioRequest, referenceTransmissionAllowed } from "./browserByok";
+import { AUTOMATIC_LAYOUTS, AUTOMATIC_PROMPT_VERSION, automaticPrompt, automaticEstimateUSD, type AutomaticMode } from "../automatic-policy.mjs";
+import { prepareAutomaticReference, type PreparedReference } from "./automaticReference";
+import { prepareForeground, composeAutomatic, automaticCompositionEvidence, mountAutomaticBillboard, validateAutomaticDecodedImage } from "./autoImaging";
 import { listAutoRuns, saveAutoRun, type AutoRun } from "./automaticStore";
 import { reserveAutomaticRun } from "./automaticSession";
 import { inspectImageHeader } from "./imageHeader";
 import { sha256 } from "./prepareSource";
-export function automaticPlan() {
+export function automaticPlan(mode: AutomaticMode = "STRICT", referenceCount = 1) {
   const context = {
     productName: "Uploaded product",
     category: "user-supplied product",
     confirmedFacts: [],
-    sourceView: "OTHER" as const,
+    sourceView: "UNKNOWN" as const,
   };
   const items = STUDIO_STYLE_IDS.map((style) => {
-    const prompt = studioBuildPrompt(style, context);
+    const prompt = style === "macro" ? "Local crop of measured visible foreground pixels; no provider request or invented detail." : automaticPrompt(style, mode);
     return {
       id: crypto.randomUUID(),
       style,
       prompt,
-      estimatedUSD: studioEstimateUSD(prompt),
+      estimatedUSD: automaticEstimateUSD(style, mode, referenceCount),
       status: "PENDING" as const,
     };
   });
@@ -44,7 +44,11 @@ export async function runAutomatic(
   file: File,
   signal: AbortSignal,
   changed: (run: AutoRun) => void,
+  options: { mode?: AutomaticMode; additionalReferences?: File[] } = {},
 ) {
+  const mode = options.mode ?? "STRICT", additionalReferences = options.additionalReferences ?? [];
+  if (!["STRICT", "REFERENCE"].includes(mode) || !Array.isArray(additionalReferences) || additionalReferences.length > 2 || (mode === "STRICT" && additionalReferences.length)) throw new Error("Invalid image mode or reference count.");
+  if (mode === "REFERENCE" && !referenceTransmissionAllowed()) throw new Error("Authorize reference-image transmission before uploading. No image was sent.");
   if (!file.size || file.size > 20 * 1024 * 1024)
     throw new Error("Choose an image up to 20 MiB.");
   if (!navigator.locks)
@@ -72,9 +76,11 @@ export async function runAutomatic(
         throw new Error(
           "An earlier request has an uncertain charge. New paid requests are paused. Saved finished images remain available.",
         );
-      const plan = automaticPlan();
+      const plan = automaticPlan(mode, 1 + additionalReferences.length);
+      const references: PreparedReference[] = [];
       const run: AutoRun = {
         version: 1,
+        mode,
         id: crypto.randomUUID(),
         filename: file.name,
         source: file,
@@ -92,21 +98,45 @@ export async function runAutomatic(
       };
       try {
         emit();
-        run.foreground = await prepareForeground(file, signal, (message) => {
-          run.message = message;
-          emit();
-        });
+        if (mode === "REFERENCE") {
+          for (const reference of [file, ...additionalReferences]) {
+            check();
+            if (!referenceTransmissionAllowed()) throw new Error("Reference transmission consent was removed. No further image was sent.");
+            references.push(await prepareAutomaticReference(reference, signal));
+          }
+          run.referenceImages = references.map(({ sha256, width, height, mimeType }) => ({ sha256, width, height, mimeType }));
+        }
+        try {
+          run.foreground = await prepareForeground(file, signal, (message) => { run.message = message; emit(); });
+        } catch (error) {
+          check();
+          if (mode === "STRICT") throw error;
+          // Reference editing does not require successful local segmentation.
+          // An unavailable authentic crop is failed explicitly, never synthesized.
+        }
         check();
-        if (run.foreground.sourceSha256 !== run.sourceSha256)
+        if (run.foreground && run.foreground.sourceSha256 !== run.sourceSha256)
           throw new Error("The original changed during preparation.");
-        // Reserve the entire seven-style estimate once, before the first paid send.
+        run.capabilities = run.foreground?.capabilities;
+        // Reserve the entire upload estimate once, before the first paid send.
         run.sessionId = reserveAutomaticRun(plan.estimatedUSD);
         run.state = "RUNNING";
         run.message = undefined;
         await saveAutoRun(run);
         emit();
-        for (const item of run.items) {
+        for (const item of [...run.items.filter(i => i.style === "macro"), ...run.items.filter(i => i.style !== "macro")]) {
           check();
+          item.provenance = { policyVersion: AUTOMATIC_PROMPT_VERSION, mode, operation: item.style === "macro" ? "local-detail" : mode === "REFERENCE" ? "reference-edit" : "generated-scene-composite", ...(run.foreground ? automaticCompositionEvidence(run.foreground, item.style) : { layout: { ...AUTOMATIC_LAYOUTS[item.style] }, visualAssessment: "NOT_ASSESSED" as const, ...(item.style === "billboard" ? { artworkLayer: "local-full-text-free-ad-v1" as const } : {}) }) };
+          if (item.style === "macro") {
+            try {
+              if (!run.foreground) throw new Error("No authentic foreground crop available.");
+              item.output = await composeAutomatic(run.foreground, undefined, item.style, signal);
+              item.sha256 = await sha256(new Uint8Array(await item.output.arrayBuffer()));
+              item.qa = { status: "AUTOMATIC_CHECKS_PASSED", sourceSha256: run.sourceSha256, foregroundSha256: await sha256(new Uint8Array(await run.foreground.blob.arrayBuffer())), outputSha256: item.sha256, checkedAt: new Date().toISOString(), humanReview: false, visualAssessment: "NOT_ASSESSED" };
+              item.status = "READY";
+            } catch { item.status = "FAILED"; item.error = "The local visible detail crop could not be prepared. No detail request was sent."; }
+            await saveAutoRun(run); emit(); continue;
+          }
           const revision = await (
             await browserStudioRequest("/images/revision")
           ).json();
@@ -114,8 +144,11 @@ export async function runAutomatic(
             clientAttemptId: item.id,
             productId: run.id,
             styleId: item.style,
-            lockMode: "STRICT",
-            operation: "generate_scene",
+            lockMode: mode === "REFERENCE" ? "BALANCED" : "STRICT",
+            operation: mode === "REFERENCE" ? "reference_edit" : "generate_scene",
+            automaticMode: mode,
+            automaticPromptVersion: AUTOMATIC_PROMPT_VERSION,
+            ...(mode === "REFERENCE" ? { referenceInputs: references } : {}),
             model: STUDIO_MODEL,
             quality: STUDIO_QUALITY,
             size: STUDIO_SIZE,
@@ -183,12 +216,10 @@ export async function runAutomatic(
             )
               throw new Error("Unexpected generated image.");
             item.scene = new Blob([bytes], { type: "image/png" });
-            item.output = await composeAutomatic(
-              run.foreground,
-              item.scene,
-              item.style,
-              signal,
-            );
+            if (mode === "REFERENCE") await validateAutomaticDecodedImage(item.scene, signal);
+            item.output = mode === "REFERENCE"
+              ? item.style === "billboard" ? await mountAutomaticBillboard(item.scene, signal) : item.scene
+              : await composeAutomatic(run.foreground!, item.scene, item.style, signal);
             item.sha256 = await sha256(
               new Uint8Array(await item.output.arrayBuffer()),
             );
@@ -204,13 +235,14 @@ export async function runAutomatic(
             item.qa = {
               status: "AUTOMATIC_CHECKS_PASSED",
               sourceSha256: run.sourceSha256,
-              foregroundSha256: await sha256(
+              foregroundSha256: mode === "STRICT" && run.foreground ? await sha256(
                 new Uint8Array(await run.foreground.blob.arrayBuffer()),
-              ),
+              ) : undefined,
               sceneSha256: await sha256(bytes),
               outputSha256: item.sha256,
               checkedAt: new Date().toISOString(),
               humanReview: false,
+              visualAssessment: "NOT_ASSESSED",
             };
             item.status = "READY";
           } catch {

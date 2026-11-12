@@ -1,4 +1,4 @@
-import { inspectImageHeader } from './imageHeader';
+import { inspectImageHeader } from './imageHeader.ts';
 import type { Product } from './products';
 
 const MAX_BYTES = 20 * 1024 * 1024;

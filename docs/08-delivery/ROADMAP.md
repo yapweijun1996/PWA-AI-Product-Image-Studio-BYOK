@@ -36,12 +36,11 @@ Features P1/P2 cannot be quietly pulled into P0. Promote with explicit decision 
 
 ## Automatic Pages quality track — 2026-11-12
 
-The automatic Pages path and v0.3.0 presentation exist; the earlier milestone narrative describes the legacy gateway track. Functional completion is not photographic acceptance. The [13-advisor review](../09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md) adds this pending sequence:
+The automatic Pages path now has a v0.4.0 A+C implementation; the earlier milestone narrative describes the legacy gateway track. Functional completion is not photographic acceptance. Explicit owner A+C selection confirms DEC-022 and ADR-022. Current sequence:
 
-1. T-100: source capabilities and honest style plan; resolve DEC-022 before changing the seven-output contract.
-2. T-101/T-102 then T-103: grounded composition, authentic detail/feasible overhead, distinct scenes and complete advertisement artwork.
-3. T-104/T-105: compact progress, preview/comparison and single-result versioned regeneration with optional settings.
-4. T-106: semantic tests, real-product visual review and affected browser regressions before claiming output quality.
-5. T-107: separately evaluate reference editing/multi-view; no source-transmission or provider change without the corresponding decision/ADR.
+1. T-100–T-103: synthetic-tested capability metadata, shared visible-contact layout, real local square Detail ROI, truthful Tabletop and complete text-free ad in a local display mockup. Assess real-product contact/light/edges and style distinction before claiming photographic acceptance.
+2. T-107: optional single/three-view reference edits implemented with separate transmission consent, bounded normalized PNGs, the existing model and reference-inclusive estimates. Real paid/provider/device and product-fidelity acceptance remain open; no paid test authorization is inferred.
+3. T-106: technical integrity and visual NOT_ASSESSED are separate; independent synthetic/browser checks do not replace rights-cleared real-product review.
+4. T-104/T-105: compact progress changes exist in A+C. Full preview/comparison and versioned single-result regeneration remain optional B scope and are not selected by A+C.
 
 Task status remains owned by [TASK](TASK.md). This track does not close physical-device, security, seller-pilot or production-release gates.

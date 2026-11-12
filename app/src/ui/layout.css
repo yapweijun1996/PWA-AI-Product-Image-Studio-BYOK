@@ -106,3 +106,9 @@ footer{padding-inline:var(--space-page)}
 }
 @media(max-width:375px){.brand strong{font-size:var(--size-10px)}.brand{gap:var(--size-6px)}.sidebar-update .secondary-button{font-size:var(--size-11px)}.import-preview dl{grid-template-columns:minmax(0,1fr)}.guide-list section{padding:var(--size-16px);gap:var(--size-12px)}}
 .auto-upload.processing{min-height:0;padding-block:var(--size-24px)}.auto-upload.processing .upload-symbol{display:none}
+
+.automatic-options{margin-block:var(--size-16px);min-width:0}
+.automatic-mode-options{display:flex;flex-wrap:wrap;gap:var(--size-16px)}
+.automatic-mode-options .checkbox-label{margin:0;align-items:center;min-width:0}
+.automatic-options input[type=file]{max-width:100%}
+.automatic-options li{overflow-wrap:anywhere}

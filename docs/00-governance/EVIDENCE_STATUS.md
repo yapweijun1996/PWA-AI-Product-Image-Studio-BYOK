@@ -21,3 +21,7 @@
 - Security evidence for BYOK storage, TTL, deletion, tenant identity, logging, rate-limit enforcement, cost reconciliation.
 
 Evidence is private where it contains seller images, credentials or confidential packaging artwork. Use synthetic fixtures in public repos.
+
+## 2026-11-12 — A+C quality and optional reference path
+
+Owner selection confirms DEC-022/ADR-022. App v0.4.0 implements automatic-only shared layout/visible anchors, genuine local square Detail ROI, truthful Tabletop, complete text-free ad in a local display mockup, and optional primary-plus-two normalized reference edits. Consent, cost, history and transport boundaries have synthetic tests and independent browser/security review. Automatic db v2 retains legacy rows and blocks old clients. Source semantic capabilities and output visual acceptance remain unknown/unassessed; no paid request, real key, photographic certification or deployment result is established by this worker evidence. Existing manager delivery authorization remains in force. See [scoped implementation evidence](../09-research/QUALITY_REFERENCE_IMPLEMENTATION_2026-11-12.md) and the canonical [task ledger](../08-delivery/TASK.md).

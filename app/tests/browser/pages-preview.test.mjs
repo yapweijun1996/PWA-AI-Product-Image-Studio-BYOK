@@ -17,7 +17,9 @@ const chrome = process.env.CHROME_BIN || [
 ].find(existsSync);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+let lastCheckpoint = "initialization";
 async function until(read, description, attempts = 150) {
+  lastCheckpoint = description;
   for (let i = 0; i < attempts; i++) {
     const result = await read();
     if (result) return result;
@@ -26,12 +28,16 @@ async function until(read, description, attempts = 150) {
   throw new Error(`Timed out waiting for ${description}.`);
 }
 
-async function connect(url) {
-  const socket = new WebSocket(url), pending = new Map(), events = []; let next = 0;
-  await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
+async function connect(url, { timeoutMs = 20000, socketFactory = (address) => new WebSocket(address) } = {}) {
+  const socket = socketFactory(url), pending = new Map(), events = []; let next = 0;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { socket.close(); reject(new Error('DevTools connection timed out.')); }, timeoutMs);
+    socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener('error', (error) => { clearTimeout(timer); reject(error); }, { once: true });
+  });
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data), handler = pending.get(message.id);
-    if (!handler) { if (['Runtime.consoleAPICalled','Runtime.exceptionThrown','Log.entryAdded'].includes(message.method)) events.push(message); return; }
+    if (!handler) { if (['Runtime.consoleAPICalled','Runtime.exceptionThrown','Log.entryAdded','Page.downloadWillBegin','Page.downloadProgress'].includes(message.method)) events.push(message); return; }
     pending.delete(message.id);
     message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result);
   });
@@ -39,10 +45,27 @@ async function connect(url) {
   return {
     events,
     call(method, params = {}) {
-      return new Promise((resolve, reject) => { const id = ++next; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
+      return new Promise((resolve, reject) => {
+        const id = ++next;
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error(`DevTools ${method} timed out after ${lastCheckpoint}.`)); }, timeoutMs);
+        pending.set(id, { resolve(value) { clearTimeout(timer); resolve(value); }, reject(error) { clearTimeout(timer); reject(error); } });
+        try { socket.send(JSON.stringify({ id, method, params })); }
+        catch (error) { pending.delete(id); clearTimeout(timer); reject(error); }
+      });
     },
     close() { socket.close(); },
   };
+}
+
+async function stopBrowser(browser) {
+  if (!browser || browser.exitCode !== null || browser.signalCode !== null) return;
+  await new Promise(resolve => {
+    const finish = () => { clearTimeout(timer); browser.removeListener('exit', finish); resolve(); };
+    const timer = setTimeout(() => { browser.kill('SIGKILL'); finish(); }, 5000);
+    browser.once('exit', finish);
+    browser.kill();
+    if (browser.exitCode !== null || browser.signalCode !== null) finish();
+  });
 }
 
 async function evaluate(client, expression) {
@@ -68,7 +91,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,'!!navigator.serviceWorker.controller'),'worker');
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'loaded key form');
   assert.equal(await evaluate(tab,`document.documentElement.lang`),'en');
-  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.3\.0 · /);
+  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.4\.0 · /);
   for(const [lang,title] of [['zh','设置'],['ms','Tetapan'],['ja','設定'],['ko','설정'],['vi','Cài đặt'],['en','Settings']]){
     await evaluate(tab,`document.querySelector('.language-control>.icon-button').click()`);
     await until(()=>evaluate(tab,`!!document.querySelector('.language-options')`),'language choices');
@@ -158,7 +181,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await evaluate(tab,`(async()=>{const c=document.createElement('canvas');c.width=200;c.height=100;const ctx=c.getContext('2d');${process.env.STUDIO_MATTE_SMOKE ? "ctx.fillStyle='white';ctx.fillRect(0,0,200,100);" : ''}ctx.fillStyle='#aa3311';ctx.fillRect(40,10,120,80);const blob=await new Promise(r=>c.toBlob(r,'image/png'));const d=new DataTransfer();d.items.add(new File([blob],'synthetic-product.png',{type:'image/png'}));const f=document.querySelector('input[aria-label="Upload product image"]');f.files=d.files;f.dispatchEvent(new Event('change',{bubbles:true}));})()`);
 
   await until(()=>evaluate(tab,`!!window.__releaseFirst && document.querySelectorAll('.image-placeholder[data-active=true]').length===1`),'one active image placeholder');
-  assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=false]').length`),6,'Queued cards are static');
+  assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=false]').length`),5,'Queued cards are static; local detail is already ready');
   const pendingGeometry=await evaluate(tab,`[...document.querySelectorAll('.auto-result-image')].map(e=>[e.getBoundingClientRect().width,e.getBoundingClientRect().height])`);
   assert.equal(await evaluate(tab,`document.querySelector('.image-placeholder[data-active=true] .image-placeholder-art').getAnimations()[0]?.playState`),'running','Placeholder animation actually runs');
   await tab.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
@@ -168,7 +191,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   if(process.env.STUDIO_PENDING_SCREENSHOT){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(process.env.STUDIO_PENDING_SCREENSHOT,Buffer.from(shot.data,'base64'));}
   await evaluate(tab,`window.__releaseFirst()`);
   try{await until(()=>evaluate(tab,`(()=>{const heading=document.querySelector('#auto-results-heading')?.textContent;if(heading&&heading!=='7 of 7 ready'&&!document.querySelector('.auto-upload.processing'))throw new Error(document.querySelector('.auto-results').innerText);return heading==='7 of 7 ready'})()`),'seven automatic complete product images',process.env.STUDIO_MATTE_SMOKE?1800:150);}catch(error){console.log('Automatic status:',await evaluate(tab,`JSON.stringify({status:document.querySelector('.auto-results')?.innerText,diagnostic:window.__matteDiagnostic})`));throw error;}
-  assert.equal(await evaluate(tab,'window.__providerCalls'),7,'One upload sends seven distinct calls without intermediate actions');
+  assert.equal(await evaluate(tab,'window.__providerCalls'),6,'One upload sends six distinct calls; detail stays local');
   assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder').length`),0,'Success removes placeholders');
   assert.deepEqual(await evaluate(tab,`[...document.querySelectorAll('.auto-result-image')].map(e=>[e.getBoundingClientRect().width,e.getBoundingClientRect().height])`),pendingGeometry,'Images retain placeholder geometry');
 
@@ -233,30 +256,30 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,`![...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').disabled`),'ready to generate');
   await evaluate(tab,`[...document.querySelectorAll('.studio-panel button')].find(b=>b.textContent==='Authorize and generate selected scenes').click()`);
   await until(()=>evaluate(tab,`document.querySelector('.studio-history')?.innerText.includes('Studio · Scene generated; unapproved')`),'browser SDK scene saved');
-  assert.equal(await evaluate(tab,'window.__providerCalls'),8);
+  assert.equal(await evaluate(tab,'window.__providerCalls'),7);
   assert.equal(await evaluate(tab,`JSON.stringify([localStorage,sessionStorage]).includes('sk-synthetic-browser-key-not-real')`),false);
   const persistedLeak=await evaluate(tab,`(async()=>{const needle='sk-synthetic-browser-key-not-real';for(const dbName of ['product-image-studio','image-studio-automatic']){const db=await new Promise((resolve,reject)=>{const r=indexedDB.open(dbName);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});try{for(const name of db.objectStoreNames){const rows=await new Promise((resolve,reject)=>{const r=db.transaction(name).objectStore(name).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});if(JSON.stringify(rows).includes(needle))return true}}finally{db.close()}}for(const name of await caches.keys()){const cache=await caches.open(name);for(const request of await cache.keys()){if(request.url.includes('api.openai.com')||JSON.stringify([...request.headers]).includes(needle)||(await(await cache.match(request)).text()).includes(needle))return true}}return false})()`);
   assert.equal(persistedLeak,false,'Key and provider requests must not enter image databases or caches');
   await evaluate(tab,`location.hash='#/'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]') && !document.querySelector('input[aria-label="Upload product image"]').disabled`),'second automatic upload');
-  await evaluate(tab,`(()=>{const original=window.fetch;window.fetch=(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'&&window.__providerCalls===9){window.__providerCalls++;return Promise.reject(new Error('Synthetic interrupted request'))}return original(url,options)}})()`);
+  await evaluate(tab,`(()=>{const original=window.fetch;window.fetch=(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'&&window.__providerCalls===8){window.__providerCalls++;return Promise.reject(new Error('Synthetic interrupted request'))}return original(url,options)}})()`);
   await evaluate(tab,`(async()=>{const c=document.createElement('canvas');c.width=c.height=100;const ctx=c.getContext('2d');ctx.fillRect(20,20,60,60);const blob=await new Promise(r=>c.toBlob(r,'image/png')),d=new DataTransfer();d.items.add(new File([blob],'partial.png',{type:'image/png'}));const f=document.querySelector('input[aria-label="Upload product image"]');f.files=d.files;f.dispatchEvent(new Event('change',{bubbles:true}))})()`);
-  await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='1 of 7 ready' && document.querySelector('.auto-results')?.innerText.includes('Finished images are kept')`),'partial results retained');
-  assert.equal(await evaluate(tab,'window.__providerCalls'),10,'UNKNOWN must not resend or send remaining styles');
+  await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='2 of 7 ready' && document.querySelector('.auto-results')?.innerText.includes('Finished images are kept')`),'partial results retained');
+  assert.equal(await evaluate(tab,'window.__providerCalls'),9,'UNKNOWN must not resend or send remaining styles');
   assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),true,'Unresolved billing hold is reflected before selecting another file');
   assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=true]').length`),0,'Interrupted run stops every placeholder');
   assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-badge').textContent`),'Generation stopped');
   assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-notice a').getAttribute('href')`),'#/settings');
   if(process.env.STUDIO_UI_SHOTS){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(`${process.env.STUDIO_UI_SHOTS}-generation-error.png`,Buffer.from(shot.data,'base64'));}
 
-  assert.equal(await evaluate(tab,`document.querySelectorAll('.auto-result img').length`),1);
-  await evaluate(tab,`(async()=>{const db=await new Promise(resolve=>{const r=indexedDB.open('image-studio-automatic',1);r.onsuccess=()=>resolve(r.result)});try{await new Promise((resolve,reject)=>{const tx=db.transaction('runs','readwrite'),store=tx.objectStore('runs'),r=store.getAll();r.onsuccess=()=>{const run=r.result.find(row=>row.items.some(i=>i.status==='UNKNOWN'));run.state='RUNNING';run.message=undefined;for(const item of run.items)if(item.status==='UNKNOWN')item.status='SUBMITTED';store.put(run)};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}finally{db.close()}})()`);
+  assert.equal(await evaluate(tab,`document.querySelectorAll('.auto-result img').length`),2);
+  await evaluate(tab,`(async()=>{const db=await new Promise(resolve=>{const r=indexedDB.open('image-studio-automatic',2);r.onsuccess=()=>resolve(r.result)});try{await new Promise((resolve,reject)=>{const tx=db.transaction('runs','readwrite'),store=tx.objectStore('runs'),r=store.getAll();r.onsuccess=()=>{const run=r.result.find(row=>row.items.some(i=>i.status==='UNKNOWN'));run.state='RUNNING';run.message=undefined;for(const item of run.items)if(item.status==='UNKNOWN')item.status='SUBMITTED';store.put(run)};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}finally{db.close()}})()`);
   await evaluate(tab,`location.hash='#/images'`);
   await until(()=>evaluate(tab,`!!document.querySelector('.library-card')`),'recovery library');
   await evaluate(tab,`document.querySelector('.library-card').click()`);
   await until(()=>evaluate(tab,`document.querySelector('.auto-results .error-notice')?.textContent.includes('may have been charged')`),'persisted in-flight recovery warning');
   assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=true]').length`),0,'Restored in-flight records are not active animations');
-  assert.equal(await evaluate(tab,'window.__providerCalls'),10,'Opening interrupted history never resends');
+  assert.equal(await evaluate(tab,'window.__providerCalls'),9,'Opening interrupted history never resends');
 
   await evaluate(tab,`location.hash='#/settings'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'return to settings');
@@ -271,16 +294,16 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   }
   async function uploadAnother(){await evaluate(tab,`(async()=>{const c=document.createElement('canvas');c.width=c.height=100;c.getContext('2d').fillRect(20,20,60,60);const blob=await new Promise(r=>c.toBlob(r,'image/png')),d=new DataTransfer();d.items.add(new File([blob],'another.png',{type:'image/png'}));const f=document.querySelector('input[aria-label="Upload product image"]');f.files=d.files;f.dispatchEvent(new Event('change',{bubbles:true}))})()`);}
   await recoverSession();
-  await evaluate(tab,`(()=>{const original=window.fetch;window.fetch=(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'&&window.__providerCalls===10){window.__providerCalls++;return Promise.resolve(Response.json({error:{message:'rate limited'}},{status:429}))}return original(url,options)}})()`);
+  await evaluate(tab,`(()=>{const original=window.fetch;window.fetch=(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'&&window.__providerCalls===9){window.__providerCalls++;return Promise.resolve(Response.json({error:{message:'rate limited'}},{status:429}))}return original(url,options)}})()`);
   await uploadAnother();
   await until(()=>evaluate(tab,`document.querySelector('.auto-results')?.innerText.includes('Provider rate limit reached')`),'rate hold without header');
-  assert.equal(await evaluate(tab,'window.__providerCalls'),11);
+  assert.equal(await evaluate(tab,'window.__providerCalls'),10);
   await evaluate(tab,`location.hash='#/settings'`);await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'rate recovery settings');
   await recoverSession();
   await evaluate(tab,`(()=>{const original=IDBObjectStore.prototype.put;window.__restorePut=()=>IDBObjectStore.prototype.put=original;IDBObjectStore.prototype.put=function(value,...args){if(this.transaction.db.name==='image-studio-automatic'&&value.items?.some(i=>i.status==='READY')){this.transaction.abort();throw new DOMException('synthetic quota','QuotaExceededError')}return original.call(this,value,...args)}})()`);
   await uploadAnother();
   await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='1 of 7 ready' && document.querySelector('.auto-results')?.innerText.includes('only in this tab')`),'quota partial image retained');
-  assert.equal(await evaluate(tab,'window.__providerCalls'),12,'Recovery permits a new request; quota failure stops later requests');
+  assert.equal(await evaluate(tab,'window.__providerCalls'),10,'Local detail quota failure stops before any new paid request');
   assert.equal(await evaluate(tab,`[...document.querySelectorAll('.auto-secondary button')].filter(b=>b.textContent.includes('/7')).every(b=>b.disabled)`),true,'History cannot replace unsaved paid outputs');
   assert.equal(await evaluate(tab,`!window.dispatchEvent(new Event('beforeunload',{cancelable:true}))`),true,'Unsaved paid output retains unload protection after processing stops');
   await evaluate(tab,`window.__confirmCount=0;window.confirm=()=>{window.__confirmCount++;return false};[...document.querySelectorAll('nav a')].find(a=>a.textContent==='Settings').click()`);
@@ -307,5 +330,5 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   assert.equal(requests.some(p=>p.startsWith('/api/')),false,'Preview must not call gateway');
   await tab.call('Network.enable');await tab.call('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});await tab.call('Page.reload');
   await until(()=>evaluate(tab,`document.readyState==='complete' && document.body?.innerText.includes('Settings')`),'offline reload');assert.equal(tab.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0);
- }catch(error){console.error('Pages journey failure:',error);throw error;}finally{tab?.close();if(browser&&browser.exitCode===null&&browser.signalCode===null){browser.kill();await new Promise(resolve=>browser.once('exit',resolve));}if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100})}
+ }catch(error){console.error('Pages journey failure:',error);throw error;}finally{tab?.close();await stopBrowser(browser);if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100})}
 });

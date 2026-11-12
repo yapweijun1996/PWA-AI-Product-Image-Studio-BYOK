@@ -1,3 +1,4 @@
+import type { AutomaticMode, AutomaticLayout } from "../automatic-policy.mjs";
 import type { StudioStyleId } from "../studio-policy.mjs";
 import type { AutoForeground } from "./autoImaging";
 import { inspectImageHeader } from "./imageHeader";
@@ -10,21 +11,26 @@ export type AutoItem = {
   status: "PENDING" | "SUBMITTED" | "UNKNOWN" | "FAILED" | "READY" | "NOT_SENT";
   error?: string;
   reviewedAt?: string;
+  provenance?: { policyVersion?: string; mode: AutomaticMode; operation: "local-detail" | "generated-scene-composite" | "reference-edit"; visualAssessment: "NOT_ASSESSED"; layout: AutomaticLayout; detailRoi?: { x: number; y: number; width: number; height: number }; detailUpscaled?: boolean; detailLimitation?: string; artworkLayer?: "local-full-text-free-ad-v1" };
   scene?: Blob;
   output?: Blob;
   sha256?: string;
   qa?: {
     status: "AUTOMATIC_CHECKS_PASSED";
     sourceSha256: string;
-    foregroundSha256: string;
-    sceneSha256: string;
+    foregroundSha256?: string;
+    sceneSha256?: string;
     outputSha256: string;
     checkedAt: string;
     humanReview: false;
+    visualAssessment?: "NOT_ASSESSED";
   };
 };
 export type AutoRun = {
   version: 1;
+  mode?: AutomaticMode;
+  referenceImages?: { sha256: string; width: number; height: number; mimeType: "image/png" }[];
+  capabilities?: AutoForeground["capabilities"];
   id: string;
   filename: string;
   source: Blob;
@@ -40,13 +46,14 @@ export type AutoRun = {
 };
 async function db() {
   return new Promise<IDBDatabase>((resolve, reject) => {
-    const r = indexedDB.open("image-studio-automatic", 1);
-    r.onupgradeneeded = () =>
-      r.result.createObjectStore("runs", { keyPath: "id" });
-    r.onsuccess = () => resolve(r.result);
+    let blocked = false;
+    const r = indexedDB.open("image-studio-automatic", 2);
+    r.onupgradeneeded = () => {
+      if (!r.result.objectStoreNames.contains("runs")) r.result.createObjectStore("runs", { keyPath: "id" });
+    };
+    r.onsuccess = () => { if (blocked) { r.result.close(); return; } r.result.onversionchange = () => r.result.close(); resolve(r.result); };
     r.onerror = () => reject(new Error("Local result storage is unavailable."));
-    r.onblocked = () =>
-      reject(new Error("Close other app tabs before continuing."));
+    r.onblocked = () => { blocked = true; reject(new Error("Close other app tabs before continuing.")); };
   });
 }
 export async function saveAutoRun(run: AutoRun) {

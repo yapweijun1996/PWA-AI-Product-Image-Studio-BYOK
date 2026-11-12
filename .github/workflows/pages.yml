@@ -27,7 +27,7 @@ jobs:
       - run: npm test
         working-directory: app
       - name: Verify upload-to-download and offline behavior
-        run: node --test tests/browser/pages-preview.test.mjs
+        run: node --test tests/browser/pages-preview.test.mjs tests/browser/automatic-reference.test.mjs
         working-directory: app
       - name: Verify automatic cutout with the bundled model
         run: node --test tests/browser/pages-preview.test.mjs

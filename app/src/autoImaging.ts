@@ -1,12 +1,18 @@
 import { inspectImageHeader } from "./imageHeader";
 import { sha256 } from "./prepareSource";
 import type { StudioStyleId } from "../studio-policy.mjs";
+import { AUTOMATIC_LAYOUTS } from "../automatic-policy.mjs";
 export type AutoForeground = {
   blob: Blob;
   width: number;
   height: number;
   method: "source-alpha" | "u2netp-v1";
   sourceSha256: string;
+  contentBounds?: { x: number; y: number; width: number; height: number };
+  sourceDimensions?: { width: number; height: number };
+  sourceBounds?: { x: number; y: number; width: number; height: number };
+  detailRegion?: { x: number; y: number; width: number; height: number };
+  capabilities?: { width: number; height: number; alphaFraction: number; category: "UNKNOWN"; view: "UNKNOWN"; lighting: "UNKNOWN" };
 };
 const abort = (signal: AbortSignal) => {
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
@@ -192,58 +198,91 @@ export async function prepareForeground(
     height: h,
     method,
     sourceSha256: await sha256(bytes),
+    contentBounds: { x: bounds.left - x, y: bounds.top - y, width: bounds.right - bounds.left + 1, height: bounds.bottom - bounds.top + 1 },
+    sourceDimensions: { width: pixels.width, height: pixels.height },
+    sourceBounds: { x, y, width: w, height: h },
+    detailRegion: chooseDetailRegion(alpha, pixels.width, pixels.height, { x, y, width: w, height: h }),
+    capabilities: { width: pixels.width, height: pixels.height, alphaFraction: transparent / alpha.length, category: "UNKNOWN", view: "UNKNOWN", lighting: "UNKNOWN" },
   };
+}
+export function chooseDetailRegion(alpha: ArrayLike<number>, width: number, height: number, crop: { x: number; y: number; width: number; height: number }) {
+  // Choose a measured opaque source pixel nearest the crop center, never invent
+  // a semantic feature (logo, material, category). Crop less than the whole asset.
+  const bounds = matteBounds(alpha, width, height);
+  let side = Math.max(1, Math.floor(Math.min(crop.width, crop.height) * .70));
+  if (side % 2 === 0) side--;
+  const rw = side, rh = side;
+  let focusX = bounds.left, focusY = bounds.top, distance = Infinity;
+  for (let y = bounds.top; y <= bounds.bottom; y++) for (let x = bounds.left; x <= bounds.right; x++) {
+    if (alpha[y * width + x] <= .5) continue;
+    const d = (x - crop.x - crop.width / 2) ** 2 + (y - crop.y - crop.height / 2) ** 2;
+    if (d < distance) { distance = d; focusX = x; focusY = y; }
+  }
+  if (!Number.isFinite(distance)) throw new Error("No visible detail region was found.");
+  return { x: Math.max(0, Math.min(crop.width - rw, focusX - crop.x - Math.floor(rw / 2))), y: Math.max(0, Math.min(crop.height - rh, focusY - crop.y - Math.floor(rh / 2))), width: rw, height: rh };
+}
+export function automaticCompositionEvidence(foreground: AutoForeground, style: StudioStyleId) {
+  const region = style === "macro" ? foreground.detailRegion : undefined;
+  return { layout: { ...AUTOMATIC_LAYOUTS[style] },
+    ...(region ? { detailRoi: { x: (foreground.sourceBounds?.x ?? 0) + region.x, y: (foreground.sourceBounds?.y ?? 0) + region.y, width: region.width, height: region.height }, detailUpscaled: Math.max(1024 * .94 / region.width, 1024 * .94 / region.height) > 1, detailLimitation: "Visible source crop only; resizing adds no authentic detail." } : {}),
+    ...(style === "billboard" ? { artworkLayer: "local-full-text-free-ad-v1" as const } : {}),
+    visualAssessment: "NOT_ASSESSED" as const };
 }
 export async function composeAutomatic(
   foreground: AutoForeground,
-  scene: Blob,
+  scene: Blob | undefined,
   style: StudioStyleId,
   signal: AbortSignal,
 ): Promise<Blob> {
   abort(signal);
-  const background = await createImageBitmap(scene),
+  const background = scene ? await createImageBitmap(scene) : null,
     product = await createImageBitmap(foreground.blob);
   try {
-    if (background.width !== 1024 || background.height !== 1024)
-      throw new Error("The generated image has unexpected dimensions.");
-    const c = canvas(1024, 1024),
-      ctx = c.getContext("2d")!;
-    ctx.drawImage(background, 0, 0, 1024, 1024);
-    const layouts = {
-      studio: [0.76, 0.5, 0.52],
-      hero: [0.86, 0.5, 0.52],
-      lifestyle: [0.62, 0.34, 0.58],
-      flat_lay: [0.72, 0.5, 0.5],
-      macro: [0.94, 0.5, 0.5],
-      ugc: [0.62, 0.65, 0.55],
-      billboard: [0.55, 0.5, 0.45],
-    } as const;
-    const [scale, cx, cy] = layouts[style],
-      factor = Math.min(
-        (1024 * scale) / product.width,
-        (1024 * scale) / product.height,
-      ),
-      w = product.width * factor,
-      h = product.height * factor;
-    if (style === "billboard") {
-      ctx.fillStyle = "#202927";
-      ctx.fillRect(165, 95, 694, 730);
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(181, 111, 662, 698);
-      ctx.fillStyle = "#333";
-      ctx.fillRect(490, 825, 44, 199);
+    if (background && (background.width !== 1024 || background.height !== 1024)) throw new Error("The generated image has unexpected dimensions.");
+    const c = canvas(1024, 1024), ctx = c.getContext("2d")!;
+    if (background) ctx.drawImage(background, 0, 0, 1024, 1024);
+    else { ctx.fillStyle = "#f1f0ec"; ctx.fillRect(0, 0, 1024, 1024); }
+    const layout = AUTOMATIC_LAYOUTS[style], region = style === "macro" ? foreground.detailRegion : undefined;
+    if (style === "macro" && !region) throw new Error("Detail crop evidence unavailable.");
+    const sw = region?.width ?? product.width, sh = region?.height ?? product.height;
+    const factor = Math.min(1024 * layout.maxWidth / sw, 1024 * layout.maxHeight / sh), w = sw * factor, h = sh * factor;
+    const content = style === "macro" ? undefined : foreground.contentBounds;
+    const x = layout.centerX * 1024 - (content ? content.x + content.width / 2 : sw / 2) * factor, y = layout.bottom * 1024 - (content ? content.y + content.height : sh) * factor;
+    if (style !== "macro") {
+      // A local soft contact shadow anchors the source foreground to the same
+      // declared support line used by the background prompt. Visual fit still
+      // needs assessment; generated geometry/light is never certified here.
+      ctx.save(); ctx.fillStyle = "rgba(0,0,0,.22)"; ctx.filter = "blur(12px)";
+      ctx.beginPath(); ctx.ellipse(layout.centerX * 1024, layout.bottom * 1024 + 3, w * .43, Math.max(7, Math.min(22, w * .04)), 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.24)";
-    ctx.shadowBlur = 25;
-    ctx.shadowOffsetY = 16;
-    ctx.drawImage(product, cx * 1024 - w / 2, cy * 1024 - h / 2, w, h);
-    ctx.restore();
-    const blob = await png(c);
+    ctx.drawImage(product, region?.x ?? 0, region?.y ?? 0, sw, sh, x, y, w, h);
     abort(signal);
-    return blob;
-  } finally {
-    background.close();
-    product.close();
-  }
+    return style === "billboard" ? mountAutomaticBillboard(await png(c), signal) : await png(c);
+  } finally { background?.close(); product.close(); }
+}
+// Reference outputs bypass local compositing, so decode them explicitly before
+// treating their technical integrity as checked. Header/hash alone is insufficient.
+export async function validateAutomaticDecodedImage(blob: Blob, signal: AbortSignal) {
+  abort(signal);
+  const image = await createImageBitmap(blob);
+  try {
+    abort(signal);
+    if (image.width !== 1024 || image.height !== 1024) throw new Error("Unexpected decoded output dimensions.");
+  } finally { image.close(); }
+}
+// The whole completed ad is one immutable layer inside a controlled local display.
+export async function mountAutomaticBillboard(advertisement: Blob, signal: AbortSignal): Promise<Blob> {
+  abort(signal);
+  const ad = await createImageBitmap(advertisement);
+  try {
+    if (ad.width !== 1024 || ad.height !== 1024) throw new Error("Invalid ad canvas.");
+    const c = canvas(1024, 1024), ctx = c.getContext("2d")!;
+    const sky = ctx.createLinearGradient(0, 0, 0, 1024); sky.addColorStop(0, "#e4e8e6"); sky.addColorStop(.75, "#cdd5d1"); sky.addColorStop(1, "#9ba9a3");
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, 1024, 1024);
+    ctx.fillStyle = "#5a6463"; ctx.fillRect(470, 760, 34, 264); ctx.fillRect(550, 760, 34, 264);
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.25)"; ctx.shadowBlur = 24; ctx.shadowOffsetY = 12;
+    ctx.fillStyle = "#263334"; ctx.fillRect(137, 66, 750, 750); ctx.restore();
+    ctx.drawImage(ad, 153, 82, 718, 718);
+    const result = await png(c); abort(signal); return result;
+  } finally { ad.close(); }
 }

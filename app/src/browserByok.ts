@@ -1,3 +1,5 @@
+import { automaticPrompt, automaticEstimateUSD, AUTOMATIC_PROMPT_VERSION } from '../automatic-policy.mjs';
+import { validateAutomaticReferences } from './automaticReference.ts';
 import { credentialStore } from './browserCredentialStore.ts';
 import { generateImage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -9,6 +11,15 @@ let saved = false;
 const credentialChannel = typeof document !== 'undefined' && typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('image-studio-credential-state') : null;
 credentialChannel?.addEventListener('message', event => { if (['saved','deleted'].includes(event.data)) { saved=event.data==='saved'; clearBrowserKey(); } });
 let key = '', expires = 0, epoch = 0;
+let referenceConsent = false, referenceEpoch = 0;
+const referenceActive = new Set<AbortController>();
+export function referenceTransmissionAllowed() { return referenceConsent; }
+export function setReferenceTransmissionConsent(consent: boolean) {
+  referenceConsent = consent === true; referenceEpoch++; approvals.clear();
+  if (!referenceConsent) for (const controller of referenceActive) controller.abort();
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('studio-reference-consent'));
+}
+export function onReferenceConsentChange(listener: () => void) { window.addEventListener('studio-reference-consent', listener); return () => window.removeEventListener('studio-reference-consent', listener); }
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 const active = new Set<AbortController>();
 const approvals = new Map<string, { body: string; epoch: number; expires: number }>();
@@ -26,7 +37,7 @@ export function browserWaitReviewNeeded() { return Object.values(journal()).some
 function writeJournal(value: Record<string, Marker>) { localStorage.setItem(JOURNAL, JSON.stringify(value)); }
 export function browserKeyStatus() { return { saved, connected: Boolean(key) && expires > Date.now(), expiresAt: expires ? new Date(expires).toISOString() : null }; }
 export function clearBrowserKey() {
-  key = ''; expires = 0; epoch++; approvals.clear(); clearTimeout(expiryTimer);
+  key = ''; expires = 0; epoch++; setReferenceTransmissionConsent(false); approvals.clear(); clearTimeout(expiryTimer);
   for (const controller of active) controller.abort();
   window.dispatchEvent(new Event(EVENT));
 }
@@ -66,6 +77,16 @@ function blocked(markers: Record<string, Marker>) {
   return Object.values(markers).some(m => (!m.reviewed && ['IN_FLIGHT','UNKNOWN'].includes(m.outcome)) || m.waitReview || (m.waitUntil ?? 0) > Date.now());
 }
 function validBody(b: Record<string, unknown>) {
+  if (b.automaticMode !== undefined) {
+    const allowed = ["clientAttemptId", "productId", "styleId", "lockMode", "operation", "automaticMode", "automaticPromptVersion", "referenceInputs", "model", "quality", "size", "prompt", "promptVersion", "presetVersion", "sceneContext", "sourceAssetHashes", "estimatedUSD", "outputFormat", "reviewRevision"];
+    if (Object.keys(b).some(field => !allowed.includes(field))) return false;
+    const mode = b.automaticMode;
+    if (mode !== 'STRICT' && mode !== 'REFERENCE') return false;
+    if (b.automaticPromptVersion !== AUTOMATIC_PROMPT_VERSION || b.prompt !== automaticPrompt(b.styleId as never, mode) || b.estimatedUSD !== automaticEstimateUSD(b.styleId as never, mode, mode === 'REFERENCE' && Array.isArray(b.referenceInputs) ? b.referenceInputs.length : 1)) return false;
+    if (mode === 'REFERENCE' ? (!referenceConsent || b.operation !== 'reference_edit' || b.lockMode !== 'BALANCED' || !Array.isArray(b.referenceInputs)) : (b.referenceInputs !== undefined || b.operation !== 'generate_scene' || b.lockMode !== 'STRICT')) return false;
+    return b.model === STUDIO_MODEL && b.quality === STUDIO_QUALITY && b.size === STUDIO_SIZE && b.outputFormat === 'png' && typeof b.clientAttemptId === 'string' && /^[a-f0-9-]{36}$/.test(b.clientAttemptId);
+  }
+  if (b.referenceInputs !== undefined || b.automaticPromptVersion !== undefined) return false;
   return b.model === STUDIO_MODEL && b.quality === STUDIO_QUALITY && b.size === STUDIO_SIZE && b.outputFormat === 'png' &&
     b.operation === 'generate_scene' && b.lockMode === 'STRICT' && typeof b.clientAttemptId === 'string' && /^[a-f0-9-]{36}$/.test(b.clientAttemptId) &&
     b.prompt === studioBuildPrompt(b.styleId as never, b.sceneContext as never) && b.estimatedUSD === studioEstimateUSD(b.prompt as string);
@@ -100,12 +121,19 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
     });
   }
   if (!['/images/approvals','/images/generate'].includes(path) || init.method !== 'POST') return failure('INVALID_INPUT');
-  try { if (!validBody(body)) return failure('INVALID_INPUT'); } catch { return failure('INVALID_INPUT'); }
+  const validationEpoch = epoch, consentEpoch = referenceEpoch;
+  const isReference = body.automaticMode === 'REFERENCE';
+  let referenceBytes: Uint8Array[] = [];
+  try {
+    if (!validBody(body)) return failure('INVALID_INPUT');
+    if (isReference) referenceBytes = await validateAutomaticReferences(body.referenceInputs);
+  } catch { return failure('INVALID_INPUT'); }
+  if (validationEpoch !== epoch || (isReference && (!referenceConsent || consentEpoch !== referenceEpoch))) return failure('APPROVAL_STALE');
   if (body.reviewRevision !== epoch) return failure('APPROVAL_STALE');
   if (!navigator.locks) return failure('RECOVERY_REQUIRED', 'DEFINITIVE_FAILURE', 503);
   return navigator.locks.request('studio-browser-byok-dispatch-v1', async () => {
     if (!browserKeyStatus().connected) return failure('UNAUTHENTICATED','DEFINITIVE_FAILURE',401);
-    if (body.reviewRevision !== epoch) return failure('APPROVAL_STALE');
+    if (body.reviewRevision !== epoch || validationEpoch !== epoch || (isReference && (!referenceConsent || consentEpoch !== referenceEpoch))) return failure('APPROVAL_STALE');
     const markers = journal(), id = body.clientAttemptId as string;
     if (blocked(markers) || markers[id]) return failure('ATTEMPT_BUSY');
     if (path === '/images/approvals') {
@@ -121,10 +149,12 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
     try { writeJournal(markers); } catch { return failure('RECOVERY_REQUIRED','DEFINITIVE_FAILURE',503); }
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 300_000);
     active.add(controller);
+    if (isReference) referenceActive.add(controller);
     let httpStatus: number | undefined, waitSeconds: number | undefined, sent = false;
     try {
       const provider = createOpenAI({ apiKey: key, baseURL: 'https://api.openai.com/v1', fetch: async (url, options) => {
-        if (String(url) !== 'https://api.openai.com/v1/images/generations' || sent) throw new Error('Request blocked.');
+        const endpoint = isReference ? 'https://api.openai.com/v1/images/edits' : 'https://api.openai.com/v1/images/generations';
+        if (String(url) !== endpoint || sent || controller.signal.aborted || !browserKeyStatus().connected || validationEpoch !== epoch || (isReference && (!referenceConsent || consentEpoch !== referenceEpoch))) throw new Error('Request blocked.');
         sent = true;
         const result = await fetch(url, { ...options, credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer' });
         httpStatus = result.status;
@@ -147,7 +177,7 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
         }
         return result;
       } });
-      const result = await generateImage({ model: provider.image(STUDIO_MODEL), prompt: body.prompt as string, size: STUDIO_SIZE,
+      const result = await generateImage({ model: provider.image(STUDIO_MODEL), prompt: isReference ? { text: body.prompt as string, images: referenceBytes } : body.prompt as string, size: STUDIO_SIZE,
         n: 1, maxRetries: 0, abortSignal: controller.signal, providerOptions: { openai: { quality: STUDIO_QUALITY, outputFormat: 'png' } } });
       const image = result.image;
       if (image.mediaType !== 'image/png' || image.uint8Array.byteLength > STUDIO_MAX_PNG_BYTES) throw new Error('Invalid image');
@@ -161,6 +191,6 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
       writeJournal(markers);
       if (httpStatus === 429) return response({ error: { code: 'PROVIDER_LIMIT', outcome: 'DEFINITIVE_FAILURE', ...(waitSeconds === undefined ? {} : { retryAfterSeconds: waitSeconds }) } },429);
       return failure(definitive ? 'PROVIDER_REJECTED' : 'UNKNOWN', definitive ? 'DEFINITIVE_FAILURE' : 'UNKNOWN', httpStatus === 401 ? 401 : 502);
-    } finally { clearTimeout(timer); active.delete(controller); }
+    } finally { clearTimeout(timer); active.delete(controller); referenceActive.delete(controller); }
   });
 }

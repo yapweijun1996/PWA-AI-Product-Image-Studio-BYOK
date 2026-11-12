@@ -28,3 +28,9 @@
 ## Coverage mapping
 
 Requirements: [RTM](../00-governance/REQUIREMENTS_TRACEABILITY.md). Detailed scenario IDs: [E2E_ACCEPTANCE](E2E_ACCEPTANCE.md). Release sign-off: [RELEASE_GATES](RELEASE_GATES.md).
+
+## A+C automatic-path regression scope
+
+The automatic-only reference tests use the actual pinned AI SDK with fake fetch, exercising edits multipart order/content for one to three normalized PNGs; wrong SHA/dimensions/metadata/count/endpoint/estimate; absent consent; approval staleness; key-clear/hash/lock races; UNKNOWN no-resend; and in-flight consent abort. PNG chunk checksums/order and post-provider full image decoding are required before usable reference output. Header-only or resealed corrupt data must not become downloadable READY output.
+
+Semantic tests require a nonempty square visible Detail ROI smaller than the whole source, original coordinates, enlargement evidence, shared visible-contact anchors, full-ad billboard layer and source-angle Tabletop. Compatibility tests preserve legacy rows and block older automatic database clients. Production Pages browser tests cover optional references, single-image editing, denied transmission consent, original/hash retention, corrupted provider output exclusion, UNKNOWN partial retention, reload consent reset and responsive rendering. Synthetic scenes prove these mechanics, not photographic styling or real SKU fidelity. See [implementation evidence](../09-research/QUALITY_REFERENCE_IMPLEMENTATION_2026-11-12.md).
