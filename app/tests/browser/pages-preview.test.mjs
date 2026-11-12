@@ -64,7 +64,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   const port=await until(async()=>{try{return Number((await readFile(join(profile,'DevToolsActivePort'),'utf8')).split('\n')[0])}catch{if(browser.exitCode!==null)throw new Error(`Chrome startup failed (${browser.exitCode}): ${chromeDiagnostics}`);return null}},'Chrome');
   const list=await(await fetch(`http://127.0.0.1:${port}/json/list`)).json();tab=await connect(list.find(x=>x.type==='page').webSocketDebuggerUrl);
   await tab.call('Page.enable');await tab.call('Runtime.enable');await tab.call('Page.navigate',{url});
-  await until(()=>evaluate(tab,`!!document.querySelector('h1') && document.body.innerText.includes('Settings')`),'settings route');
+  await until(()=>evaluate(tab,`!!document.querySelector('h1') && document.body?.innerText.includes('Settings')`),'settings route');
   await until(()=>evaluate(tab,'!!navigator.serviceWorker.controller'),'worker');
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'loaded key form');
   assert.equal(await evaluate(tab,`document.documentElement.lang`),'en');
@@ -118,7 +118,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'return to settings from help');
   for(const route of ['settings','images','design-system','help','workspace','import','products/new','missing-page']){
     await evaluate(tab,`location.hash='#/${route}'`);
-    await until(()=>evaluate(tab,`!!document.querySelector('h1') && !document.body.innerText.includes('Loading page…')`),'redesigned route');
+    await until(()=>evaluate(tab,`!!document.querySelector('h1') && !document.body?.innerText.includes('Loading page…')`),'redesigned route');
     await delay(150);
     for(const theme of ['light','dark']){
       await evaluate(tab,`if(document.documentElement.dataset.theme!=='${theme}')document.querySelector('.topbar-controls>.icon-button').click()`);
@@ -145,7 +145,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   assert.equal(await evaluate(tab,`document.querySelector('form button[type=submit]').disabled`),true);
   await evaluate(tab, `(() => {window.__providerCalls=0;const original=window.fetch;window.fetch=async(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'){window.__providerCalls++;if(window.__providerCalls===1)await new Promise(resolve=>window.__releaseFirst=resolve);const c=document.createElement('canvas');c.width=c.height=1024;c.getContext('2d').fillRect(0,0,1024,1024);return Response.json({data:[{b64_json:c.toDataURL('image/png').split(',')[1]}]})}return original(url,options)};const e=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'sk-synthetic-browser-key-not-real');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   await evaluate(tab, `document.querySelector('input[type=password]').closest('form').querySelector('input[type=checkbox]').click();document.querySelector('input[type=password]').closest('form').querySelector('button').click()`);
-  await until(()=>evaluate(tab,`document.body.innerText.includes('Key available in this tab')`),'browser key connected');
+  await until(()=>evaluate(tab,`document.body?.innerText.includes('Key available in this tab')`),'browser key connected');
   assert.equal(await evaluate(tab,`document.querySelector('input[type=password]').value`),'');
   const actionSpacing=await evaluate(tab,`(()=>{const buttons=[...document.querySelector('.session-actions').children].map(e=>e.getBoundingClientRect());return buttons.length===2 && (buttons[1].left-buttons[0].right>=10 || buttons[1].top-buttons[0].bottom>=10)})()`);
   assert.equal(actionSpacing,true,'Clear key and upload actions have a visible gap, including when wrapped');
@@ -265,7 +265,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
     await evaluate(tab,`(()=>{const e=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'sk-synthetic-browser-key-not-real');e.dispatchEvent(new Event('input',{bubbles:true}));for(const box of document.querySelectorAll('form input[type=checkbox]'))if(!box.checked)box.click()})()`);
     await until(()=>evaluate(tab,`!document.querySelector('form button[type=submit]').disabled`),'recovery ready');
     await evaluate(tab,`document.querySelector('form button[type=submit]').click()`);
-    await until(()=>evaluate(tab,`document.querySelector('input[type=password]').value==='' && document.body.innerText.includes('Key available in this tab')`),'recovered session');
+    await until(()=>evaluate(tab,`document.querySelector('input[type=password]').value==='' && document.body?.innerText.includes('Key available in this tab')`),'recovered session');
     await evaluate(tab,`location.hash='#/'`);
     await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]') && !document.querySelector('input[aria-label="Upload product image"]').disabled`),'recovered uploader');
   }
@@ -288,24 +288,24 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await evaluate(tab,`window.__restorePut();window.confirm=()=>true;[...document.querySelectorAll('button')].find(b=>b.textContent==='Start another upload').click()`);
   await until(()=>evaluate(tab,`!document.querySelector('#auto-results-heading')`),'explicit discard acknowledgement');
   await evaluate(tab,`location.hash='#/settings'`);await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'final settings');
-  await tab.call('Page.reload');await until(()=>evaluate(tab,`document.readyState==='complete' && document.body.innerText.includes('Settings')`),'route reload');
-  try{await until(()=>evaluate(tab,`document.body.innerText.includes('Key available in this tab') && document.body.innerText.includes('Saved on this device')`),'saved key restored');}catch(error){console.log('Restore diagnostic:',await evaluate(tab,`(async()=>({status:document.querySelector('.provider-settings')?.innerText,locks:await navigator.locks.query()}))()`));throw error;}
+  await tab.call('Page.reload');await until(()=>evaluate(tab,`document.readyState==='complete' && document.body?.innerText.includes('Settings')`),'route reload');
+  try{await until(()=>evaluate(tab,`document.body?.innerText.includes('Key available in this tab') && document.body?.innerText.includes('Saved on this device')`),'saved key restored');}catch(error){console.log('Restore diagnostic:',await evaluate(tab,`(async()=>({status:document.querySelector('.provider-settings')?.innerText,locks:await navigator.locks.query()}))()`));throw error;}
   assert.equal(await evaluate(tab,`document.querySelector('input[type=password]').value`),'','Stored key is never repopulated into the DOM');
   assert.equal(await evaluate(tab,`document.querySelector('form button[type=submit]').disabled`),true,'Restoring credentials does not restore spending consent');
   assert.equal(await evaluate(tab,`(async()=>{const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('image-studio-credentials',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});try{return await new Promise((resolve,reject)=>{const r=db.transaction('credentials').objectStore('credentials').get('openai');r.onsuccess=()=>resolve(r.result==='sk-synthetic-browser-key-not-real');r.onerror=()=>reject(r.error)})}finally{db.close()}})()`),true,'Owner-authorized key is stored only in the credential database');
   const secondTarget=await(await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`,{method:'PUT'})).json();
   const secondTab=await connect(secondTarget.webSocketDebuggerUrl);
   try{
-    await until(()=>evaluate(secondTab,`document.body.innerText.includes('Key available in this tab')`),'second tab restores credential');
+    await until(()=>evaluate(secondTab,`document.body?.innerText.includes('Key available in this tab')`),'second tab restores credential');
     await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Remove saved key').click()`);
-    await until(()=>evaluate(tab,`document.body.innerText.includes('No key connected')`),'local removal');
-    await until(()=>evaluate(secondTab,`document.body.innerText.includes('No key connected')`),'cross-tab removal');
+    await until(()=>evaluate(tab,`document.body?.innerText.includes('No key connected')`),'local removal');
+    await until(()=>evaluate(secondTab,`document.body?.innerText.includes('No key connected')`),'cross-tab removal');
   }finally{secondTab.close();await fetch(`http://127.0.0.1:${port}/json/close/${secondTarget.id}`)}
   await evaluate(tab,`window.__removedKeySentinel=true`);await tab.call('Page.reload');
-  await until(()=>evaluate(tab,`!window.__removedKeySentinel && document.body.innerText.includes('No key connected')`),'removed key stays removed after reload');
+  await until(()=>evaluate(tab,`!window.__removedKeySentinel && document.body?.innerText.includes('No key connected')`),'removed key stays removed after reload');
 
   assert.equal(requests.some(p=>p.startsWith('/api/')),false,'Preview must not call gateway');
   await tab.call('Network.enable');await tab.call('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});await tab.call('Page.reload');
-  await until(()=>evaluate(tab,`document.readyState==='complete' && document.body.innerText.includes('Settings')`),'offline reload');assert.equal(tab.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0);
+  await until(()=>evaluate(tab,`document.readyState==='complete' && document.body?.innerText.includes('Settings')`),'offline reload');assert.equal(tab.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0);
  }catch(error){console.error('Pages journey failure:',error);throw error;}finally{tab?.close();if(browser&&browser.exitCode===null&&browser.signalCode===null){browser.kill();await new Promise(resolve=>browser.once('exit',resolve));}if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100})}
 });
