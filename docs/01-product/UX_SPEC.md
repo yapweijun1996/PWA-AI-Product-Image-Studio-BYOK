@@ -50,3 +50,7 @@ Apply KB `pwa:product-standard`:
 ## Design system direction (proposed)
 
 Neutral, readable editor (not decoration-first), high contrast for QA findings, clear costs, no confusing brand colors. Separate dangerous/billable actions visually from harmless local edits. Avoid badges that imply automatic product authenticity certification.
+
+## Automatic results remediation — proposed, 2026-11-12
+
+The [13-advisor review](../09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md) defines the proposed automatic-results improvements (T-100–T-107). Keep upload → results → download as the default. Add optional large preview/original comparison and versioned single-result regeneration; fold professional settings away from the primary flow. Compress active-job messaging to one completion count and stable cards. Technical validation must not imply photographic approval. These are pending targets, not existing controls; Advanced human-reviewed export remains separate. DEC-022 governs unresolved output-count and reference-editing changes.

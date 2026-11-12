@@ -42,3 +42,7 @@
 | OPEN-009 | QA score rounding and unbranded weights? | QA schema permits fractional scores; define rounding, threshold behavior and exact unbranded weighting without weakening the hard veto | Product owner + visual QA reviewer |
 
 No open item may be silently marked CONFIRMED. Update `docs/02-architecture/ADR.md` with chosen implementation and rejected alternatives.
+
+## DEC-022 — capability-aware output remediation (PROPOSED, 2026-11-12)
+
+The owner requested documentation of the 13-advisor quality review. Proposed: analyze source capabilities before style planning; truthful overhead/detail outputs; coordinated composition; optional preview/comparison/single-result regeneration. See [review](../09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md) and T-100–T-107. The default remains upload-to-output without mandatory user QA. Reducing the seven-output promise, reference-image transmission/editing, new providers/models and related provenance changes are not approved by this documentation update. DEC-020 remains the active default; adopt an ADR and compatibility plan before changing these contracts. Multi-view references are optional inputs, not proof of faithful unseen geometry.

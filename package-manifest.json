@@ -8,7 +8,7 @@
   "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 134,
+  "fileCountHashed": 135,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -66,7 +66,7 @@
       "sha256": "f4743f2f6ce4d36f2739f063eaca1467eed3e9c14eceb7210c480d2309b8974f"
     },
     {
-      "path": "START_HERE_中文.md",
+      "path": "START_HERE_\u4e2d\u6587.md",
       "bytes": 3323,
       "sha256": "bf398d7e3af0568f5509c764cf963babd55fcb4f4e4d8f6dfb67bfcd8e6f7ef4"
     },
@@ -107,8 +107,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 7420,
-      "sha256": "7643e0e0510ddc3ded548d9a073cebc978f41a777b6ad6909e131419a200f71d"
+      "bytes": 8249,
+      "sha256": "4847e6bedd7208099d0786ffd9069db3ad1e242cc69cf0ba81f8835457158ded"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -157,8 +157,8 @@
     },
     {
       "path": "docs/01-product/UX_SPEC.md",
-      "bytes": 4169,
-      "sha256": "54170908e3cee8428d7452588c3ac781c529f5e46b1848968d98cb398c1b7145"
+      "bytes": 4874,
+      "sha256": "8a5ccd85c1c724371c9646460b82e24bfd76a217e9e6a94dfb58170770809789"
     },
     {
       "path": "docs/02-architecture/ADR.md",
@@ -257,8 +257,8 @@
     },
     {
       "path": "docs/06-ai/VISUAL_QA.md",
-      "bytes": 5653,
-      "sha256": "4bef6e385e82850ff4d8c03cc747823cba72f8f99235b4bb2853172900bed4bf"
+      "bytes": 6340,
+      "sha256": "80a16abe003abd46249c359b6a983f3d0e2517648a472f14794db3f09d697be9"
     },
     {
       "path": "docs/07-quality/E2E_ACCEPTANCE.md",
@@ -297,18 +297,23 @@
     },
     {
       "path": "docs/08-delivery/EPIC.md",
-      "bytes": 1424,
-      "sha256": "a9ef31978eae0770fb22c5e1a73ced2999b2257c79af55a22d34a36fc8a71c46"
+      "bytes": 2037,
+      "sha256": "731812c0f32b67b052e072688d73040be74a5496b822300e22089e78a646d442"
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 3758,
-      "sha256": "e5e4c84296604ce29fd7bdc31f2a717fe06fdb94ad14eb8a4588ee0e20417fd4"
+      "bytes": 4862,
+      "sha256": "74b554388b82922d9552c88d2dd796da6f90ef694aaf4f7d05f93959451e9fca"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 331902,
-      "sha256": "146fec3c4c0cc6288f623f45c0af263626930af0f548c9abc2f875373a85b783"
+      "bytes": 335528,
+      "sha256": "8a39da1503a839a4f32ba3444de2e7df17e3e1d687a97d4c86bc6da047ffae8d"
+    },
+    {
+      "path": "docs/09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md",
+      "bytes": 8924,
+      "sha256": "93383287354bc5d11eb1cf7c10edaa31de376d29eb3e646b51f9fab0e9b6e2b5"
     },
     {
       "path": "docs/09-research/AUTO_CUTOUT_EXPERIMENT.md",
@@ -372,8 +377,8 @@
     },
     {
       "path": "docs/10-design/DESIGN_SYSTEM.md",
-      "bytes": 15137,
-      "sha256": "6225a2dcd0d894bec898562eebf04ebcf836966b6b272dc1e9298dcfdb648b14"
+      "bytes": 15835,
+      "sha256": "c4e2302eb194438d4248d2f8e43959c58912d88376a4fcf9fc2bdd7432be4863"
     },
     {
       "path": "docs/10-design/VISUAL_ANCHORS.md",

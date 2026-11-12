@@ -33,3 +33,15 @@ Security decision precedes public BYOK implementation; one style end-to-end prec
 ## Change control
 
 Features P1/P2 cannot be quietly pulled into P0. Promote with explicit decision and additional capacity/testing evidence; track in canonical [TASK](TASK.md).
+
+## Automatic Pages quality track — 2026-11-12
+
+The automatic Pages path and v0.3.0 presentation exist; the earlier milestone narrative describes the legacy gateway track. Functional completion is not photographic acceptance. The [13-advisor review](../09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md) adds this pending sequence:
+
+1. T-100: source capabilities and honest style plan; resolve DEC-022 before changing the seven-output contract.
+2. T-101/T-102 then T-103: grounded composition, authentic detail/feasible overhead, distinct scenes and complete advertisement artwork.
+3. T-104/T-105: compact progress, preview/comparison and single-result versioned regeneration with optional settings.
+4. T-106: semantic tests, real-product visual review and affected browser regressions before claiming output quality.
+5. T-107: separately evaluate reference editing/multi-view; no source-transmission or provider change without the corresponding decision/ADR.
+
+Task status remains owned by [TASK](TASK.md). This track does not close physical-device, security, seller-pilot or production-release gates.

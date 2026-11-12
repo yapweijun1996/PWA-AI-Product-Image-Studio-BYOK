@@ -58,3 +58,7 @@ Computer vision OCR or semantic model similarity is advisory and can miss subtle
 ## Test matrix
 
 `QA-001` logo/Chinese characters must not change. `QA-002` SKU/variant/color/geometry check. `QA-003` mask halos/unsupported camera. `QA-004` correct formula/threshold, veto override. `QA-005` no fabricated claims, UGC testimonials, removed watermark or unapproved packaging artwork. Use synthetic label fixtures for public E2E; real product benchmark requires merchant authorization.
+
+## Automatic Pages output evidence gap — 2026-11-12
+
+The automatic pipeline's `AUTOMATIC_CHECKS_PASSED` records format, dimensions and hashes, not this weighted visual rubric or human approval. Owner-provided shoe outputs and 13 advisor reviews expose style mismatch, weak grounding and incomplete ad composition; see [review](../09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md). T-106 must separate technical validation from visual assessment and add real-product release fixtures plus overhead/crop/ad-layer semantic checks. This is developer release QA, not a new mandatory end-user approval step. Existing Advanced approval/veto rules and canonical QA schemas remain unchanged.

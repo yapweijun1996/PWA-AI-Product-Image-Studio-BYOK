@@ -12,3 +12,7 @@
 | EP-08 Listing Studio Expansion | Seller manages catalog and copy / batches / ecommerce sync | FR-025..026 | post-MVP only |
 
 An epic is complete only when all linked P0 tasks have code plus test evidence. Docs alone do not count.
+
+## Automatic output quality follow-up — 2026-11-12
+
+EP-03/04/05 now have a pending source-backed remediation backlog T-100–T-107: meaningful feasible styles, faithful composition and genuine output inspection. EP-01/06 cover compact waiting and optional accessible result tools. See [review](../09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md) and [task ledger](TASK.md). Automatic Pages downloads remain distinct from Advanced approved exports; browser credential custody follows DEC-021, superseding the historical EP-02 memory-only wording for Pages. No new functionality or epic completion is claimed.
