@@ -22,8 +22,8 @@
     },
     {
       "path": ".github/workflows/pages.yml",
-      "bytes": 1785,
-      "sha256": "44b63f97bba514afc46004959f9478b2e86b86806d2daf64db512e3f03afa8e9"
+      "bytes": 1879,
+      "sha256": "58ad06bae00e4c3b6e3078a892bea1756aa26717e27214a07ab33e6b10a840d5"
     },
     {
       "path": ".gitignore",
@@ -32,8 +32,8 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 4051,
-      "sha256": "517e966f9ca03e34987dd3994a52d2b72bf56d44a84c8670e23f5e7283af2e03"
+      "bytes": 4223,
+      "sha256": "d20a9a35b92fb9daa8b9439ad03e8ab58daa57490c3511081c5f0c8c30ca7c4b"
     },
     {
       "path": "BUG.md",
@@ -52,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 13992,
-      "sha256": "1a0e2a7ebe800c1a7bd4473e6f02c868265130becd4be8f1fb4de0e4a5a875a5"
+      "bytes": 14406,
+      "sha256": "7674895594cd8cb8b9bc7f4b4c6cb9d231c4291a17e6636d81a02a1125840915"
     },
     {
       "path": "ROADMAP.md",
@@ -107,13 +107,13 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 8683,
-      "sha256": "f7727eaf10473bd55de21de88e761660f6b9bd33873aa11e474d0a38f2c3255c"
+      "bytes": 9797,
+      "sha256": "28afbf1fd8ca83b838fd7de5f90eb79dad3accd9117aff2fed6a90b82532bc4a"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 4603,
-      "sha256": "d9bed5fd0feae2dd1f38a5778d21284d2ecbffa0567d95afa2de9681d050980c"
+      "bytes": 5393,
+      "sha256": "3de0a4d1dd8be3219f2c4970b925a0e70abf31f4d813411a5af43e78f291ad94"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -162,8 +162,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 50007,
-      "sha256": "89554d7297da46e61fc8d295f7d997028efe98af2bf53cd7af1c608588a6d997"
+      "bytes": 51857,
+      "sha256": "fd51292cf8c24bda29172248eac06176d46ba47000302abc205efd93eed17e2c"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -207,8 +207,8 @@
     },
     {
       "path": "docs/03-security/THREAT_MODEL.md",
-      "bytes": 5743,
-      "sha256": "a86a6b6a2211c6b6df5373dbcaa3e95cdf175a578f19f17f40a214163e2e8d94"
+      "bytes": 7000,
+      "sha256": "0194c1635c2683035650bb7195bfac0b854c272add2e0dd299d6fe9ccd956708"
     },
     {
       "path": "docs/04-data/DATA_MODEL.md",
@@ -282,8 +282,8 @@
     },
     {
       "path": "docs/07-quality/TEST_STRATEGY.md",
-      "bytes": 3914,
-      "sha256": "f5cec9e9e11c698e3d42e18243550d474575248abbc3f8c99aaf4d7d474cdf50"
+      "bytes": 4822,
+      "sha256": "89cdf92f9e0f4746ca36aeb353f045575879adccdc3e7b9229c18bbf12566a5b"
     },
     {
       "path": "docs/08-delivery/AI_AGENT_HANDOFF.md",
@@ -307,8 +307,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 339036,
-      "sha256": "a2bf2165a1a6d70899a8fd01a984d33cff074b43fc45a95c7009d2c64d0c809f"
+      "bytes": 342021,
+      "sha256": "5673bf1a9854f54eb4063c0fbe89e44b11a46be934d99b3ad000fd92ef9b3116"
     },
     {
       "path": "docs/09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md",
