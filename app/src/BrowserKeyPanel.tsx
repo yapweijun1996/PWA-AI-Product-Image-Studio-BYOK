@@ -1,5 +1,6 @@
+import {Disclosure, DisclosureSummary} from './ui/components';
 import { t } from './ui/i18n';
-import { Button, Input } from './ui/components';
+import { Button, Input, ErrorNotice } from './ui/components';
 import { Link } from "react-router-dom";
 import { useEffect, useState, type FormEvent } from "react";
 import { listAutoRuns } from "./automaticStore";
@@ -8,6 +9,7 @@ import { automaticSessionStatus, authorizeAutomaticSession } from "./automaticSe
 import { useUnsavedChanges } from "./useUnsavedChanges";
 import {
   browserKeyStatus,
+  providerKeyMismatch,
   browserWaitReviewNeeded,
   forgetBrowserKey,
   restoreSavedBrowserKey,
@@ -19,7 +21,7 @@ export function BrowserKeyPanel() {
   useEffect(()=>{const update=()=>setAuthorized(Boolean(automaticSessionStatus()));window.addEventListener('studio-auto-session',update);update();return()=>window.removeEventListener('studio-auto-session',update)},[]);
   const [busy,setBusy]=useState(false);
   const [storageReady,setStorageReady]=useState(false);
-  useEffect(()=>{restoreSavedBrowserKey().catch(()=>setError("Saved key could not be read. Enter a key to try saving again.")).finally(()=>{setStatus(browserKeyStatus());setStorageReady(true)});},[]);
+  useEffect(()=>{restoreSavedBrowserKey().catch(error=>setError(error instanceof Error && error.message===providerKeyMismatch ? providerKeyMismatch : "Saved key could not be read. Enter a key to try saving again.")).finally(()=>{setStatus(browserKeyStatus());setStorageReady(true)});},[]);
   const [recovery, setRecovery] = useState(false),
     [hasHolds, setHasHolds] = useState(false);
   useEffect(() => {
@@ -43,6 +45,7 @@ export function BrowserKeyPanel() {
   const [value, setValue] = useState(""),
     [status, setStatus] = useState(browserKeyStatus),
     [error, setError] = useState("");
+  const keyProblem=value.trim().startsWith("sk-or-") ? providerKeyMismatch : "";
   useUnsavedChanges(Boolean(value));
   useEffect(() => onBrowserKeyChange(() => setStatus(browserKeyStatus())), []);
   async function connect(event: FormEvent) {
@@ -58,8 +61,9 @@ export function BrowserKeyPanel() {
       setValue("");
       setError("");
       setHasHolds(false);
-    } catch {
+    } catch (error) {
       setError(
+        error instanceof Error && error.message===providerKeyMismatch ? providerKeyMismatch :
         "Setup did not finish. Check your key, local storage, estimate limit and consent. A saved key alone does not authorize uploads.",
       );
     }finally{setBusy(false)}
@@ -69,6 +73,7 @@ export function BrowserKeyPanel() {
       <h2>{t("Bring your own OpenAI key")}</h2>
       <p>{t("Your key is saved on this device until removed. Browser scripts and extensions may read it.")}</p>
       <p role="status">{!storageReady ? 'Loading saved key…' : status.connected ? 'Key available in this tab. '+(status.saved?'Saved on this device. ':'')+(authorized?'Session ready for uploads. Key not verified with OpenAI.':'Not verified with OpenAI; authorize this session below.') : status.saved ? 'Saved key needs to be reloaded. Reopen Settings to continue.' : t('No key connected. Set up your key and budget to start uploading.')}</p>
+      {(keyProblem || error) && <ErrorNotice id="byok-error" title={t(keyProblem || error===providerKeyMismatch ? "API key issue" : "Setup needs attention")}>{keyProblem || error}</ErrorNotice>}
       <form onSubmit={connect}>
         {hasHolds && (
           <label>
@@ -80,6 +85,8 @@ export function BrowserKeyPanel() {
         )}
         <label>{t("OpenAI API key")}<Input
             type="password"
+            aria-invalid={Boolean(keyProblem || error===providerKeyMismatch)}
+            aria-describedby={keyProblem || error ? "byok-error" : undefined}
             placeholder={status.connected ? "Saved key — enter a new key to replace" : "sk-…"}
             disabled={busy || !storageReady}
             value={value}
@@ -106,7 +113,7 @@ export function BrowserKeyPanel() {
           />{t("I have rights to my uploads and authorize up to seven potentially billable image requests per upload within this session estimate limit. Estimates are not a hard provider spending cap.")}</label>
         <Button
           type="submit"
-          disabled={busy || !storageReady || (!value.trim() && !status.connected) || !consent || (hasHolds && !recovery)}
+          disabled={busy || !storageReady || Boolean(keyProblem) || (!value.trim() && !status.connected) || !consent || (hasHolds && !recovery)}
         >{busy ? t("Preparing…") : t("Set up session")}</Button>
       </form>
       <div className="session-actions">
@@ -125,8 +132,7 @@ export function BrowserKeyPanel() {
         </>
       )}
       </div>
-      {error && <p role="alert">{error}</p>}
-      <details><summary>{t("Privacy and provider billing")}</summary><p>Each upload starts up to seven potentially billable requests, estimated ${automaticPlan().estimatedUSD} USD. Estimates are not a spending cap. No automatic retries.</p><p>The key is stored in this browser’s IndexedDB without a separate password. It is excluded from backups, caches and exports. Remove it before sharing this browser profile. Spending authorization is not restored after reload.</p><p>Requests go directly to OpenAI. Source images stay local. A saved key is not proof of valid credentials. If OpenAI rejects authentication, replace the key; if the browser cannot read the response, check billing before authorizing a new attempt.</p></details>
+      <Disclosure><DisclosureSummary>{t("Privacy and provider billing")}</DisclosureSummary><p>Each upload starts up to seven potentially billable requests, estimated ${automaticPlan().estimatedUSD} USD. Estimates are not a spending cap. No automatic retries.</p><p>The key is stored in this browser’s IndexedDB without a separate password. It is excluded from backups, caches and exports. Remove it before sharing this browser profile. Spending authorization is not restored after reload.</p><p>Requests go directly to OpenAI. Source images stay local. A saved key is not proof of valid credentials. If OpenAI rejects authentication, replace the key; if the browser cannot read the response, check billing before authorizing a new attempt.</p></Disclosure>
     </section>
   );
 }

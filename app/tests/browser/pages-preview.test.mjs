@@ -68,7 +68,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,'!!navigator.serviceWorker.controller'),'worker');
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'loaded key form');
   assert.equal(await evaluate(tab,`document.documentElement.lang`),'en');
-  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.2\.1 · /);
+  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.3\.0 · /);
   for(const [lang,title] of [['zh','设置'],['ms','Tetapan'],['ja','設定'],['ko','설정'],['vi','Cài đặt'],['en','Settings']]){
     await evaluate(tab,`document.querySelector('.language-control>.icon-button').click()`);
     await until(()=>evaluate(tab,`!!document.querySelector('.language-options')`),'language choices');
@@ -83,12 +83,26 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   assert.equal(await evaluate(tab,`document.querySelector('meta[name="theme-color"]').content===getComputedStyle(document.documentElement).getPropertyValue('--page').trim()`),true);
   await evaluate(tab,`document.querySelector('.topbar-controls>.icon-button').click()`);
   await until(()=>evaluate(tab,`document.documentElement.dataset.theme==='light'`),'icon light mode');
+  const updateBounds=()=>evaluate(tab,`(()=>{const box=document.querySelector('.sidebar-update').getBoundingClientRect(),button=document.querySelector('.sidebar-update button').getBoundingClientRect();return [box.x,box.y,box.width,box.height,button.x,button.y,button.width,button.height]})()`);
+  const beforeUpdate=await updateBounds();
   await evaluate(tab,`window.__manualUpdateSentinel=true;document.querySelector('.sidebar-update button').click()`);
   await until(()=>evaluate(tab,`document.querySelector('.sidebar-update [role=status]').textContent==='No new version found.'`),'manual update check');
   assert.equal(await evaluate(tab,'window.__manualUpdateSentinel'),true,'Checking alone never reloads');
   await evaluate(tab,`(()=>{window.__originalUpdate=ServiceWorkerRegistration.prototype.update;window.__originalTimeout=window.setTimeout;ServiceWorkerRegistration.prototype.update=()=>new Promise(()=>{});window.setTimeout=(fn,ms,...args)=>window.__originalTimeout(fn,ms===15000?10:ms,...args);document.querySelector('.sidebar-update button').click()})()`);
   await until(()=>evaluate(tab,`document.querySelector('.sidebar-update [role=status]').textContent==='Update check failed. Try again.'&&!document.querySelector('.sidebar-update button').disabled`),'stalled update check recovers');
+  assert.deepEqual(await updateBounds(),beforeUpdate,'Update failure must not shift the sidebar or resize the button');
   await evaluate(tab,`ServiceWorkerRegistration.prototype.update=window.__originalUpdate;window.setTimeout=window.__originalTimeout`);
+  for(const width of [320,1280]){
+    await tab.call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<500});
+    const before=await updateBounds();
+    await evaluate(tab,`ServiceWorkerRegistration.prototype.update=()=>new Promise(resolve=>window.__finishUpdate=resolve);document.querySelector('.sidebar-update button').click()`);
+    await until(()=>evaluate(tab,`document.querySelector('.sidebar-update button').getAttribute('aria-busy')==='true' && !!window.__finishUpdate`),'checking update');
+    assert.deepEqual(await updateBounds(),before,`Checking must preserve layout at ${width}px`);
+    await evaluate(tab,`window.__finishUpdate();delete window.__finishUpdate;ServiceWorkerRegistration.prototype.update=window.__originalUpdate`);
+    await until(()=>evaluate(tab,`!document.querySelector('.sidebar-update button').disabled`),'completed update');
+    assert.deepEqual(await updateBounds(),before,`Completed check must preserve layout at ${width}px`);
+  }
+
 
   await evaluate(tab,`location.hash='#/help'`);
   await until(()=>evaluate(tab,`document.querySelector('h1')?.textContent==='Upload. Get your images.'`),'Pages help route');
@@ -97,32 +111,39 @@ test('Pages upload produces seven downloadable composites, retains partial resul
     const layout=await evaluate(tab,`({overflow:document.documentElement.scrollWidth>innerWidth,steps:[...document.querySelectorAll('.guide-list section')].map(s=>({index:s.firstElementChild?.textContent,contentWidth:s.querySelector('div')?.getBoundingClientRect().width}))})`);
     assert.equal(layout.overflow,false,`Help page overflows at ${width}px`);
     assert.deepEqual(layout.steps.map(step=>step.index),['01','02','03']);
-    assert.ok(layout.steps.every(step=>step.contentWidth>=Math.min(width-150,500)),`Help text is squeezed at ${width}px: ${JSON.stringify(layout.steps)}`);
+    assert.ok(layout.steps.every(step=>step.contentWidth>=Math.min(width-150,200)),`Help text is squeezed at ${width}px: ${JSON.stringify(layout.steps)}`);
     if(process.env.STUDIO_HELP_SCREENSHOT && width===1280){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(process.env.STUDIO_HELP_SCREENSHOT,Buffer.from(shot.data,'base64'));}
   }
   await evaluate(tab,`location.hash='#/settings'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'return to settings from help');
-  for(const route of ['settings','images','design-system','help']){
+  for(const route of ['settings','images','design-system','help','workspace','import','products/new','missing-page']){
     await evaluate(tab,`location.hash='#/${route}'`);
     await until(()=>evaluate(tab,`!!document.querySelector('h1') && !document.body.innerText.includes('Loading page…')`),'redesigned route');
     await delay(150);
     for(const theme of ['light','dark']){
-      await evaluate(tab,`document.documentElement.dataset.theme='${theme}'`);
+      await evaluate(tab,`if(document.documentElement.dataset.theme!=='${theme}')document.querySelector('.topbar-controls>.icon-button').click()`);
+      await until(()=>evaluate(tab,`document.documentElement.dataset.theme==='${theme}'`),'theme applied through control');
       for(const width of [320,390,768,1280]){
         await tab.call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<500});
         assert.equal(await evaluate(tab,'document.documentElement.scrollWidth<=innerWidth'),true,`${route} ${theme} overflows at ${width}`);
         if(route==='settings')assert.equal(await evaluate(tab,`[...document.querySelectorAll('input:not([type=checkbox])')].every(i=>parseFloat(getComputedStyle(i).fontSize)>=16)`),true,'iOS input text avoids focus zoom');
         if(process.env.STUDIO_UI_SHOTS && (width===390||width===1280)){
-          const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(`${process.env.STUDIO_UI_SHOTS}-${route}-${theme}-${width}.png`,Buffer.from(shot.data,'base64'));
+          const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(`${process.env.STUDIO_UI_SHOTS}-${route.replaceAll('/','-')}-${theme}-${width}.png`,Buffer.from(shot.data,'base64'));
         }
       }
     }
   }
-  await evaluate(tab,`document.documentElement.dataset.theme='light';location.hash='#/settings'`);
+  await evaluate(tab,`if(document.documentElement.dataset.theme!=='light')document.querySelector('.topbar-controls>.icon-button').click();location.hash='#/settings'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'settings after visual checks');
   assert.equal(await evaluate(tab,'navigator.serviceWorker.ready.then(r=>new URL(r.scope).pathname)'),base);
   const manifest=JSON.parse(await readFile(join(out,'manifest.webmanifest'),'utf8'));assert.equal(new URL(manifest.start_url,`${origin}${base}manifest.webmanifest`).pathname,base);
-  await evaluate(tab, `(() => {window.__providerCalls=0;const original=window.fetch;window.fetch=async(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'){window.__providerCalls++;const c=document.createElement('canvas');c.width=c.height=1024;c.getContext('2d').fillRect(0,0,1024,1024);return Response.json({data:[{b64_json:c.toDataURL('image/png').split(',')[1]}]})}return original(url,options)};const e=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'sk-synthetic-browser-key-not-real');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+
+  await evaluate(tab,`(()=>{const e=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'sk-or-v1-synthetic-invalid-provider');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+  await until(()=>evaluate(tab,`document.querySelector('#byok-error .error-badge')?.textContent==='API key issue'`),'wrong provider key badge before submission');
+  assert.equal(await evaluate(tab,`document.querySelector('input[type=password]').getAttribute('aria-invalid')`),'true');
+  if(process.env.STUDIO_UI_SHOTS){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(`${process.env.STUDIO_UI_SHOTS}-key-error.png`,Buffer.from(shot.data,'base64'));}
+  assert.equal(await evaluate(tab,`document.querySelector('form button[type=submit]').disabled`),true);
+  await evaluate(tab, `(() => {window.__providerCalls=0;const original=window.fetch;window.fetch=async(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'){window.__providerCalls++;if(window.__providerCalls===1)await new Promise(resolve=>window.__releaseFirst=resolve);const c=document.createElement('canvas');c.width=c.height=1024;c.getContext('2d').fillRect(0,0,1024,1024);return Response.json({data:[{b64_json:c.toDataURL('image/png').split(',')[1]}]})}return original(url,options)};const e=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'sk-synthetic-browser-key-not-real');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   await evaluate(tab, `document.querySelector('input[type=password]').closest('form').querySelector('input[type=checkbox]').click();document.querySelector('input[type=password]').closest('form').querySelector('button').click()`);
   await until(()=>evaluate(tab,`document.body.innerText.includes('Key available in this tab')`),'browser key connected');
   assert.equal(await evaluate(tab,`document.querySelector('input[type=password]').value`),'');
@@ -135,8 +156,22 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]') && !document.querySelector('input[aria-label="Upload product image"]').disabled`),'automatic uploader');
   assert.equal(await evaluate(tab,`!!document.querySelector('#product-sku') || !!document.querySelector('#mask-tool') || !!document.querySelector('.style-plan')`),false);
   await evaluate(tab,`(async()=>{const c=document.createElement('canvas');c.width=200;c.height=100;const ctx=c.getContext('2d');${process.env.STUDIO_MATTE_SMOKE ? "ctx.fillStyle='white';ctx.fillRect(0,0,200,100);" : ''}ctx.fillStyle='#aa3311';ctx.fillRect(40,10,120,80);const blob=await new Promise(r=>c.toBlob(r,'image/png'));const d=new DataTransfer();d.items.add(new File([blob],'synthetic-product.png',{type:'image/png'}));const f=document.querySelector('input[aria-label="Upload product image"]');f.files=d.files;f.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+
+  await until(()=>evaluate(tab,`!!window.__releaseFirst && document.querySelectorAll('.image-placeholder[data-active=true]').length===1`),'one active image placeholder');
+  assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=false]').length`),6,'Queued cards are static');
+  const pendingGeometry=await evaluate(tab,`[...document.querySelectorAll('.auto-result-image')].map(e=>[e.getBoundingClientRect().width,e.getBoundingClientRect().height])`);
+  assert.equal(await evaluate(tab,`document.querySelector('.image-placeholder[data-active=true] .image-placeholder-art').getAnimations()[0]?.playState`),'running','Placeholder animation actually runs');
+  await tab.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+  assert.equal(await evaluate(tab,`getComputedStyle(document.querySelector('.image-placeholder[data-active=true] .image-placeholder-art')).animationName`),'none');
+  assert.equal(await evaluate(tab,`document.querySelector('.image-placeholder[data-active=true]').textContent`),'Creating…');
+  await tab.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+  if(process.env.STUDIO_PENDING_SCREENSHOT){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(process.env.STUDIO_PENDING_SCREENSHOT,Buffer.from(shot.data,'base64'));}
+  await evaluate(tab,`window.__releaseFirst()`);
   try{await until(()=>evaluate(tab,`(()=>{const heading=document.querySelector('#auto-results-heading')?.textContent;if(heading&&heading!=='7 of 7 ready'&&!document.querySelector('.auto-upload.processing'))throw new Error(document.querySelector('.auto-results').innerText);return heading==='7 of 7 ready'})()`),'seven automatic complete product images',process.env.STUDIO_MATTE_SMOKE?1800:150);}catch(error){console.log('Automatic status:',await evaluate(tab,`JSON.stringify({status:document.querySelector('.auto-results')?.innerText,diagnostic:window.__matteDiagnostic})`));throw error;}
   assert.equal(await evaluate(tab,'window.__providerCalls'),7,'One upload sends seven distinct calls without intermediate actions');
+  assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder').length`),0,'Success removes placeholders');
+  assert.deepEqual(await evaluate(tab,`[...document.querySelectorAll('.auto-result-image')].map(e=>[e.getBoundingClientRect().width,e.getBoundingClientRect().height])`),pendingGeometry,'Images retain placeholder geometry');
+
   await until(()=>evaluate(tab,`[...document.querySelectorAll('.auto-result img')].length===7&&[...document.querySelectorAll('.auto-result img')].every(i=>i.complete&&i.naturalWidth===1024)`),'rendered result images');
   assert.equal(await evaluate(tab,`document.querySelectorAll('.auto-result img').length`),7);
   assert.deepEqual(await evaluate(tab,`(()=>{const c=document.createElement('canvas');c.width=c.height=1024;const ctx=c.getContext('2d');ctx.drawImage(document.querySelector('.auto-result img'),0,0);return [...ctx.getImageData(512,512,1,1).data]})()`),[170,51,17,255],'Finished output contains original product pixels, not just the generated background');
@@ -156,6 +191,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   assert.equal(await evaluate(tab,`document.querySelectorAll('.library-card').length>=1`),true);
   await evaluate(tab,`document.querySelector('.library-card').click()`);
   await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='7 of 7 ready'`),'reopen saved results from library');
+  await tab.call('Emulation.setDeviceMetricsOverride',{width:390,height:900,deviceScaleFactor:1,mobile:true});
   await evaluate(tab,`window.scrollTo(0,document.body.scrollHeight)`);
   await until(()=>evaluate(tab,`!!document.querySelector('.scroll-top')`),'contextual back to top');
   await evaluate(tab,`document.querySelector('.scroll-top').click()`);
@@ -167,6 +203,17 @@ test('Pages upload produces seven downloadable composites, retains partial resul
     await evaluate(tab,`(() => {const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [id,value] of [['product-sku',crypto.randomUUID()],['product-name','Synthetic direct gateway test'],['product-category','Test']]){const e=document.getElementById(id);set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('.form-card input[type="checkbox"]').click();document.querySelector('.form-card button[type="submit"]').click()})()`);
     const productId=await until(()=>evaluate(tab,`location.hash.startsWith('#/products/') && location.hash!=='#/products/new' && location.hash.split('/')[2]`),'created product');
     await until(()=>evaluate(tab,`!!document.querySelector('#source-file')`),'source upload');
+    assert.equal(await evaluate(tab,`document.querySelector('.back-link').getAttribute('href')`),'#/workspace','Advanced back link returns to product list');
+    for(const width of [320,768,1280]){
+      await tab.call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<500});
+      assert.equal(await evaluate(tab,`(()=>{const h=document.querySelector('h1'),saved=h.textContent;h.textContent='LongProductName'.repeat(20);const fits=document.documentElement.scrollWidth<=innerWidth;h.textContent=saved;return fits})()`),true,`Advanced long title at ${width}px`);
+    }
+    const detailRoute=await evaluate(tab,'location.hash');
+    await evaluate(tab,`document.querySelector('.section-nav a[href="#export-stage"]').click()`);
+    assert.equal(await evaluate(tab,'location.hash'),detailRoute,'Section navigation does not replace the hash route');
+    await evaluate(tab,`window.scrollTo(0,0)`);
+    if(process.env.STUDIO_UI_SHOTS){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(`${process.env.STUDIO_UI_SHOTS}-product-detail.png`,Buffer.from(shot.data,'base64'));}
+
     const sourceHash=await evaluate(tab,`(async()=>{const c=document.createElement('canvas');c.width=200;c.height=100;const x=c.getContext('2d');x.fillStyle='#a31';x.fillRect(0,0,200,100);const blob=await new Promise(r=>c.toBlob(r,'image/png'));const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');const d=new DataTransfer();d.items.add(new File([blob],'synthetic.png',{type:'image/png'}));const f=document.querySelector('#source-file');f.files=d.files;f.dispatchEvent(new Event('change',{bubbles:true}));return hash})()`);
     await until(()=>evaluate(tab,`!!document.querySelector('#camera-view')`),'source preview');
     await evaluate(tab,`(() => {const e=document.querySelector('#camera-view');e.value='TOP';e.dispatchEvent(new Event('change',{bubbles:true}));[...document.querySelectorAll('.source-panel button')].find(b=>b.textContent==='Save original').click()})()`);
@@ -196,7 +243,21 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await evaluate(tab,`(async()=>{const c=document.createElement('canvas');c.width=c.height=100;const ctx=c.getContext('2d');ctx.fillRect(20,20,60,60);const blob=await new Promise(r=>c.toBlob(r,'image/png')),d=new DataTransfer();d.items.add(new File([blob],'partial.png',{type:'image/png'}));const f=document.querySelector('input[aria-label="Upload product image"]');f.files=d.files;f.dispatchEvent(new Event('change',{bubbles:true}))})()`);
   await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='1 of 7 ready' && document.querySelector('.auto-results')?.innerText.includes('Finished images are kept')`),'partial results retained');
   assert.equal(await evaluate(tab,'window.__providerCalls'),10,'UNKNOWN must not resend or send remaining styles');
+  assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),true,'Unresolved billing hold is reflected before selecting another file');
+  assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=true]').length`),0,'Interrupted run stops every placeholder');
+  assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-badge').textContent`),'Generation stopped');
+  assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-notice a').getAttribute('href')`),'#/settings');
+  if(process.env.STUDIO_UI_SHOTS){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(`${process.env.STUDIO_UI_SHOTS}-generation-error.png`,Buffer.from(shot.data,'base64'));}
+
   assert.equal(await evaluate(tab,`document.querySelectorAll('.auto-result img').length`),1);
+  await evaluate(tab,`(async()=>{const db=await new Promise(resolve=>{const r=indexedDB.open('image-studio-automatic',1);r.onsuccess=()=>resolve(r.result)});try{await new Promise((resolve,reject)=>{const tx=db.transaction('runs','readwrite'),store=tx.objectStore('runs'),r=store.getAll();r.onsuccess=()=>{const run=r.result.find(row=>row.items.some(i=>i.status==='UNKNOWN'));run.state='RUNNING';run.message=undefined;for(const item of run.items)if(item.status==='UNKNOWN')item.status='SUBMITTED';store.put(run)};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}finally{db.close()}})()`);
+  await evaluate(tab,`location.hash='#/images'`);
+  await until(()=>evaluate(tab,`!!document.querySelector('.library-card')`),'recovery library');
+  await evaluate(tab,`document.querySelector('.library-card').click()`);
+  await until(()=>evaluate(tab,`document.querySelector('.auto-results .error-notice')?.textContent.includes('may have been charged')`),'persisted in-flight recovery warning');
+  assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=true]').length`),0,'Restored in-flight records are not active animations');
+  assert.equal(await evaluate(tab,'window.__providerCalls'),10,'Opening interrupted history never resends');
+
   await evaluate(tab,`location.hash='#/settings'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'return to settings');
   async function recoverSession(){
@@ -246,5 +307,5 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   assert.equal(requests.some(p=>p.startsWith('/api/')),false,'Preview must not call gateway');
   await tab.call('Network.enable');await tab.call('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});await tab.call('Page.reload');
   await until(()=>evaluate(tab,`document.readyState==='complete' && document.body.innerText.includes('Settings')`),'offline reload');assert.equal(tab.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0);
- }finally{tab?.close();if(browser&&browser.exitCode===null&&browser.signalCode===null){browser.kill();await new Promise(resolve=>browser.once('exit',resolve));}if(server)await new Promise(resolve=>server.close(resolve));await rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100})}
+ }catch(error){console.error('Pages journey failure:',error);throw error;}finally{tab?.close();if(browser&&browser.exitCode===null&&browser.signalCode===null){browser.kill();await new Promise(resolve=>browser.once('exit',resolve));}if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100})}
 });

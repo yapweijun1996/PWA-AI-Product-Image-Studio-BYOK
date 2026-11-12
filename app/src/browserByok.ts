@@ -30,7 +30,9 @@ export function clearBrowserKey() {
   for (const controller of active) controller.abort();
   window.dispatchEvent(new Event(EVENT));
 }
+export const providerKeyMismatch = 'This is an OpenRouter key. This app currently requires an OpenAI API key. Replace it in Settings; no request was sent.';
 export function setBrowserKey(value: string) {
+  if(value.startsWith('sk-or-'))throw new Error(providerKeyMismatch);
   if (!/^sk-[A-Za-z0-9_-]{10,500}$/.test(value)) throw new Error('Enter an OpenAI API key.');
   clearBrowserKey(); key = value; expires = Date.now() + 60 * 60 * 1000;
   expiryTimer = setTimeout(clearBrowserKey, 60 * 60 * 1000);
@@ -46,6 +48,7 @@ export async function restoreSavedBrowserKey() {
   else window.dispatchEvent(new Event(EVENT));
 }
 export async function saveBrowserKey(value:string) {
+  if(value.startsWith('sk-or-'))throw new Error(providerKeyMismatch);
   if (!/^sk-[A-Za-z0-9_-]{10,500}$/.test(value)) throw new Error('Enter an OpenAI API key.');
   await credentialStore('write',value);
   saved=true;setBrowserKey(value);credentialChannel?.postMessage('saved');

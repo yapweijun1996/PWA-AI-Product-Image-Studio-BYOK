@@ -44,3 +44,12 @@ test('overlapping save and removal cannot leave the deleted key in memory',async
  assert.equal(browserKeyStatus().connected,false);
  assert.equal(browserKeyStatus().saved,false);
 });
+
+test('OpenRouter credentials are rejected before persistence or provider dispatch',async()=>{
+ globalThis.indexedDB=indexedDB;
+ const wrong='sk-or-v1-synthetic-not-a-real-key';
+ assert.throws(()=>setBrowserKey(wrong),/OpenRouter key/);
+ await assert.rejects(()=>saveBrowserKey(wrong),/OpenRouter key/);
+ assert.equal(browserKeyStatus().connected,false);
+ assert.equal((await request('/auth/session')).status,401);
+});

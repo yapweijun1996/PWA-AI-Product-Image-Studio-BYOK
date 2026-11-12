@@ -1,5 +1,7 @@
+import {Icon} from './ui/Icon';
+import {Disclosure, DisclosureSummary} from './ui/components';
 import { t } from './ui/i18n';
-import { Button, Input, Progress } from './ui/components';
+import { Button, Input, Progress, ImagePlaceholder, ErrorNotice } from './ui/components';
 import { useSearchParams } from 'react-router-dom';
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
@@ -39,10 +41,12 @@ function download(blob: Blob, name: string) {
 function ResultCard({
   item,
   processing = false,
+  showError = true,
   onError,
 }: {
   item: AutoItem;
   processing?: boolean;
+  showError?: boolean;
   onError: (s: string) => void;
 }) {
   const [url, setUrl] = useState("");
@@ -58,22 +62,19 @@ function ResultCard({
     <article
       className="auto-result"
       aria-label={`${labels[item.style]} result`}
+      aria-busy={processing && item.status === "SUBMITTED"}
     >
       <div className="auto-result-image">
         {url && item.status === "READY" ? (
           <img src={url} alt={`${labels[item.style]} product composition`} />
         ) : (
-          <span>
-            {item.status === "SUBMITTED"
-              ? (processing ? "Creating…" : "Request interrupted")
-              : item.status === "PENDING"
-                ? "Waiting"
-                : item.status === "UNKNOWN"
-                  ? "Request interrupted"
-                  : item.status === "FAILED"
-                    ? "Could not finish"
-                    : "Not sent"}
-          </span>
+          <ImagePlaceholder active={processing && item.status === "SUBMITTED"} label={t(
+            item.status === "SUBMITTED" ? (processing ? "Creating…" : "Request interrupted")
+            : item.status === "PENDING" ? (processing ? "Queued" : "Not sent")
+            : item.status === "UNKNOWN" ? "Request interrupted"
+            : item.status === "FAILED" ? "Could not finish" : "Not sent"
+          )}/>
+
         )}
       </div>
       <div className="auto-result-caption">
@@ -98,7 +99,7 @@ function ResultCard({
           </Button>
         )}
       </div>
-      {item.error && <p className="muted">{item.error}</p>}
+      {item.error && (showError ? <p className="muted">{item.error}</p> : <Disclosure className="result-details"><DisclosureSummary>Image details</DisclosureSummary><p>{item.error}</p></Disclosure>)}
     </article>
   );
 }
@@ -151,13 +152,14 @@ export function UploadStudio() {
     handledSelection.current=selectedRun;
     if(selectedRun){const saved=history.find(row=>row.id===selectedRun);if(saved)setRun(saved);else setError("This saved upload is unavailable on this device.");}
   },[selectedRun,history,busy,run?.unsavedOutputs,exporting]);
+  const unresolved = [...history,...(run?[run]:[])].some(row=>row.items.some(item=>(item.status==="SUBMITTED"||item.status==="UNKNOWN")&&!item.reviewedAt));
   const estimate = automaticPlan().estimatedUSD,
     ready = Boolean(
       session &&
       connected &&
       navigator.onLine &&
       navigator.locks &&
-      !run?.unsavedOutputs && !exporting,
+      !run?.unsavedOutputs && !exporting && !unresolved,
     ),
     completed = run?.items.filter((i) => i.status === "READY") ?? [];
   async function upload(file: File) {
@@ -280,14 +282,14 @@ export function UploadStudio() {
         }}
         aria-label="Upload product image"
       >
-        <span className="section-kicker">YOUR ORIGINAL STAYS LOCAL</span>
+        <span className="upload-symbol"><Icon name="upload"/></span><span className="section-kicker">YOUR ORIGINAL STAYS LOCAL</span>
         <h2>{busy ? t("Making your images…") : t("Drop your product photo here")}</h2>
         <p>
           {busy
             ? run?.state === "PREPARING"
               ? (run.message ?? "Preparing your product…")
-              : `${completed.length} of 7 images ready. You can download each as it finishes.`
-            : "PNG, JPEG or WebP · up to 20 MiB · one product per photo"}
+              : "Keep this tab open. Finished images appear below and can be downloaded immediately."
+            : unresolved ? "Review the interrupted request in Settings before uploading again." : "PNG, JPEG or WebP · up to 20 MiB · one product per photo"}
         </p>
         {!busy && (
           <label
@@ -333,7 +335,7 @@ export function UploadStudio() {
               disabled={!completed.length || exporting}
               onClick={() => void all()}
             >
-              {exporting ? t("Preparing download…") : completed.length === 7 ? t("Download all") : t("Download {count} images",{count:completed.length})}
+              {exporting ? t("Preparing download…") : completed.length === 7 ? t("Download all") : !completed.length ? t("Download images") : completed.length === 1 ? t("Download 1 image") : t("Download {count} images",{count:completed.length})}
             </Button>
           </div>
           {run.unsavedOutputs && (
@@ -356,25 +358,18 @@ export function UploadStudio() {
               </Button>
             </p>
           )}
-          {run.state === "STOPPED" && (
-            <p role="status">
-              {run.message} Finished images are kept below. No request is
-              retried automatically. <Link className="text-link" to="/settings">{t("Settings")}</Link>
-            </p>
+          {(run.state === "STOPPED" || (!busy && run.items.some(i=>(i.status==="UNKNOWN"||i.status==="SUBMITTED")&&!i.reviewedAt))) && (
+            <ErrorNotice title={t(run.message?.includes('(401)') ? "API key issue" : "Generation stopped")}>
+              <p>{run.message ?? "An earlier request was interrupted. Review its outcome before starting again."}</p>
+              <p>{completed.length ? 'Finished images are kept below.' : 'No images were completed.'} No request is retried automatically.</p>
+              {run.items.some(i=>(i.status==='UNKNOWN'||i.status==='SUBMITTED')&&!i.reviewedAt) && <p>The interrupted request may have been charged. Check provider billing before authorizing another upload.</p>}
+              <Link className="secondary-button" to="/settings">{t("Open Settings")}</Link>
+            </ErrorNotice>
           )}
-          {!busy &&
-            run.items.some(
-              (i) => (i.status === "SUBMITTED" || i.status === "UNKNOWN") && !i.reviewedAt,
-            ) && (
-              <p role="status">
-                An earlier request may have been charged. New paid uploads are
-                paused; completed images remain available.
-              </p>
-            )}
           {busy && <Progress value={completed.length} label={`${completed.length} of 7 images ready`}/>}
           <div className="auto-results-grid">
             {run.items.map((item) => (
-              <ResultCard key={item.id} item={item} processing={busy} onError={setError} />
+              <ResultCard key={item.id} item={item} processing={busy} showError={run.state!=="STOPPED"} onError={setError} />
             ))}
           </div>
           <p className="muted">
@@ -385,8 +380,8 @@ export function UploadStudio() {
           </p>
         </section>
       )}
-      <details className="auto-secondary">
-        <summary>Previous uploads &amp; image information</summary>
+      <Disclosure className="auto-secondary">
+        <DisclosureSummary>Previous uploads &amp; image information</DisclosureSummary>
         {history.map((row) => (
           <Button
             key={row.id}
@@ -415,7 +410,7 @@ export function UploadStudio() {
           provider charges or hard account limits.
         </p>
         <Link to="/workspace">Advanced workspace and existing projects</Link>
-      </details>
+      </Disclosure>
     </>
   );
 }

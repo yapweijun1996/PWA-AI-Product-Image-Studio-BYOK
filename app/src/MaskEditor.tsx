@@ -1,3 +1,4 @@
+import {ErrorNotice} from './ui/components';
 import { Button, Input, Select } from './ui/components';
 import { regionFromDrag } from './protectedRegion';
 import { pixelFieldMax } from './pixelCoordinates';
@@ -279,7 +280,7 @@ export function MaskEditor({ product, onChange }: { product: Product; onChange: 
     <p className="muted">The initial selection includes the source's visible pixels, including any background. Erase areas you do not want, or draw to restore them. Each save creates a separate mask version and makes it active for this product; the original remains unchanged. No image is sent to a provider.</p>
     {product.sourceAssets.length === 0 ? <p className="muted">Add a source image to begin.</p> : <><label htmlFor="mask-source">Source image</label><Select id="mask-source" value={sourceId} disabled={saving || loading || selectingRegion} onChange={(event) => chooseSource(event.target.value)}><option value="">Choose a source</option>{product.sourceAssets.map((source) => <option value={source.assetId} key={source.assetId}>{source.filename}</option>)}</Select></>}
     {loading && <p role="status">Verifying the source and loading its mask…</p>}
-    {error && !review && <p className="error-message" role="alert">{error}</p>}
+    {error && !review && <ErrorNotice title="Needs attention">{error}</ErrorNotice>}
     {status && <p ref={savedStatus} className="mask-status" tabIndex={-1} role="status">{status}</p>}
     {loaded && <>
       <div className="mask-controls"><label htmlFor="mask-tool">Tool</label><Select id="mask-tool" value={tool} disabled={saving || review} onChange={(event) => { cancelPointer(); setTool(event.target.value as 'draw' | 'erase' | 'region'); }}><option value="draw">Draw selection</option><option value="erase">Erase selection</option><option value="region">Select protected area</option></Select><label htmlFor="mask-size">Brush size: {size}%</label><Input id="mask-size" type="range" min="1" max="30" value={size} disabled={saving || review || tool === 'region'} onChange={(event) => setSize(Number(event.target.value))} /><label htmlFor="mask-zoom">Zoom: {zoom}%</label><Input id="mask-zoom" type="range" min="50" max="300" step="25" value={zoom} disabled={selectingRegion} onChange={(event) => setZoom(Number(event.target.value))} /><label className="checkbox-label"><Input type="checkbox" checked={showMask} onChange={(event) => setShowMask(event.target.checked)} /> Show mask overlay</label></div>

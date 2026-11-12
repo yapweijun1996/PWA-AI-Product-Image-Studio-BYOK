@@ -1,3 +1,5 @@
+import {ErrorNotice} from './ui/components';
+import {workspacePath} from './ui/routes';
 import { Button, Input } from './ui/components';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -23,7 +25,7 @@ export function Workspace() {
     <div className="page-heading"><div><h1>Product Image Studio</h1><p className="lead">Keep each product's details together, starting with what you know to be true.</p></div><div className="page-actions"><Link className="secondary-button" to="/import">Import backup</Link><Link className="primary-button" to="/products/new">Create product</Link></div></div>
     <section className="product-section" aria-labelledby="projects-heading">
       <div className="section-heading"><div><span className="section-kicker">LOCAL WORKSPACE</span><h2 id="projects-heading">Your products</h2></div><span>Stored in this browser</span></div>
-      {error ? <div><p className="error-message" role="alert">{error}</p><Button className="secondary-button" type="button" onClick={() => { setError(''); setProducts(null); setLoadVersion((value) => value + 1); }}>Retry loading products</Button></div> : products === null ? <p className="muted" role="status">Loading products…</p> : products.length === 0 ? <div className="empty-state"><h3>No products yet</h3><p>Create a product to start recording its SKU and confirmed facts.</p><Link className="text-link" to="/products/new">Create your first product <span aria-hidden="true">→</span></Link></div> : <ul className="product-list">{products.map((product) => <li key={product.productId}><Link to={`/products/${product.productId}`}><span className="product-icon" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span><span className="product-summary"><strong>{product.name}</strong><small>{product.sku} · {product.category}</small></span><span aria-hidden="true">→</span></Link></li>)}</ul>}
+      {error ? <div><ErrorNotice title="Needs attention">{error}</ErrorNotice><Button className="secondary-button" type="button" onClick={() => { setError(''); setProducts(null); setLoadVersion((value) => value + 1); }}>Retry loading products</Button></div> : products === null ? <p className="muted" role="status">Loading products…</p> : products.length === 0 ? <div className="empty-state"><h3>No products yet</h3><p>Create a product to start recording its SKU and confirmed facts.</p><Link className="text-link" to="/products/new">Create your first product <span aria-hidden="true">→</span></Link></div> : <ul className="product-list">{products.map((product) => <li key={product.productId}><Link to={`/products/${product.productId}`}><span className="product-icon" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span><span className="product-summary"><strong>{product.name}</strong><small>{product.sku} · {product.category}</small></span><span aria-hidden="true">→</span></Link></li>)}</ul>}
     </section>
     <p className="workspace-note">Browser data can be cleared or evicted. Keep a private backup of important projects.</p>
   </>;
@@ -55,15 +57,15 @@ export function NewProduct() {
   }
 
   return <>
-    <Link className="back-link" to="/">← All products</Link><div className="eyebrow">NEW PRODUCT</div><h1>Create a product</h1>
+    <Link className="back-link" to={workspacePath}>← All products</Link><div className="eyebrow">NEW PRODUCT</div><h1>Create a product</h1>
     <p className="lead">One product represents one SKU. You can add confirmed details after saving.</p>
     <form className="form-card" onSubmit={submit}>
       <label htmlFor="product-sku">SKU</label><Input id="product-sku" value={sku} onChange={(event) => setSku(event.target.value)} required maxLength={160} autoComplete="off" />
       <label htmlFor="product-name">Product name</label><Input id="product-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={300} autoComplete="off" />
       <label htmlFor="product-category">Category</label><Input id="product-category" value={category} onChange={(event) => setCategory(event.target.value)} required maxLength={100} autoComplete="off" />
       <label className="checkbox-label"><Input type="checkbox" checked={rights} onChange={(event) => setRights(event.target.checked)} required /><span>I have the rights to use the product images and artwork I will add.</span></label>
-      {error && <p className="error-message" role="alert">{error}</p>}
-      <div className="form-actions"><Button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Create product'}</Button><Link className="text-link" to="/">Cancel</Link></div>
+      {error && <ErrorNotice title="Needs attention">{error}</ErrorNotice>}
+      <div className="form-actions"><Button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Create product'}</Button><Link className="text-link" to={workspacePath}>Cancel</Link></div>
     </form>
   </>;
 }

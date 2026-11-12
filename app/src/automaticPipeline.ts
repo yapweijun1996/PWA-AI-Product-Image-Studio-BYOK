@@ -162,7 +162,7 @@ export async function runAutomatic(
                   ? "Provider rate limit reached."
                   : failure.error?.code === "RECOVERY_REQUIRED"
                     ? "Request history could not be saved. This request was not sent."
-                    : "The provider response could not be read or completed. Check your key and network in Settings, and review provider billing. The outcome is unknown; no automatic retry was sent.";
+                    : "Could not read the provider response. Check your API key and connection in Settings. The request outcome is unknown.";
             await saveAutoRun(run);
             throw new Error(item.error);
           }

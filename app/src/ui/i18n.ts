@@ -83,6 +83,11 @@ const messages:Record<string,readonly string[]>={
 "Download {count} images":["下载 {count} 张图片", "Muat turun {count} imej", "{count}枚をダウンロード", "이미지 {count}개 다운로드", "Tải {count} ảnh"],
 "Remove saved key":["删除已保存密钥","Padam kunci tersimpan","保存したキーを削除","저장된 키 삭제","Xóa khóa đã lưu"],
 "Your key is saved on this device until removed. Browser scripts and extensions may read it.":["密钥保存在此设备，直到你删除它。浏览器脚本和扩展可能读取它。","Kunci disimpan pada peranti ini sehingga dipadam. Skrip dan sambungan pelayar mungkin membacanya.","キーは削除するまでこの端末に保存されます。ブラウザーのスクリプトや拡張機能が読み取る可能性があります。","키는 삭제할 때까지 이 기기에 저장됩니다. 브라우저 스크립트와 확장 프로그램이 읽을 수 있습니다.","Khóa được lưu trên thiết bị này cho đến khi bị xóa. Mã và tiện ích trình duyệt có thể đọc khóa."],
+"API key issue":["密钥有误", "Masalah kunci API", "APIキーの問題", "API 키 문제", "Lỗi khóa API"],
+"Setup needs attention":["请检查设置", "Semak tetapan", "設定を確認", "설정을 확인하세요", "Kiểm tra thiết lập"],
+"Generation stopped":["生成已停止", "Penjanaan dihentikan", "生成が停止しました", "생성이 중지되었습니다", "Đã dừng tạo ảnh"],
+"Open Settings":["前往设置", "Buka tetapan", "設定を開く", "설정 열기", "Mở cài đặt"],
+"Queued":["排队中", "Dalam giliran", "待機中", "대기 중", "Đang chờ"],
 };
 export function t(text:string,params:Record<string,string|number>={}):string{const index=languages.findIndex(l=>l.id===language)-1;const value=index<0?text:messages[text]?.[index]??text;return value.replace(/\{(\w+)\}/g,(whole,key)=>String(params[key]??whole))}
 export function translateLabels(){document.documentElement.lang=language==='zh'?'zh-Hans':language}

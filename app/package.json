@@ -1,7 +1,7 @@
 {
   "name": "product-image-studio",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
@@ -13,7 +13,8 @@
     "gateway": "node gateway.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:browser": "node --test tests/browser/*.test.mjs",
-    "check:ui": "node scripts/check-ui-ssot.mjs"
+    "check:ui": "node scripts/build-tokens.mjs --check && node scripts/check-ui-ssot.mjs",
+    "tokens": "node scripts/build-tokens.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "4.0.115",
@@ -21,6 +22,7 @@
     "ai": "7.0.170",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
+    "lucide-react": "1.72.0",
     "onnxruntime-web": "1.31.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",

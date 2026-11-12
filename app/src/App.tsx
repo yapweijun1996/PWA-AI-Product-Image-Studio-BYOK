@@ -1,6 +1,8 @@
+import {Disclosure, DisclosureSummary} from './ui/components';
+import {Icon} from './ui/Icon';
 import { t, useLanguage, translateLabels } from './ui/i18n';
 import { TopbarControls } from './ui/TopbarControls';
-import { Button, Select } from './ui/components';
+import { Button, Select, PageHeader, LoadingState } from './ui/components';
 import { GuideStep, ComponentGallery } from './ui/components';
 import { useScrollChrome } from './ui/useScrollChrome';
 import { Component, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -74,27 +76,26 @@ function useNetworkStatus() {
   return online;
 }
 
-function Mark() {
-  return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><rect x="4" y="4" width="24" height="24" rx="5" stroke="currentColor" strokeWidth="1.7"/><circle cx="21" cy="11" r="2" fill="currentColor"/><path d="M8 23l7-8 5 5 3-3 3 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg></span>;
-}
+function Mark() { return <span className="brand-mark"><Icon name="image"/></span>; }
+
 
 
 function Settings({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) => void }) {
   return <>
-    <div className="eyebrow">{t("PREFERENCES")}</div>
-    <h1>{t("Settings")}</h1>
-    <p className="lead">{t("Adjust the workspace to suit your environment.")}</p>
+    <PageHeader eyebrow={t("PREFERENCES")} title={t("Settings")}>{t("Adjust the workspace to suit your environment.")}</PageHeader>
+    <div className="settings-layout">
     {import.meta.env.MODE === 'pages' && <div className="provider-settings"><ProviderSessionPanel /></div>}
     <section className="settings-card" aria-labelledby="appearance-heading">
       <div><span className="section-kicker">DISPLAY</span><h2 id="appearance-heading">{t("Appearance")}</h2><p>{t("Choose a theme or follow your device setting.")}</p></div>
       <div className="setting-control"><label htmlFor="theme">{t("Theme")}</label><Select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}><option value="system">{t("Use device setting")}</option><option value="light">{t("Light")}</option><option value="dark">{t("Dark")}</option></Select></div>
     </section>
     {import.meta.env.MODE !== 'pages' && <div className="provider-settings"><ProviderSessionPanel /></div>}
+    </div>
   </>;
 }
 
 function Help() {
-  if(import.meta.env.MODE === 'pages') return <><div className="eyebrow">{t("GUIDE")}</div><h1>{t("Upload. Get your images.")}</h1><p className="lead">{t("One product photo becomes seven complete looks.")}</p><div className="guide-list"><GuideStep number="01" title={t("Set up this tab")}><p>Add your OpenAI key and authorize a session estimate limit. Your key is saved in this browser until you remove it. Spending authorization is renewed for each tab session.</p><Link className="text-link" to="/settings">{t("Session settings")}</Link></GuideStep><GuideStep number="02" title={t("Upload a product photo")}><p>Upload starts automatic selection, scene generation and product composition. No product forms, masks, scores or approval steps. First-use selection tools may take longer to download; no image request is sent until product preparation succeeds.</p></GuideStep><GuideStep number="03" title={t("Download your images")}><p>Results appear as they finish. Download one image or all finished images as a ZIP. Partial failures keep successful results and do not cause automatic paid retries. Automated selection and resizing may affect fine details; outputs are not human-reviewed.</p><Link className="primary-button" to="/">{t("Upload image")}</Link></GuideStep></div><details><summary>Previous projects, installation and recovery</summary><p>Install this app from your browser menu, or use Share → Add to Home Screen on iPhone. After an online visit has cached the app, saved images can be viewed and downloaded offline. Generation requires a connection. Installed and browser copies may keep separate local data.</p><p>Saved uploads and originals stay in this browser. Use the homepage’s previous uploads section to reopen them. A disconnected or ambiguous paid request pauses new uploads; check billing and use the exceptional recovery consent in Settings to authorize new requests. The original outcome remains unknown.</p><Link to="/workspace">Advanced workspace and existing projects</Link></details></>;
+  if(import.meta.env.MODE === 'pages') return <><div className="eyebrow">{t("GUIDE")}</div><h1>{t("Upload. Get your images.")}</h1><p className="lead">{t("One product photo becomes seven complete looks.")}</p><div className="guide-list"><GuideStep number="01" title={t("Set up this tab")}><p>Add your OpenAI key and authorize a session estimate limit. Your key is saved in this browser until you remove it. Spending authorization is renewed for each tab session.</p><Link className="text-link" to="/settings">{t("Session settings")}</Link></GuideStep><GuideStep number="02" title={t("Upload a product photo")}><p>Upload starts automatic selection, scene generation and product composition. No product forms, masks, scores or approval steps. First-use selection tools may take longer to download; no image request is sent until product preparation succeeds.</p></GuideStep><GuideStep number="03" title={t("Download your images")}><p>Results appear as they finish. Download one image or all finished images as a ZIP. Partial failures keep successful results and do not cause automatic paid retries. Automated selection and resizing may affect fine details; outputs are not human-reviewed.</p><Link className="primary-button" to="/">{t("Upload image")}</Link></GuideStep></div><Disclosure><DisclosureSummary>Previous projects, installation and recovery</DisclosureSummary><p>Install this app from your browser menu, or use Share → Add to Home Screen on iPhone. After an online visit has cached the app, saved images can be viewed and downloaded offline. Generation requires a connection. Installed and browser copies may keep separate local data.</p><p>Saved uploads and originals stay in this browser. Use the homepage’s previous uploads section to reopen them. A disconnected or ambiguous paid request pauses new uploads; check billing and use the exceptional recovery consent in Settings to authorize new requests. The original outcome remains unknown.</p><Link to="/workspace">Advanced workspace and existing projects</Link></Disclosure></>;
   return <>
     <div className="eyebrow">{t("GUIDE")}</div>
     <h1>Get started</h1>
@@ -147,9 +148,9 @@ export function App() {
     <aside className="sidebar">
       <Link to="/" className="brand"><Mark/><span><strong>IMAGE STUDIO</strong><small>Product workspace</small></span></Link>
       <nav className="navigation" aria-label="Main navigation">
-        <NavLink to="/" end>{import.meta.env.MODE === 'pages' ? t("Create") : 'Workspace'}</NavLink>{import.meta.env.MODE === 'pages' && <NavLink to="/images">{t("My images")}</NavLink>}<NavLink to="/settings">{t("Settings")}</NavLink><NavLink to="/help">{t("Help & guide")}</NavLink>
+        <NavLink to="/" end><Icon name="create"/>{import.meta.env.MODE === 'pages' ? t("Create") : 'Workspace'}</NavLink>{import.meta.env.MODE === 'pages' && <NavLink to="/images"><Icon name="library"/>{t("My images")}</NavLink>}<NavLink to="/settings"><Icon name="settings"/>{t("Settings")}</NavLink><NavLink to="/help"><Icon name="help"/>{t("Help & guide")}</NavLink>
       </nav>
-      <div className="sidebar-update"><span className="app-version">v{__APP_VERSION__} · {__APP_REVISION__}</span><Button className="secondary-button" type="button" pending={update.checkingUpdate || update.state==='activating'} onClick={()=>update.state==='waiting'||update.state==='activated-elsewhere'?update.updateNow():void update.checkNow()}>{t(update.state==='activating'?'Updating application…':update.checkingUpdate?'Checking…':update.state==='waiting'?'Update now':update.state==='activated-elsewhere'?'Reload when ready':'Check for updates')}</Button><span role="status">{t(update.checkMessage)}</span></div>
+      <div className="sidebar-update"><span className="app-version">v{__APP_VERSION__} · {__APP_REVISION__}</span><Button className="secondary-button" type="button" pending={update.state==='activating'} disabled={update.checkingUpdate} aria-busy={update.checkingUpdate || update.state==='activating'} onClick={()=>update.state==='waiting'||update.state==='activated-elsewhere'?update.updateNow():void update.checkNow()}>{t(update.state==='activating'?'Updating application…':update.state==='waiting'?'Update now':update.state==='activated-elsewhere'?'Reload when ready':'Check for updates')}</Button><span role="status">{t(update.checkMessage)}</span></div>
     </aside>
     <div className="content-shell">
       <header className={`topbar ${chrome.hidden ? "topbar-hidden" : ""}`}><span>PRODUCT IMAGE STUDIO</span><span className="network" role="status"><span className={online ? 'network-dot' : 'network-dot offline'} aria-hidden="true"/>{online ? t("Browser online") : t("Browser offline")}</span><TopbarControls dark={dark} toggleTheme={()=>setTheme(dark?'light':'dark')}/></header>
@@ -166,7 +167,7 @@ export function App() {
             : <Button type="button" onClick={update.updateNow}>{t("Update now")}</Button>)}
       </section>}
       <main id="main-content" tabIndex={-1} ref={mainContent}>
-        <RouteErrorBoundary key={location.pathname}><Suspense fallback={<p role="status">Loading page…</p>}><Routes><Route path="/" element={import.meta.env.MODE === 'pages' ? <UploadStudio/> : <Workspace/>}/><Route path="/images" element={<ImageLibrary/>}/><Route path="/design-system" element={<ComponentGallery/>}/><Route path="/workspace" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes></Suspense></RouteErrorBoundary>
+        <RouteErrorBoundary key={location.pathname}><Suspense fallback={<LoadingState>Loading page…</LoadingState>}><Routes><Route path="/" element={import.meta.env.MODE === 'pages' ? <UploadStudio/> : <Workspace/>}/><Route path="/images" element={<ImageLibrary/>}/><Route path="/design-system" element={<ComponentGallery/>}/><Route path="/workspace" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes></Suspense></RouteErrorBoundary>
       </main>
       <footer><span>PRODUCT IMAGE STUDIO</span><Link to="/workspace">{t("Advanced workspace")}</Link><span>{t("Local-first by design")}</span></footer>
       {chrome.showTop && <Button variant="secondary" className="scroll-top" onClick={()=>window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}>{t("Back to top ↑")}</Button>}

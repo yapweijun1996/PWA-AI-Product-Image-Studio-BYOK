@@ -1,3 +1,4 @@
+import {ErrorNotice} from './ui/components';
 import { Button, Input, Select } from './ui/components';
 import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
 import { loadOriginalSource, saveSource, type Product } from './products';
@@ -91,7 +92,7 @@ export function SourcePanel({ product, onChange }: { product: Product; onChange:
       <small>Maximum 20 MiB and 24 megapixels. Animated images are not supported.</small>
     </div>
     {processing && <p className="muted" role="status">Preparing a local preview…</p>}
-    {error && <p className="error-message" role="alert">{error}</p>}
+    {error && <ErrorNotice title="Needs attention">{error}</ErrorNotice>}
     {candidate && <div className="source-preview"><h3>Review before saving</h3><img src={candidate.previewUrl} alt="Preview of selected source image" /><p className="muted">{candidate.metadata.filename} · {candidate.metadata.width} × {candidate.metadata.height}. Check orientation, labels and contrast before saving.</p><label htmlFor="camera-view">Camera view</label><Select id="camera-view" value={cameraView} disabled={processing || saving} onChange={(event) => setCameraView(event.target.value as CameraView)}><option value="UNKNOWN">Unknown</option><option value="FRONT">Front</option><option value="BACK">Back</option><option value="SIDE">Side</option><option value="TOP">Top</option></Select><div className="form-actions"><Button className="primary-button" type="button" onClick={persist} disabled={saving || processing}>{saving ? 'Saving…' : 'Save original'}</Button><Button className="secondary-button" type="button" onClick={() => setCandidate(null)} disabled={saving || processing}>Discard preview</Button></div></div>}
   </section>;
 }

@@ -1,3 +1,5 @@
+import {ErrorNotice} from './ui/components';
+import {Disclosure, DisclosureSummary} from './ui/components';
 import { Button, Input } from './ui/components';
 import { pixelFieldMax } from './pixelCoordinates';
 import { useEffect, useRef, useState } from 'react';
@@ -11,7 +13,7 @@ import { VisualReviewPanel } from './VisualReviewPanel';
 type Draft = { inputs: StrictCompositeInputs; blob: Blob; mapping: StrictMapping; ad?: Blob; copyLayer?: Blob; recipe?: StrictRecipe };
 function ReviewDisclosure({ productId, productVersion, attemptId, composite, disabled }: { productId: string; productVersion: string; attemptId: string; composite: StrictComposite; disabled: boolean }) {
   const [visited, setVisited] = useState(false);
-  return <details onToggle={(event) => { if (event.currentTarget.open) setVisited(true); }}><summary>Review this composite</summary>{visited && <VisualReviewPanel productId={productId} productVersion={productVersion} attemptId={attemptId} composite={composite} disabled={disabled} />}</details>;
+  return <Disclosure onToggle={(event) => { if (event.currentTarget.open) setVisited(true); }}><DisclosureSummary>Review this composite</DisclosureSummary>{visited && <VisualReviewPanel productId={productId} productVersion={productVersion} attemptId={attemptId} composite={composite} disabled={disabled} />}</Disclosure>;
 }
 
 
@@ -113,7 +115,7 @@ export function StrictCompositePanel({ productId, productVersion, attemptId, sce
     </fieldset>}
     <Button className="secondary-button" type="button" disabled={disabled || busy || draft !== null || !available} onClick={() => void prepare()}>{busy ? 'Working…' : 'Prepare local composite'}</Button>
     {busy && <Button className="secondary-button" type="button" onClick={() => controller.current?.abort()}>Cancel rendering or save</Button>}
-    {error && <p className="error-message" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
+    {error && <ErrorNotice title="Needs attention">{error}</ErrorNotice>}{notice && <p role="status">{notice}</p>}
     {draft && <div>
       <p>Compare the original with the unapproved composite. Check every label and edge: the mask can hide product details and no automated score can approve them.</p>
       <label htmlFor={`strict-zoom-${attemptId}`}>Comparison zoom: {zoom}%</label><Input id={`strict-zoom-${attemptId}`} type="range" min="100" max="400" step="25" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />

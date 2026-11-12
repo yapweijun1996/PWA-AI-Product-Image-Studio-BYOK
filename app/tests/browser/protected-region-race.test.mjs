@@ -347,7 +347,8 @@ test('protected mask gestures and approved export bundle remain consistent', { t
       const decision=await p.recordVisualDecision(product.productId,attempt.attemptId,composite.assetId,report.qaId,'APPROVED');return {attemptId:attempt.attemptId,assetId:composite.assetId,reviewId:report.qaId,decisionId:decision.qaId,sourceHash:source.sha256,mapping:rendered.mapping};
     })()`);
     await evaluate(client, `window.__beforeCandidateReload=true`);await client.call('Page.reload');
-    await until(() => evaluate(client, `window.__beforeCandidateReload!==true && document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`), 'approved export candidate');
+    await until(() => evaluate(client, `window.__beforeCandidateReload!==true && !!document.querySelector('.approved-export [data-asset-id="'+${JSON.stringify(exportFixture.assetId)}+'"]')`), 'approved export candidate');
+    await until(()=>evaluate(client,`!!document.querySelector('.export-choice-preview img')?.naturalWidth`),'verified export thumbnail');
     await until(() => evaluate(client, `[...document.querySelectorAll('.studio-history li')].some(li=>li.innerText.includes(${JSON.stringify(exportFixture.attemptId)})&&li.querySelector('.studio-scene-disclosure > summary'))`),'saved scene disclosure');
     await evaluate(client, `(() => {const li=[...document.querySelectorAll('.studio-history li')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.attemptId)}));li.querySelector('.studio-scene-disclosure > summary').click()})()`);
     await until(() => evaluate(client, `[...document.querySelectorAll('.strict-composite button')].some(b=>b.textContent==='Prepare local composite' && !b.disabled)`),'composite inputs');
@@ -429,16 +430,16 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     assert.equal(uiDecision.decision,'APPROVED');Object.assign(exportFixture,{assetId:newCompositeId,reviewId:uiDecision.reviewId,decisionId:uiDecision.decisionId});
     await evaluate(client, `window.__beforeExportReload=true`);
     await client.call('Page.reload');
-    await until(() => evaluate(client, `window.__beforeExportReload!==true && document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(exportFixture.assetId)})`),'newly approved export candidate after reload');
+    await until(() => evaluate(client, `window.__beforeExportReload!==true && !!document.querySelector('.approved-export [data-asset-id="'+${JSON.stringify(exportFixture.assetId)}+'"]')`),'newly approved export candidate after reload');
 
 
-    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=panel.querySelector('[data-asset-id="'+${JSON.stringify(exportFixture.assetId)}+'"]');field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'converted preview');
     await evaluate(client, `window.dispatchEvent(new Event('focus'))`);
     await until(() => evaluate(client, `!!document.querySelector('.approved-export fieldset') && !document.querySelector('.approved-export .strict-comparison')`), 'approval recheck after focus');
     assert.equal(await evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Select images and prepare previews again')`),true,'The user is told why their preview was cleared.');
     assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').disabled`),true,'Rechecking clears the selection and requires a fresh choice.');
-    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=panel.querySelector('[data-asset-id="'+${JSON.stringify(exportFixture.assetId)}+'"]');field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'preview after approval recheck');
     const {targetId: otherTargetId}=await client.call('Target.createTarget',{url:`${origin}/help`,background:true});
     const otherTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(item=>item.id===otherTargetId),'second tab');
@@ -449,7 +450,7 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     await until(()=>evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Select images and prepare previews again') && !!document.querySelector('.approved-export fieldset')`),'cross-tab approval recheck');
     assert.equal(await evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),false,'A project-change notification clears the preview.');
     assert.equal(await evaluate(client, `[...document.querySelector('.approved-export').querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').disabled`),true,'Cross-tab recheck requires a fresh selection.');
-    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=[...panel.querySelectorAll('label')].find(x=>x.innerText.includes(${JSON.stringify(exportFixture.assetId)}));field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');const field=panel.querySelector('[data-asset-id="'+${JSON.stringify(exportFixture.assetId)}+'"]');field.querySelector('input').click();[...panel.querySelectorAll('button')].find(x=>x.textContent==='Prepare converted previews').click()})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`), 'preview after cross-tab recheck');
     otherClient.close(); otherClient=null;
     await client.call('Target.closeTarget',{targetId:otherTargetId});
@@ -578,15 +579,15 @@ test('protected mask gestures and approved export bundle remain consistent', { t
     const generatedDecision=await evaluate(client, `(async () => {const p=await import('/src/products.ts');const h=await p.listVisualReviews(${JSON.stringify(productId)},${JSON.stringify(generated.attemptId)},${JSON.stringify(generatedComposite)});const d=h.decisions.find(x=>x.current);return {reviewId:d.reportId,decisionId:d.qaId};})()`);
     await evaluate(client, `window.__beforeGeneratedExportReload=true`);
     await client.call('Page.reload');
-    await until(() => evaluate(client, `window.__beforeGeneratedExportReload!==true && document.querySelector('.approved-export')?.innerText.includes(${JSON.stringify(generatedComposite)})`),'generated approved export candidate after reload');
-    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes(${JSON.stringify(generatedComposite)})).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click();})()`);
+    await until(() => evaluate(client, `window.__beforeGeneratedExportReload!==true && !!document.querySelector('.approved-export [data-asset-id="'+${JSON.stringify(generatedComposite)}+'"]')`),'generated approved export candidate after reload');
+    await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');panel.querySelector('[data-asset-id="'+${JSON.stringify(generatedComposite)}+'"]').querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click();})()`);
     await until(() => evaluate(client, `document.querySelector('.approved-export')?.innerText.includes('Inspect converted outputs')`),'generated export preview');
     const generatedDownloadEvents=client.events.length;
     await evaluate(client, `(() => {const panel=document.querySelector('.approved-export');[...panel.querySelectorAll('label')].find(l=>l.innerText.includes('I inspected every converted output')).querySelector('input').click();[...panel.querySelectorAll('button')].find(b=>b.textContent==='Download approved output bundle').click();})()`);
     const secondDownload=await completedDownload(client,generatedDownloadEvents,userDir,'generated approved ZIP');
     const secondZip=new ZipReader(new Uint8ArrayReader(await readFile(join(userDir,secondDownload))));
     try {const entries=await secondZip.getEntries();const proof=entries.find(e=>e.filename===`provenance/${generatedComposite}.json`), output=entries.find(e=>e.filename===`outputs/${generatedComposite}.png`);assert.ok(proof&&output,'Generated composite and provenance are in the ZIP.');const receipt=JSON.parse(new TextDecoder().decode(await proof.getData(new Uint8ArrayWriter())));const bytes=await output.getData(new Uint8ArrayWriter());assert.equal(receipt.attemptId,generated.attemptId);assert.equal(receipt.sceneSha256,generated.scene);assert.equal(receipt.sourceSha256,originalHash);assert.equal(receipt.reviewId,generatedDecision.reviewId);assert.equal(receipt.decisionId,generatedDecision.decisionId);assert.equal(createHash('sha256').update(bytes).digest('hex'),receipt.outputSha256);} finally {await secondZip.close();}
-    await evaluate(client, `(() => {const p=document.querySelector('.approved-export');const box=[...p.querySelectorAll('label')].find(l=>l.innerText.includes(${JSON.stringify(generatedComposite)})).querySelector('input');if(!box.checked)box.click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click()})()`);
+    await evaluate(client, `(() => {const p=document.querySelector('.approved-export');const box=p.querySelector('[data-asset-id="'+${JSON.stringify(generatedComposite)}+'"]').querySelector('input');if(!box.checked)box.click();[...p.querySelectorAll('button')].find(b=>b.textContent==='Prepare converted previews').click()})()`);
     await until(()=>evaluate(client, `!!document.querySelector('.approved-export .strict-comparison')`),'preview before another tab changes a fact');
     const {targetId: mutationTargetId}=await client.call('Target.createTarget',{url:`${origin}/help`,background:true});
     const mutationTarget=await until(async()=> (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(item=>item.id===mutationTargetId),'mutation tab');

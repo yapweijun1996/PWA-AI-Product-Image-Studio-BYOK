@@ -1,3 +1,5 @@
+import {ErrorNotice} from './ui/components';
+import {Disclosure, DisclosureSummary} from './ui/components';
 import { Button, Input, Select } from './ui/components';
 import { browserStudioRequest, onBrowserKeyChange } from './browserByok';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -191,10 +193,10 @@ function Original({ product, attempt }: { product: Product; attempt: StudioAttem
 
 function SceneDisclosure({ product, attempt, asset, disabled }: { product: Product; attempt: StudioAttempt; asset: StudioAsset; disabled: boolean }) {
   const [visited, setVisited] = useState(false);
-  return <details className="studio-scene-disclosure" onToggle={(event) => { if (event.currentTarget.open) setVisited(true); }}>
-    <summary>View scene and compose product</summary>
+  return <Disclosure className="studio-scene-disclosure" onToggle={(event) => { if (event.currentTarget.open) setVisited(true); }}>
+    <DisclosureSummary>View scene and compose product</DisclosureSummary>
     {visited && <><p>Original product photograph compared with the unapproved generated empty scene. The scene alone is not the product; the original product must be composed and reviewed locally.</p><div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Original product photograph</figcaption><Original product={product} attempt={attempt} /></figure><figure style={{ flex: '1 1 16rem', minWidth: 0 }}><figcaption>Unapproved generated empty scene</figcaption><Scene asset={asset} /></figure></div><StrictCompositePanel productId={product.productId} productVersion={JSON.stringify(product)} attemptId={attempt.attemptId} scene={asset} disabled={disabled} /></>}
-  </details>;
+  </Disclosure>;
 }
 
 function CompositeComparison({ productId, productVersion, leftAttempt, rightAttempt }: { productId: string; productVersion: string; leftAttempt: string; rightAttempt: string }) {
@@ -215,7 +217,7 @@ function CompositeComparison({ productId, productVersion, leftAttempt, rightAtte
   return <div className="studio-composite-comparison"><h4>Compare saved product composites</h4>
     <p>These are saved snapshots, not approval decisions. Review each original, mask, labels and current QA separately before export.</p>
     <Button type="button" className="secondary-button" onClick={() => setVersion((value) => value + 1)}>Refresh saved composites</Button>
-    {error ? <p className="error-message" role="alert">{error}</p> : !outputs ? <p role="status">Checking saved composites…</p> : <>
+    {error ? <ErrorNotice title="Needs attention">{error}</ErrorNotice> : !outputs ? <p role="status">Checking saved composites…</p> : <>
       {outputs.map((items, index) => <label key={index}>{index === 0 ? 'First' : 'Second'} saved composite
         <Select value={index === 0 ? left : right} onChange={(event) => index === 0 ? setLeft(event.target.value) : setRight(event.target.value)}>
           {!items.length && <option value="">No saved composite for this attempt</option>}
@@ -700,8 +702,8 @@ export function StudioPanel({ product, onBusyChange }: { product: Product; onBus
       <fieldset disabled={busy || Boolean(retry)}><legend>Confirmed facts to include in each provider prompt</legend><p>Only selected confirmed facts are sent. Names and category are also included; review every prompt before authorizing.</p>{product.facts.filter((fact) => fact.confirmed).map((fact) => <label className="checkbox-label" key={fact.factId}><Input type="checkbox" checked={selectedFacts.includes(fact.factId)} onChange={(event) => { const checked = event.target.checked; setSelectedFacts((old) => checked ? [...old, fact.factId] : old.filter((id) => id !== fact.factId)); clearQueueConsent(); }} /><span>{fact.name}: {fact.value}</span></label>)}</fieldset>
       <fieldset disabled={busy || Boolean(retry)}><legend>Choose styles</legend>{STUDIO_STYLE_IDS.map((styleId) => <label className="checkbox-label" key={styleId}><Input type="checkbox" checked={selectedStyles.includes(styleId)} onChange={(event) => { const checked = event.target.checked; setSelectedStyles((old) => checked ? [...old, styleId] : old.filter((id) => id !== styleId)); clearQueueConsent(); }} /><span>{STYLE_LABELS[styleId]}</span></label>)}</fieldset>
       {sources === null ? <p role="status">Checking source masks…</p> : sources.length === 0 ? <p>Save a verified mask for a source before generation.</p> : selectedStyles.map((styleId) => <label key={styleId}>{STYLE_LABELS[styleId]} source<Select value={sourceByStyle[styleId] ?? sources[0].source.assetId} disabled={busy || Boolean(retry)} onChange={(event) => { const value = event.target.value; setSourceByStyle((old) => ({ ...old, [styleId]: value })); clearQueueConsent(); }}>{sources.map((item) => <option key={item.source.assetId} value={item.source.assetId}>{item.source.filename} · {item.source.cameraView}</option>)}</Select></label>)}
-      {planError && <p className="error-message" role="alert">{planError}</p>}
-      {plans.map((plan) => <section className="style-plan" key={plan.styleId}><h3>{STYLE_LABELS[plan.styleId]}</h3><p>Source {plan.input.source.filename} · {plan.input.source.cameraView}; one planned call, estimated ${plan.estimate} USD. {plan.styleId === 'flat_lay' && (plan.context.sourceView === 'TOP' ? 'True overhead requires your confirmation below.' : 'This is a source-angle-inspired scene, not true overhead.')}{plan.styleId === 'macro' && ' Select and review an actual source crop during composition.'}{plan.styleId === 'billboard' && ' Compose and inspect the complete ad locally; no advertising copy is generated.'}</p><details><summary>Review exact provider prompt</summary><p>{plan.prompt}</p></details>
+      {planError && <ErrorNotice title="Needs attention">{planError}</ErrorNotice>}
+      {plans.map((plan) => <section className="style-plan" key={plan.styleId}><h3>{STYLE_LABELS[plan.styleId]}</h3><p>Source {plan.input.source.filename} · {plan.input.source.cameraView}; one planned call, estimated ${plan.estimate} USD. {plan.styleId === 'flat_lay' && (plan.context.sourceView === 'TOP' ? 'True overhead requires your confirmation below.' : 'This is a source-angle-inspired scene, not true overhead.')}{plan.styleId === 'macro' && ' Select and review an actual source crop during composition.'}{plan.styleId === 'billboard' && ' Compose and inspect the complete ad locally; no advertising copy is generated.'}</p><Disclosure><DisclosureSummary>Review exact provider prompt</DisclosureSummary><p>{plan.prompt}</p></Disclosure>
         {plan.styleId === 'flat_lay' && plan.context.sourceView === 'TOP' && <label className="checkbox-label"><Input type="checkbox" checked={topConfirmed} disabled={busy} onChange={(event) => { setTopConfirmed(event.target.checked); setStyleConsent({}); }} /><span>I confirm this source is compatible with a true 90-degree overhead view.</span></label>}
         {plan.perAttemptOverride && <label className="checkbox-label"><Input type="checkbox" checked={Boolean(attemptOverrides[plan.styleId])} disabled={busy} onChange={(event) => { const checked = event.target.checked; setAttemptOverrides((old) => ({ ...old, [plan.styleId]: checked })); setStyleConsent({}); }} /><span>For {STYLE_LABELS[plan.styleId]} only, I approve exceeding the per-attempt soft estimate limit.</span></label>}
         {plan.sessionOverride && <label className="checkbox-label"><Input type="checkbox" checked={Boolean(sessionOverrides[plan.styleId])} disabled={busy} onChange={(event) => { const checked = event.target.checked; setSessionOverrides((old) => ({ ...old, [plan.styleId]: checked })); setStyleConsent({}); }} /><span>For {STYLE_LABELS[plan.styleId]} only, I approve exceeding the session soft estimate limit.</span></label>}

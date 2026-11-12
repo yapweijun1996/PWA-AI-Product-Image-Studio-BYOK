@@ -45,12 +45,12 @@ The owner authorized option A: redo the PWA experience while retaining generatio
 
 Implementation ownership:
 
-- `app/src/ui/tokens.css`: light/dark semantic colors and shared dimension scale. Dimension tokens retain existing editor geometry during migration; changing them is a cross-page change. `theme-color` reads the active page token.
+- `app/src/ui/tokens/{primitives,semantics}.json`: editable token sources; `app/src/ui/tokens.css` is generated. Dimension tokens retain existing editor geometry during migration; changing them is a cross-page change. `theme-color` reads the active page token.
 - `app/src/ui/components.tsx`: Button, Input, Select, Textarea, GuideStep, PageHeader and Progress. Native control semantics, event handlers, refs and explicit form types are preserved. Shared controls render native elements; page code does not recreate their tags.
-- `app/src/styles.css`: component presentation and page layout. Numeric media-query breakpoints are the exception to token-only dimensions because CSS custom properties do not resolve in media conditions.
+- `app/src/ui/components.css`: shared component presentation; `app/src/ui/layout.css`: application and responsive page layout. Numeric media-query breakpoints are the exception to token-only dimensions because CSS custom properties do not resolve in media conditions.
 - `/design-system`: live component/state specimen. `npm run check:ui`, included in build, enforces the token/control boundary.
 
-Primary navigation is Create / My images / Settings / Help. The automatic source upload starts the existing seven-attempt pipeline; results appear independently. My images shows local source thumbnails and opens a saved run without sending a request. Legacy projects remain available through Advanced workspace. No database migration or deletion is part of this change.
+Primary navigation is Create / My images / Settings / Help. The automatic source upload starts the existing seven-attempt pipeline; results appear independently. My images shows a finished preview when available, otherwise the local source and opens a saved run without sending a request. Legacy projects remain available through Advanced workspace. No database migration or deletion is part of this change.
 
 Interaction contracts:
 
@@ -63,3 +63,33 @@ Interaction contracts:
 PWA Standard compatibility: KB `pwa:product-standard` registry v1.0.1 retains the v1.0 rules and adds explicit active-request/draft protection, app-scoped cleanup and separate automated versus physical-device evidence. These additions are compatible with DEC-019/020 and the existing worker protocol. This release adopts that acceptance contract; it does not claim physical iOS or assistive-technology verification.
 
 Future extension boundaries: do not duplicate controls in new pages, change the generation contracts for visual convenience, or confuse the specimen page with complete accessibility certification. Complex protected-region editors retain their specialized layout and domain controls on the shared foundations.
+
+
+## Whole-site redesign — v0.3.0 (2026-11-12)
+
+KB sources applied: `ui:ssot-component-library` 1.0.0, `ui:design-tokens-theming` 0.2.0, `ui:ssot-html-loader` 1.0.0, `pwa:product-standard` 1.0.1 and `engineering:scmc-review` 1.0.1. Retrieved knowledge is design guidance; source and browser observations establish implementation. The owner authorized local verification when remote engineering tools were unavailable.
+
+Compatibility choices: keep React, one emerald accent and existing light/dark preference behavior; do not introduce unrelated palette/kit settings. Token JSON generates CSS with a stale-artifact build gate. Native disclosures are owned by shared Disclosure/DisclosureSummary wrappers to preserve existing keyboard behavior, event handling and editor lifecycle rather than replacing working controls with a second custom state machine. Icon is the sole Lucide import owner, with pinned dependency and its ISC license. Official package guidance: https://lucide.dev/guide/react.
+
+| Page / component | Audit finding | Implemented treatment |
+|---|---|---|
+| Application shell | Large header stack, text-only navigation, inconsistent spacing | Compact responsive navigation with shared icons, explicit selected state, aligned content width and opaque safe-area chrome |
+| Update control | New status text and changing button text moved the layout | Reserved status area, stable checking label/geometry, busy semantics, existing user-controlled activation |
+| Create / results | Static slabs, repeated errors, unclear active vs queued jobs | Shared animated active placeholder, static queue/terminal states, fixed image geometry, one main error notice, per-image details retained |
+| Restored interrupted run | Saved RUNNING/SUBMITTED could lack recovery explanation | Recovery notice also covers inactive unresolved records, without resending requests |
+| Image library | Source-only preview and weak status hierarchy | Finished-image preview fallback to original, status badge, local date and filename; shared empty/loading/error states |
+| Settings | Long form lacking hierarchy; wrong-provider key reached request stage | Main setup card and secondary appearance card, responsive single column, immediate provider mismatch badge, associated input error and disabled submit |
+| Help | Long undifferentiated rows | Numbered desktop step cards and readable stacked mobile layout; existing installation/recovery disclosure retained |
+| Advanced product list / create | Inconsistent cards and wrong return destinations | Shared control/surface/error styles; shared workspacePath points to product list in both hosting modes |
+| Product detail | Unbroken chain of editing panels | Keyboard-accessible section navigation with focus and scroll, no editor unmount, responsive facts/form arrangement |
+| Source / mask / strict composite / review | Inconsistent control boundaries, long text and crowded controls | Stronger input border tokens, common actions/errors/focus styles, wrapping and responsive comparison areas; native-pixel inspection and non-drag controls preserved |
+| Approved export | Full UUIDs were the only image identity | Verified read-only thumbnail, short identity and full ID in tooltip, unchanged selection IDs and approval checks |
+| Backup import / export | Dense preview and long metadata | Distinct card/step hierarchy, responsive metadata grid, wrapping, same cancellation and conflict protection |
+| Missing/lazy-error routes | Weak status consistency | Inherited page typography, shared loading/error/action system and existing recovery links |
+| Component specimen | Incomplete state inventory | Actions, progress, status badges, error badge and animated placeholder examples |
+
+Shared UI ownership: Button/Input/Select/Textarea, PageHeader, SurfaceCard, GuideStep, Progress, LoadingState, EmptyState, ErrorNotice, StatusBadge, ImagePlaceholder, Disclosure/DisclosureSummary and Icon. Page code supplies domain state; components never dispatch image requests. Full error details remain available without repeating them in every card.
+
+Motion and accessibility: active processing animates only while owned by the current operation; terminal/history states are static; reduced-motion keeps the same text without animation. No fabricated progress or automatic retry. Tests cover actual animation play state, reduced motion, stable geometry and failure cleanup. Theme contrast tests enforce 4.5:1 text/primary labels and 3:1 control/focus boundaries. Legacy numeric size tokens remain for pixel editors; new layout uses semantic roles. No claims of screen-reader certification or physical-device acceptance.
+
+No storage migration, model/endpoint change, prompt change, paid verification or weakened approval/UNKNOWN guard is part of the redesign. User confirmed that replacing the provider-mismatched key restored generation; that report is distinct from our synthetic end-to-end tests. Never record the user's credential in this document or test artifacts.
