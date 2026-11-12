@@ -26,4 +26,18 @@ The direct-gateway journey also exercises a seven-style queue, requiring individ
 
 Before the first synthetic generation, the journey also interrupts the network after consent, verifies consent is cleared and no provider call is made, then explicitly rechecks the gateway and gives fresh consent. This covers one pre-dispatch interruption, not in-flight billing or every cross-tab/session case.
 
-The automatic Pages reference test uses the actual pinned AI SDK with fake fetch: separate transmission consent, main photo plus zero/two optional views, normalized metadata-free PNG bounds/order/hashes, unchanged original, single-image editing, invalid provider PNG exclusion, UNKNOWN no-resend and reload consent reset. It exercises production Pages bundles and responsive layouts without a real key or paid request. Pages/reference DevTools commands and connection setup have deadlines; browser cleanup registers exit handling before termination and has a finite kill fallback. For a resource-constrained local machine, `node --test --test-concurrency=1 tests/browser/*.test.mjs` runs the same complete suite serially.
+The automatic Pages reference test uses the actual pinned AI SDK with fake fetch. A synthetic annotated board exercises separate tab consent, one structured source analysis, safe subject/view crops, six edits, one batch review, unchanged original bytes and authentic Detail coordinates. A second ambiguous board pauses before any edit until the local subject choice. It also covers preview comparison, Escape/focus restoration, frozen local copy export, explicit one-image regeneration without another analysis, immutable old versions, UNKNOWN holds/no resend, reload consent reset and rejection of valid replacement PNGs with stale hashes by both local derivatives. These assertions verify deterministic wiring, not real model recognition or photographic quality.
+
+Pages, reference and monthly-usage CI files run in separate Node processes with finite DevTools deadlines and cleanup. For the complete local browser gate, invoke each file separately and require every command to exit successfully:
+
+```sh
+node --test tests/browser/pages-preview.test.mjs
+node --test tests/browser/automatic-reference.test.mjs
+node --test tests/browser/monthly-upload.test.mjs
+node --test tests/browser/direct-gateway-journey.test.mjs
+node --test tests/browser/protected-region-race.test.mjs
+node --test tests/browser/two-build-lazy-route.test.mjs
+STUDIO_MATTE_SMOKE=1 node --test tests/browser/pages-preview.test.mjs
+```
+
+The last command runs the bundled local cutout model with synthetic input. It is separate from all fake-provider checks and does not call an image or vision model. Physical devices, suspended tabs, assistive technology and real paid photographic acceptance remain separate gates.

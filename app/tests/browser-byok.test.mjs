@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { browserStudioRequest as request, setBrowserKey, clearBrowserKey, browserKeyStatus, saveBrowserKey, forgetBrowserKey } from '../src/browserByok.ts';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 const storage=new Map();globalThis.window=new EventTarget();globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)};
-Object.defineProperty(globalThis.navigator,'locks',{configurable:true,value:{request:async(_name,fn)=>fn()}});
+Object.defineProperty(globalThis.navigator,'locks',{configurable:true,value:{request:async(_name,options,callback)=>(typeof options==='function'?options:callback)({name:_name})}});
 const originalFetch=globalThis.fetch,key='sk-synthetic-only-never-real-12345';
 afterEach(()=>{clearBrowserKey();storage.clear();globalThis.fetch=originalFetch});
 function body(){const sceneContext={productName:'Synthetic lamp',category:'lighting',confirmedFacts:[],sourceView:'OTHER'},prompt=studioBuildPrompt('studio',sceneContext);return {clientAttemptId:crypto.randomUUID(),model:STUDIO_MODEL,quality:STUDIO_QUALITY,size:STUDIO_SIZE,styleId:'studio',sceneContext,prompt,estimatedUSD:studioEstimateUSD(prompt),outputFormat:'png',operation:'generate_scene',lockMode:'STRICT'}}

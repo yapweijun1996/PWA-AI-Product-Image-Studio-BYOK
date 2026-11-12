@@ -74,6 +74,10 @@
   --size-375px: 375px;
   --motion-fast: .18s;
   --motion-spin: 1s;
+  --preview-width: 1100px;
+  --preview-height: 90dvh;
+  --preview-image-height: 58dvh;
+  --overlay-color: #061e1899;
   --page: #f6f7f5;
   --surface: #ffffff;
   --ink: #1d2a26;

@@ -3,7 +3,7 @@ import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";
 globalThis.window = new EventTarget();globalThis.indexedDB=indexedDB;
-Object.defineProperty(globalThis.navigator,"locks",{configurable:true,value:{request:async(name,fn)=>fn()}});
+Object.defineProperty(globalThis.navigator,"locks",{configurable:true,value:{request:async(name,options,callback)=>(typeof options==='function'?options:callback)({name})}});
 const server = await createServer({
   root: new URL("..", import.meta.url).pathname,
   server: { middlewareMode: true },

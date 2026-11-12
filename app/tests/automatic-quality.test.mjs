@@ -4,6 +4,7 @@ import {indexedDB} from 'fake-indexeddb';
 import {createServer} from 'vite';
 import {AUTOMATIC_LAYOUTS, automaticPrompt} from '../automatic-policy.mjs';
 globalThis.window=new EventTarget();globalThis.indexedDB=indexedDB;
+Object.defineProperty(globalThis.navigator,'locks',{configurable:true,value:{request:async(name,options,callback)=>(typeof options==='function'?options:callback)({name})}});
 const server=await createServer({root:new URL('..',import.meta.url).pathname,server:{middlewareMode:true},appType:'custom'});
 after(()=>server.close());
 const imaging=await server.ssrLoadModule('/src/autoImaging.ts');
@@ -16,19 +17,19 @@ test('visible detail ROI is a strict subcrop centered on measured opaque pixels,
 });
 test('all shared visible-contact anchors appear in corresponding prompts, with distinct style layouts',()=>{
  const anchors=new Set();for(const style of ['studio','hero','lifestyle','flat_lay','ugc','billboard']){const spec=AUTOMATIC_LAYOUTS[style],prompt=automaticPrompt(style);assert.ok(prompt.includes(`x=${spec.centerX}`));assert.ok(prompt.includes(`y=${spec.bottom}`));assert.ok(prompt.includes(spec.surface));anchors.add(JSON.stringify([spec.maxWidth,spec.maxHeight,spec.centerX,spec.bottom]));assert.ok(spec.bottom>=spec.maxHeight);assert.equal(imaging.automaticCompositionEvidence({},style).visualAssessment,'NOT_ASSESSED')}assert.equal(anchors.size,6);
- const evidence=imaging.automaticCompositionEvidence({},'billboard');assert.equal(evidence.artworkLayer,'local-full-text-free-ad-v1');assert.match(automaticPrompt('billboard'),/No billboard, display, frame/);
+ const evidence=imaging.automaticCompositionEvidence({},'billboard');assert.equal(evidence.artworkLayer,'complete-campaign-v2');assert.match(automaticPrompt('billboard'),/No billboard, display, frame/);
 });
 test('automatic database upgrades preserve legacy runs while old binaries fail closed on new reference records',async()=>{
  const legacy={version:1,id:crypto.randomUUID(),createdAt:'2026-11-11T00:00:00Z',filename:'legacy.png',source:new Blob(['original']),sourceSha256:'a'.repeat(64),state:'COMPLETE',items:[],estimatedUSD:'0.010000',sessionId:''};
  let legacyConnection;
- await new Promise((resolve,reject)=>{const req=indexedDB.open('image-studio-automatic',1);req.onupgradeneeded=()=>req.result.createObjectStore('runs',{keyPath:'id'});req.onerror=()=>reject(req.error);req.onsuccess=()=>{const db=req.result;legacyConnection=db;const tx=db.transaction('runs','readwrite');tx.objectStore('runs').put(legacy);tx.oncomplete=()=>resolve()}});
+ await new Promise((resolve,reject)=>{const req=indexedDB.open('image-studio-automatic',2);req.onupgradeneeded=()=>req.result.createObjectStore('runs',{keyPath:'id'});req.onerror=()=>reject(req.error);req.onsuccess=()=>{const db=req.result;legacyConnection=db;const tx=db.transaction('runs','readwrite');tx.objectStore('runs').put(legacy);tx.oncomplete=()=>resolve()}});
  const store=await server.ssrLoadModule('/src/automaticStore.ts');
- await assert.rejects(()=>store.listAutoRuns(),/Close other app tabs/);legacyConnection.close();
+ try{await assert.rejects(()=>store.listAutoRuns(),/UPGRADE_CLOSE_IDLE_TABS/)}finally{legacyConnection.close()}
  let runs=await store.listAutoRuns();assert.equal(runs.length,1);assert.equal(runs[0].mode,undefined);assert.equal(await runs[0].source.text(),'original');
  await store.saveAutoRun({...legacy,id:crypto.randomUUID(),mode:'REFERENCE',referenceImages:[{sha256:'b'.repeat(64),width:1024,height:768,mimeType:'image/png'}]});runs=await store.listAutoRuns();assert.equal(runs.length,2);assert.equal(runs.filter(r=>r.mode==='REFERENCE').length,1);
- await assert.rejects(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('image-studio-automatic',1);r.onerror=()=>reject(r.error);r.onsuccess=()=>{r.result.close();resolve()}}),error=>error.name==='VersionError');
+ await assert.rejects(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('image-studio-automatic',2);r.onerror=()=>reject(r.error);r.onsuccess=()=>{r.result.close();resolve()}}),error=>error.name==='VersionError');
  assert.equal((await store.listAutoRuns()).length,2);
- await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Late rejected open leaked its connection')),1000),r=indexedDB.open('image-studio-automatic',3);r.onsuccess=()=>{clearTimeout(timer);r.result.close();resolve()};r.onerror=()=>{clearTimeout(timer);reject(r.error)}});
+ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Late rejected open leaked its connection')),1000),r=indexedDB.open('image-studio-automatic',4);r.onsuccess=()=>{clearTimeout(timer);r.result.close();resolve()};r.onerror=()=>{clearTimeout(timer);reject(r.error)}});
 });
 
 test('reference output decoder rejects undecodable images and closes decoded wrong-size bitmaps',async()=>{

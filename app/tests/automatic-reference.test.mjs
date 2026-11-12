@@ -11,7 +11,7 @@ import {sha256} from '../src/prepareSource.ts';
 const storage = new Map();
 globalThis.window = new EventTarget();globalThis.indexedDB=indexedDB;
 globalThis.localStorage = {getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)};
-const locks = {request:async(_name,fn)=>fn()};
+const locks = {request:async(_name,options,callback)=>(typeof options==='function'?options:callback)({name:_name})};
 Object.defineProperty(globalThis.navigator,'locks',{configurable:true,value:locks});
 const originalFetch=globalThis.fetch, key='sk-synthetic-reference-tests-only';
 function pngPixel(red) {
@@ -21,10 +21,10 @@ function pngPixel(red) {
 }
 const png=pngPixel(100);
 async function ref(bytes=png){return {mimeType:'image/png',width:1,height:1,sha256:await sha256(bytes),dataBase64:Buffer.from(bytes).toString('base64')}}
-async function body(count=1,mode='REFERENCE'){return {clientAttemptId:crypto.randomUUID(),productId:crypto.randomUUID(),automaticMode:mode,automaticPromptVersion:AUTOMATIC_PROMPT_VERSION,model:STUDIO_MODEL,quality:STUDIO_QUALITY,size:STUDIO_SIZE,styleId:'studio',prompt:automaticPrompt('studio',mode),estimatedUSD:automaticEstimateUSD('studio',mode,count),outputFormat:'png',operation:mode==='REFERENCE'?'reference_edit':'generate_scene',lockMode:mode==='REFERENCE'?'BALANCED':'STRICT',...(mode==='REFERENCE'?{referenceInputs:await Promise.all(Array.from({length:count},()=>ref()))}:{})}}
+async function body(count=1,mode='REFERENCE'){return {clientAttemptId:crypto.randomUUID(),productId:crypto.randomUUID(),automaticMode:mode,automaticPromptVersion:AUTOMATIC_PROMPT_VERSION,model:STUDIO_MODEL,quality:STUDIO_QUALITY,size:STUDIO_SIZE,styleId:'studio',prompt:automaticPrompt('studio',mode),estimatedUSD:automaticEstimateUSD('studio',mode,mode==='REFERENCE'?3:1),outputFormat:'png',operation:mode==='REFERENCE'?'reference_edit':'generate_scene',lockMode:mode==='REFERENCE'?'BALANCED':'STRICT',...(mode==='REFERENCE'?{referenceInputs:await Promise.all(Array.from({length:count},()=>ref()))}:{})}}
 async function approve(b){b.reviewRevision=(await(await request('/images/revision')).json()).reviewRevision;return request('/images/approvals',{method:'POST',body:JSON.stringify(b)})}
 async function approved(b){const current=await readStoredCredential();await reserveStoredUpload({id:b.productId,month:utcUsageMonth(),createdAt:new Date().toISOString(),credentialId:current.id,authorizationId:current.authorization.id,attempts:[{id:b.clientAttemptId,estimatedMicros:estimateMicros(b.estimatedUSD),outcome:'RESERVED'}]},current.id,current.authorization.id);const a=await(await approve(b)).json();return {method:'POST',body:JSON.stringify(b),headers:{'X-Client-Request-Id':b.clientAttemptId,'X-Attempt-Approval':a.approvalId}}}
-afterEach(()=>{clearBrowserKey();storage.clear();globalThis.fetch=originalFetch;locks.request=async(_name,fn)=>fn()});
+afterEach(()=>{clearBrowserKey();storage.clear();globalThis.fetch=originalFetch;locks.request=async(name,options,callback)=>(typeof options==='function'?options:callback)({name})});
 test('reference mode denies missing tab consent before any provider transmission',async()=>{
  await saveBrowserKey(key,true);let calls=0;globalThis.fetch=async()=>{calls++;throw Error('not allowed')};const b=await body();assert.equal((await approve(b)).status,409);assert.equal(calls,0);assert.equal(referenceTransmissionAllowed(),false);
 });

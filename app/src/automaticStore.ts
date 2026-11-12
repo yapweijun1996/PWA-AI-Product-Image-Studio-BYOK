@@ -1,3 +1,6 @@
+import { prepareAutomaticStores } from "./automaticMigration";
+import type { SourceAnalysis, QualityFinding } from "../vision-policy.mjs";
+import type { FrozenReference, SourceRoi } from "./subjectPreparation";
 import type { AutomaticMode, AutomaticLayout } from "../automatic-policy.mjs";
 import type { StudioStyleId } from "../studio-policy.mjs";
 import type { AutoForeground } from "./autoImaging";
@@ -5,13 +8,32 @@ import { inspectImageHeader } from "./imageHeader";
 import { sha256 } from "./prepareSource";
 export type AutoItem = {
   id: string;
+  createdAt?: string;
+  reservationId?: string;
   style: StudioStyleId;
   prompt: string;
   estimatedUSD: string;
   status: "PENDING" | "SUBMITTED" | "UNKNOWN" | "FAILED" | "READY" | "NOT_SENT";
   error?: string;
+  semantic?: QualityFinding & {
+    attemptId: string;
+    outputSha256: string;
+    reviewedAt: string;
+  };
+  similarity?: { otherStyle: StudioStyleId; distance: number }[];
+  versions?: Omit<AutoItem, "versions">[];
   reviewedAt?: string;
-  provenance?: { policyVersion?: string; mode: AutomaticMode; operation: "local-detail" | "generated-scene-composite" | "reference-edit"; visualAssessment: "NOT_ASSESSED"; layout: AutomaticLayout; detailRoi?: { x: number; y: number; width: number; height: number }; detailUpscaled?: boolean; detailLimitation?: string; artworkLayer?: "local-full-text-free-ad-v1" };
+  provenance?: {
+    policyVersion?: string;
+    mode: AutomaticMode;
+    operation: "local-detail" | "generated-scene-composite" | "reference-edit";
+    visualAssessment: "NOT_ASSESSED";
+    layout: AutomaticLayout;
+    detailRoi?: { x: number; y: number; width: number; height: number };
+    detailUpscaled?: boolean;
+    detailLimitation?: string;
+    artworkLayer?: "local-full-text-free-ad-v1" | "complete-campaign-v2";
+  };
   scene?: Blob;
   output?: Blob;
   sha256?: string;
@@ -26,10 +48,45 @@ export type AutoItem = {
     visualAssessment?: "NOT_ASSESSED";
   };
 };
+export type AuxiliaryAttempt = {
+  id: string;
+  kind: "source-analysis" | "output-review";
+  estimatedUSD: string;
+  status: AutoItem["status"];
+  error?: string;
+  reviewedAt?: string;
+};
 export type AutoRun = {
+  pipelineVersion?: "2.0.0";
+  auxiliary?: AuxiliaryAttempt[];
+  analysis?: {
+    report: SourceAnalysis;
+    bindings: { sha256: string; width: number; height: number }[];
+    selectedSubjectId?: string;
+    selectedBy?: "automatic" | "user";
+  };
+  preparedReferences?: FrozenReference[];
+  detail?: {
+    blob?: Blob;
+    sha256?: string;
+    sourceSha256?: string;
+    normalizedSha256?: string;
+    subjectId?: string;
+    roi?: SourceRoi;
+    reason?: string;
+  };
+  selectionCandidates?: { id: string; preview: Blob }[];
+  qualityStatus?: "NOT_ASSESSED" | "MACHINE_HINTS_AVAILABLE";
+  foregroundSha256?: string;
+  compositionContext?: { category: string; camera: string };
   version: 1;
   mode?: AutomaticMode;
-  referenceImages?: { sha256: string; width: number; height: number; mimeType: "image/png" }[];
+  referenceImages?: {
+    sha256: string;
+    width: number;
+    height: number;
+    mimeType: "image/png";
+  }[];
   capabilities?: AutoForeground["capabilities"];
   id: string;
   filename: string;
@@ -45,15 +102,27 @@ export type AutoRun = {
   unsavedOutputs?: true;
 };
 async function db() {
+  await prepareAutomaticStores();
   return new Promise<IDBDatabase>((resolve, reject) => {
     let blocked = false;
-    const r = indexedDB.open("image-studio-automatic", 2);
+    const r = indexedDB.open("image-studio-automatic", 3);
     r.onupgradeneeded = () => {
-      if (!r.result.objectStoreNames.contains("runs")) r.result.createObjectStore("runs", { keyPath: "id" });
+      if (!r.result.objectStoreNames.contains("runs"))
+        r.result.createObjectStore("runs", { keyPath: "id" });
     };
-    r.onsuccess = () => { if (blocked) { r.result.close(); return; } r.result.onversionchange = () => r.result.close(); resolve(r.result); };
+    r.onsuccess = () => {
+      if (blocked) {
+        r.result.close();
+        return;
+      }
+      r.result.onversionchange = () => r.result.close();
+      resolve(r.result);
+    };
     r.onerror = () => reject(new Error("Local result storage is unavailable."));
-    r.onblocked = () => { blocked = true; reject(new Error("Close other app tabs before continuing.")); };
+    r.onblocked = () => {
+      blocked = true;
+      reject(new Error("Close other app tabs before continuing."));
+    };
   });
 }
 export async function saveAutoRun(run: AutoRun) {
@@ -115,4 +184,24 @@ export async function checkedOutput(item: AutoItem) {
   )
     throw new Error("This saved image failed its dimensions check.");
   return item.output;
+}
+
+export function allRunAttempts(
+  run: AutoRun,
+): {
+  id: string;
+  status: AutoItem["status"];
+  reviewedAt?: string;
+  estimatedUSD: string;
+}[] {
+  return [
+    ...run.items.flatMap((item) => [item, ...(item.versions ?? [])]),
+    ...(run.auxiliary ?? []),
+  ];
+}
+export function runHasUnreviewedCharge(run: AutoRun) {
+  return allRunAttempts(run).some(
+    (a) =>
+      (a.status === "UNKNOWN" || a.status === "SUBMITTED") && !a.reviewedAt,
+  );
 }

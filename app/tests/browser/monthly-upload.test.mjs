@@ -101,15 +101,19 @@ test('Saved upload authorization survives reload, monthly history persists, and 
   await evaluate(tab,installProviderFixture);
 
   await evaluate(tab,`window.__uploadSynthetic()`);
-  await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='7 of 7 ready'&&!document.querySelector('.auto-upload.processing')`),'first complete upload');
+  await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='6 downloadable'&&!document.querySelector('.auto-upload.processing')`),'first complete upload');
   assert.equal(await evaluate(tab,`window.__paidRequests`),6);
-  await until(()=>evaluate(tab,`document.querySelector('.automatic-usage').innerText.includes('6 recorded requests')`),'monthly recorded request count');
-  assert.equal(await evaluate(tab,`document.querySelector('.automatic-usage').innerText.includes('not your OpenAI bill')`),true);
+  await until(()=>evaluate(tab,`/6 (?:recorded )?requests/.test(document.querySelector('.automatic-usage').innerText)`),'monthly recorded request count');
+  assert.equal(await evaluate(tab,`document.querySelector('.automatic-usage').title.includes('not your OpenAI bill')`),true);
+  await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);
+  await until(()=>evaluate(tab,`!!document.querySelector('input[name=automatic-mode]')`),'mode controls after upload');
   await evaluate(tab,`document.querySelectorAll('input[name=automatic-mode]')[1].click()`);await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').click()`);
   await tab.call('Page.reload');
+  await until(()=>evaluate(tab,`[...document.querySelectorAll('button')].some(b=>b.textContent==='Upload another')`),'restored compact result');
+  await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]')&&!document.querySelector('input[aria-label="Upload product image"]').disabled`),'saved authorization reloads directly into usable Create');
   assert.equal(await evaluate(tab,`!!document.querySelector('.auto-setup')`),false,'No repeated setup after reload');
-  await until(()=>evaluate(tab,`document.querySelector('.automatic-usage').innerText.includes('6 recorded requests')`),'monthly usage survives reload');
+  await until(()=>evaluate(tab,`/6 (?:recorded )?requests/.test(document.querySelector('.automatic-usage').innerText)`),'monthly usage survives reload');
   await evaluate(tab,`document.querySelectorAll('input[name=automatic-mode]')[1].click()`);
   assert.equal(await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').checked`),false,'Reference transmission stays tab-only');
   assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),true);
@@ -119,17 +123,17 @@ test('Saved upload authorization survives reload, monthly history persists, and 
   assert.equal(await evaluate(tab,`document.querySelectorAll('form input[type=checkbox]').length`),0,'No repeated upload-consent checkbox');
   await evaluate(tab,`(()=>{document.querySelector('.key-management').open=true;document.querySelector('.key-management details').open=true;const input=document.querySelector('input[type=number]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'0.01');input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   await evaluate(tab,`document.querySelector('form button[type=submit]').click()`);
-  await until(()=>evaluate(tab,`(async()=>{const r=indexedDB.open('image-studio-credentials',2),db=await new Promise(resolve=>r.onsuccess=()=>resolve(r.result));try{return await new Promise(resolve=>{const q=db.transaction('credentials').objectStore('credentials').get('openai');q.onsuccess=()=>resolve(q.result.authorization.monthlyCapMicros===10000)})}finally{db.close()}})()`),'optional monthly cap saved');
-  await evaluate(tab,`location.hash='#/'`);await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]')&&!document.querySelector('input[aria-label="Upload product image"]').disabled`),'uploader with optional cap');
+  await until(()=>evaluate(tab,`(async()=>{const r=indexedDB.open('image-studio-credentials',3),db=await new Promise(resolve=>r.onsuccess=()=>resolve(r.result));try{return await new Promise(resolve=>{const q=db.transaction('credentials').objectStore('credentials').get('openai');q.onsuccess=()=>resolve(q.result.authorization.monthlyCapMicros===10000)})}finally{db.close()}})()`),'optional monthly cap saved');
+  await evaluate(tab,`location.hash='#/'`);await until(()=>evaluate(tab,`[...document.querySelectorAll('button')].some(b=>b.textContent==='Upload another')`),'saved result with cap');await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]')&&!document.querySelector('input[aria-label="Upload product image"]').disabled`),'uploader with optional cap');
   await evaluate(tab,installProviderFixture);await evaluate(tab,`window.__uploadSynthetic()`);
   await until(()=>evaluate(tab,`document.querySelector('.auto-results')?.innerText.includes('optional monthly local estimate limit')`),'cap blocks before a provider send');
   assert.equal(await evaluate(tab,`window.__paidRequests`),0);
   await evaluate(tab,`location.hash='#/settings'`);await until(()=>evaluate(tab,`document.body.innerText.includes('Ready to create.')`),'cap management settings');
   await evaluate(tab,`(()=>{document.querySelector('.key-management').open=true;document.querySelector('.key-management details').open=true;const input=document.querySelector('input[type=number]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   await evaluate(tab,`document.querySelector('form button[type=submit]').click()`);
-  await until(()=>evaluate(tab,`(async()=>{const r=indexedDB.open('image-studio-credentials',2),db=await new Promise(resolve=>r.onsuccess=()=>resolve(r.result));try{return await new Promise(resolve=>{const q=db.transaction('credentials').objectStore('credentials').get('openai');q.onsuccess=()=>resolve(q.result.authorization.monthlyCapMicros===null)})}finally{db.close()}})()`),'optional cap can be turned off once');
+  await until(()=>evaluate(tab,`(async()=>{const r=indexedDB.open('image-studio-credentials',3),db=await new Promise(resolve=>r.onsuccess=()=>resolve(r.result));try{return await new Promise(resolve=>{const q=db.transaction('credentials').objectStore('credentials').get('openai');q.onsuccess=()=>resolve(q.result.authorization.monthlyCapMicros===null)})}finally{db.close()}})()`),'optional cap can be turned off once');
   await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Remove saved key').click()`);
   await until(()=>evaluate(tab,`document.body.innerText.includes('Add your OpenAI key')`),'key removed');
-  assert.equal(await evaluate(tab,`document.querySelector('.automatic-usage').innerText.includes('6 recorded requests')`),true,'Removal retains month history');
+  assert.equal(await evaluate(tab,`/6 (?:recorded )?requests/.test(document.querySelector('.automatic-usage').innerText)`),true,'Removal retains month history');
  }catch(error){console.error('Pages journey failure:',error);throw error;}finally{tab?.close();await stopBrowser(browser);if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100})}
 });

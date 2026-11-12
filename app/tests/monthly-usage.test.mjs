@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {IDBFactory,IDBObjectStore} from 'fake-indexeddb';
 import {readStoredCredential,writeStoredCredential,authorizeStoredCredential,credentialStore,reserveStoredUpload,markStoredUploadAttempt,recordStoredAttemptOutcome,readMonthlyUsage,utcUsageMonth,estimateMicros,importLegacyUsage} from '../src/browserCredentialStore.ts';
 globalThis.window=new EventTarget();
-Object.defineProperty(globalThis.navigator,'locks',{configurable:true,value:{request:async(_name,fn)=>fn()}});
+Object.defineProperty(globalThis.navigator,'locks',{configurable:true,value:{request:async(_name,options,callback)=>(typeof options==='function'?options:callback)({name:_name})}});
 const key='sk-synthetic-monthly-usage-only',RealDate=Date;
 beforeEach(()=>{globalThis.indexedDB=new IDBFactory()});
 afterEach(()=>{globalThis.Date=RealDate});
@@ -46,4 +46,15 @@ test('quota failures cannot create an unrecorded reservation or silently reset u
 });
 test('tampered estimates or attempt identities are blocked before a request receipt',async()=>{
  const c=await writeStoredCredential(key,true,''),r=run(c);await reserve(r,c);await assert.rejects(()=>markStoredUploadAttempt(r.id,crypto.randomUUID(),'0.060000',c.id,c.authorization.id));await assert.rejects(()=>markStoredUploadAttempt(r.id,r.attempts[0].id,'0.000001',c.id,c.authorization.id));assert.equal((await readMonthlyUsage()).recordedRequests,0);
+});
+
+test('reference reservation includes six images and both auxiliary purposes before dispatch',async()=>{
+ const c=await writeStoredCredential(key,true,'');
+ const r=run(c);r.attempts=[...Array.from({length:6},()=>({id:crypto.randomUUID(),kind:'image',estimatedMicros:60000,outcome:'RESERVED'})),...['source-analysis','output-review'].map(kind=>({id:crypto.randomUUID(),kind,estimatedMicros:30000,outcome:'RESERVED'}))];
+ await reserve(r,c);assert.equal((await readMonthlyUsage()).reservedMicros,420000);
+ await assert.rejects(()=>markStoredUploadAttempt(r.id,r.attempts[6].id,'0.030000',c.id,c.authorization.id,'image'));
+ await markStoredUploadAttempt(r.id,r.attempts[6].id,'0.030000',c.id,c.authorization.id,'source-analysis');
+ const usage=await readMonthlyUsage();assert.equal(usage.auxiliaryRequests,1);assert.equal(usage.imageRequests,0);
+ for(const kind of ['image','source-analysis','output-review']){const duplicate=structuredClone(r);duplicate.id=crypto.randomUUID();duplicate.attempts=duplicate.attempts.map(a=>({...a,id:crypto.randomUUID()}));duplicate.attempts.push({id:crypto.randomUUID(),kind,estimatedMicros:1,outcome:'RESERVED'});assert.throws(()=>reserve(duplicate,c));}
+ const bounded=await writeStoredCredential('sk-synthetic-cap-analysis',true,'0.43');const blocked=structuredClone(r);blocked.id=crypto.randomUUID();blocked.credentialId=bounded.id;blocked.authorizationId=bounded.authorization.id;blocked.attempts=blocked.attempts.map(a=>({...a,id:crypto.randomUUID()}));await assert.rejects(()=>reserve(blocked,bounded),/monthly/);assert.equal((await readMonthlyUsage()).reservedMicros,420000);
 });

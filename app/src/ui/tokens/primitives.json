@@ -72,5 +72,9 @@
   "--size-640px": "640px",
   "--size-375px": "375px",
   "--motion-fast": ".18s",
-  "--motion-spin": "1s"
+  "--motion-spin": "1s",
+  "--preview-width": "1100px",
+  "--preview-height": "90dvh",
+  "--preview-image-height": "58dvh",
+  "--overlay-color": "#061e1899"
 }

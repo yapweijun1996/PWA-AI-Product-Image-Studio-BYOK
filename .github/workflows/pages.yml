@@ -26,7 +26,7 @@ jobs:
         working-directory: app
       - run: npm test
         working-directory: app
-      - name: Verify upload-to-download and offline behavior
+      - name: Verify upload, source analysis, explicit regeneration and offline behavior
         run: |
           node --test tests/browser/pages-preview.test.mjs
           node --test tests/browser/automatic-reference.test.mjs
