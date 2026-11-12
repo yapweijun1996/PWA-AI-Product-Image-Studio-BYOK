@@ -1,3 +1,4 @@
+import { t } from './ui/i18n';
 import { Button, Input, Progress } from './ui/components';
 import { useSearchParams } from 'react-router-dom';
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
@@ -93,7 +94,7 @@ function ResultCard({
                 ).finally(()=>{downloadLock.current=false;setDownloading(false)});
             }}
           >
-            {downloading ? "Preparing…" : "Download"}
+            {downloading ? t("Preparing…") : t("Download")}
           </Button>
         )}
       </div>
@@ -246,15 +247,13 @@ export function UploadStudio() {
       <div className="eyebrow">UPLOAD. CREATE. DOWNLOAD.</div>
       <div className="page-heading">
         <div>
-          <h1>One product. Seven looks.</h1>
-          <p className="lead">
-            Upload your product photo. Get complete images, ready to download.
-          </p>
+          <h1>{t("One product. Seven looks.")}</h1>
+          <p className="lead">{t("Upload your product photo. Get complete images, ready to download.")}</p>
         </div>
       </div>
       {!connected || !session ? (
         <section className="auto-setup">
-          <h2>Set up this session</h2>
+          <h2>{t("Set up this session")}</h2>
           <p>
             Add your OpenAI key and set a spending estimate limit once for this
             tab. Then uploading a photo starts processing automatically.
@@ -267,7 +266,7 @@ export function UploadStudio() {
         <p className="muted">
           Seven images per upload · estimated ${estimate} USD · session estimate
           remaining ${((session.limit - session.reserved) / 1e6).toFixed(6)} ·{" "}
-          <Link to="/settings">Session settings</Link>
+          <Link to="/settings">{t("Session settings")}</Link>
         </p>
       )}
       <section
@@ -282,7 +281,7 @@ export function UploadStudio() {
         aria-label="Upload product image"
       >
         <span className="section-kicker">YOUR ORIGINAL STAYS LOCAL</span>
-        <h2>{busy ? "Making your images…" : "Drop your product photo here"}</h2>
+        <h2>{busy ? t("Making your images…") : t("Drop your product photo here")}</h2>
         <p>
           {busy
             ? run?.state === "PREPARING"
@@ -293,9 +292,7 @@ export function UploadStudio() {
         {!busy && (
           <label
             className={`primary-button auto-file ${!ready ? "disabled" : ""}`}
-          >
-            Upload image
-            <Input
+          >{t("Upload image")}<Input
               aria-label="Upload product image"
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -328,7 +325,7 @@ export function UploadStudio() {
           <div className="section-heading">
             <div>
               <span className="section-kicker">YOUR IMAGES</span>
-              <h2 id="auto-results-heading" aria-live="polite">{completed.length} of 7 ready</h2>
+              <h2 id="auto-results-heading" aria-live="polite">{t("{count} of 7 ready",{count:completed.length})}</h2>
             </div>
             <Button
               className="primary-button"
@@ -336,7 +333,7 @@ export function UploadStudio() {
               disabled={!completed.length || exporting}
               onClick={() => void all()}
             >
-              {exporting ? "Preparing download…" : completed.length === 7 ? "Download all" : `Download ${completed.length} images`}
+              {exporting ? t("Preparing download…") : completed.length === 7 ? t("Download all") : t("Download {count} images",{count:completed.length})}
             </Button>
           </div>
           {run.unsavedOutputs && (

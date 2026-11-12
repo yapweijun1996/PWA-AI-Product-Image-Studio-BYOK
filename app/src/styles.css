@@ -224,3 +224,15 @@ button{gap:var(--size-8px)}button:disabled{cursor:not-allowed}
 .provider-settings{margin-bottom:var(--size-24px)}
 
 @media(max-width:800px){.topbar{height:calc(var(--size-44px) + env(safe-area-inset-top));padding:env(safe-area-inset-top) var(--size-24px) 0}.content-shell:before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--page);z-index:4;pointer-events:none}}
+
+.session-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--size-12px);margin:var(--size-24px) 0}
+.sidebar-update{margin-top:auto;display:grid;gap:var(--size-12px);font-size:var(--size-12px);color:var(--muted);overflow-wrap:anywhere}
+.sidebar-update .secondary-button{width:100%}.app-version{font-variant-numeric:tabular-nums}
+.topbar .network{margin-left:auto}
+.topbar-controls{display:flex;align-items:center;gap:var(--size-8px)}
+.icon-button{display:inline-grid;place-items:center;width:var(--size-44px);height:var(--size-44px);padding:0;border:var(--size-1px) solid var(--border);border-radius:var(--size-8px);background:var(--surface);color:var(--ink);cursor:pointer}
+.icon-button svg{width:var(--size-22px);height:var(--size-22px);fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.language-control{position:relative}.language-options{position:absolute;right:0;top:100%;min-width:var(--size-180px);padding:var(--size-8px);border:var(--size-1px) solid var(--border);border-radius:var(--size-8px);background:var(--surface);box-shadow:0 var(--size-4px) var(--size-20px) var(--shadow-color);z-index:5}
+.language-option{display:block;width:100%;text-align:left;padding:var(--size-12px);min-height:var(--size-44px);border:0;border-radius:var(--size-6px);background:var(--surface);color:var(--ink);cursor:pointer}
+.language-option[aria-pressed=true],.language-option:hover{background:var(--tint);color:var(--accent)}
+@media(max-width:800px){.sidebar-update{grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--size-8px)}.sidebar-update>span[role=status]{grid-column:1/-1}.sidebar-update .secondary-button{width:auto}.topbar{gap:var(--size-12px);height:calc(var(--size-60px) + env(safe-area-inset-top))}.topbar>span:first-child{display:none}.topbar .network{font-size:var(--size-12px)}}

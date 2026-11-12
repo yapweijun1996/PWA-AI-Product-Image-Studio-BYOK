@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
@@ -60,5 +61,6 @@ function shellWorker(): Plugin {
   };
 }
 
+const appRevision = (()=>{try{return execFileSync('git',['rev-parse','--short=7','HEAD'],{encoding:'utf8'}).trim()}catch{return 'local'}})();
 const appVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
-export default defineConfig({ define: { __APP_VERSION__: JSON.stringify(appVersion) }, plugins: [react(), contractValidators(), shellWorker()] });
+export default defineConfig({ define: { __APP_REVISION__: JSON.stringify(appRevision), __APP_VERSION__: JSON.stringify(appVersion) }, plugins: [react(), contractValidators(), shellWorker()] });

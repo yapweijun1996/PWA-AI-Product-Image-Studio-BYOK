@@ -1,3 +1,4 @@
+import { t } from './ui/i18n';
 import { Button, Input } from './ui/components';
 import { Link } from "react-router-dom";
 import { useEffect, useState, type FormEvent } from "react";
@@ -56,10 +57,10 @@ export function BrowserKeyPanel() {
   }
   return (
     <section>
-      <h2>Bring your own OpenAI key</h2>
-      <p>Set up once for this tab. Uploading then starts up to seven paid requests to your OpenAI account.</p>
-      <p>Your key stays in memory for up to one hour and clears on refresh or exit. Browser extensions or malicious scripts can read it.</p>
-      <details><summary>Privacy and provider billing</summary><p>Requests go directly to OpenAI. Original product images and masks stay local; scene prompts are sent to the provider. Advanced projects may include selected product names, categories and confirmed facts. Use a dedicated project key and set spending limits in your OpenAI account.</p></details>
+      <h2>{t("Bring your own OpenAI key")}</h2>
+      <p>{t("Set up once for this tab. Uploading then starts up to seven paid requests to your OpenAI account.")}</p>
+      <p>{t("Your key stays in memory for up to one hour and clears on refresh or exit. Browser extensions or malicious scripts can read it.")}</p>
+      <details><summary>{t("Privacy and provider billing")}</summary><p>Requests go directly to OpenAI. Original product images and masks stay local; scene prompts are sent to the provider. Advanced projects may include selected product names, categories and confirmed facts. Use a dedicated project key and set spending limits in your OpenAI account.</p></details>
       <p role="status">
         {status.connected
           ? `Key available in this tab until ${status.expiresAt}. It has not been verified with OpenAI.`
@@ -76,15 +77,9 @@ export function BrowserKeyPanel() {
               type="checkbox"
               checked={recovery}
               onChange={(e) => setRecovery(e.target.checked)}
-            />
-            I checked provider billing and waiting periods for interrupted
-            requests and authorize new uploads. Previous outcomes remain unknown
-            and will not be retried.
-          </label>
+            />{t("I checked provider billing and waiting periods for interrupted requests and authorize new uploads. Previous outcomes remain unknown and will not be retried.")}</label>
         )}
-        <label>
-          OpenAI API key
-          <Input
+        <label>{t("OpenAI API key")}<Input
             type="password"
             value={value}
             autoComplete="off"
@@ -93,9 +88,7 @@ export function BrowserKeyPanel() {
             onChange={(e) => setValue(e.target.value)}
           />
         </label>
-        <label>
-          Session estimate limit (USD)
-          <Input
+        <label>{t("Session estimate limit (USD)")}<Input
             type="number"
             min="0.01"
             max="1000"
@@ -109,18 +102,13 @@ export function BrowserKeyPanel() {
             type="checkbox"
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
-          />
-          I have rights to my uploads and authorize up to seven potentially
-          billable image requests per upload within this session estimate limit.
-          Estimates are not a hard provider spending cap.
-        </label>
+          />{t("I have rights to my uploads and authorize up to seven potentially billable image requests per upload within this session estimate limit. Estimates are not a hard provider spending cap.")}</label>
         <Button
           type="submit"
           disabled={!value.trim() || !consent || (hasHolds && !recovery)}
-        >
-          Set up session
-        </Button>
+        >{t("Set up session")}</Button>
       </form>
+      <div className="session-actions">
       <Button
         type="button"
         className="secondary-button"
@@ -129,22 +117,15 @@ export function BrowserKeyPanel() {
           clearBrowserKey();
           setValue("");
         }}
-      >
-        Clear key
-      </Button>
+      >{t("Clear key")}</Button>
       {status.connected && (
-        <p>
-          <Link className="primary-button" to="/">
-            Upload a product
-          </Link>
-        </p>
+        <>
+          <Link className="primary-button" to="/">{t("Upload a product")}</Link>
+        </>
       )}
+      </div>
       {error && <p role="alert">{error}</p>}
-      <p>
-        No automatic retries. A timeout or interrupted request may still be
-        charged. Reconnect after a refresh, inspect saved history and provider
-        billing before authorizing another attempt.
-      </p>
+      <p>{t("No automatic retries. A timeout or interrupted request may still be charged. Reconnect after a refresh, inspect saved history and provider billing before authorizing another attempt.")}</p>
     </section>
   );
 }

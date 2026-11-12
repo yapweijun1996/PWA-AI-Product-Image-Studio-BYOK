@@ -77,12 +77,12 @@ test('an old tab loads its cached lazy route after a user-activated two-build up
 
     served=b;
     assert.equal((await fetch(`${origin}/assets/${oldName}`)).status,404,'The server no longer serves the old lazy module.');
-    await evaluate(newTab,`navigator.serviceWorker.getRegistration().then(r=>r.update())`);
+    await evaluate(newTab,`document.querySelector('.sidebar-update button').click()`);
     await until(()=>evaluate(newTab,`navigator.serviceWorker.getRegistration().then(r=>!!r.waiting)`),'waiting version B');
     await until(()=>evaluate(newTab,`[...document.querySelectorAll('.update-notice button')].some(x=>x.textContent==='Update now')`),'user update prompt');
     await newTab.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
     await evaluate(newTab,`(() => {const observer=new MutationObserver(()=>{const spinner=document.querySelector('.update-spinner');if(spinner){sessionStorage.setItem('synthetic-update-motion',JSON.stringify({reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,animation:getComputedStyle(spinner).animationName,notice:document.querySelector('.update-notice')?.innerText}));observer.disconnect()}});observer.observe(document.body,{subtree:true,childList:true})})()`);
-    await evaluate(newTab,`[...document.querySelectorAll('.update-notice button')].find(x=>x.textContent==='Update now').click()`);
+    await evaluate(newTab,`document.querySelector('.sidebar-update button').click()`);
     await until(()=>evaluate(oldTab,`document.querySelector('.update-notice')?.innerText.includes('Reload when ready')`),'other tab update notice');
     const motion=await until(()=>evaluate(newTab,`JSON.parse(sessionStorage.getItem('synthetic-update-motion')||'null')`),'reduced-motion update indicator');
     assert.equal(motion.reduced,true,'The browser emulates reduced motion.');

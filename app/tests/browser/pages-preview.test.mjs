@@ -67,6 +67,29 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,`!!document.querySelector('h1') && document.body.innerText.includes('Settings')`),'settings route');
   await until(()=>evaluate(tab,'!!navigator.serviceWorker.controller'),'worker');
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'loaded key form');
+  assert.equal(await evaluate(tab,`document.documentElement.lang`),'en');
+  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.2\.1 · /);
+  for(const [lang,title] of [['zh','设置'],['ms','Tetapan'],['ja','設定'],['ko','설정'],['vi','Cài đặt'],['en','Settings']]){
+    await evaluate(tab,`document.querySelector('.language-control>.icon-button').click()`);
+    await until(()=>evaluate(tab,`!!document.querySelector('.language-options')`),'language choices');
+    await evaluate(tab,`document.querySelector('.language-option[lang="${lang}"]').click()`);
+    await until(()=>evaluate(tab,`document.querySelector('h1')?.textContent===${JSON.stringify(title)}`),`${lang} translated settings`);
+    assert.equal(await evaluate(tab,`localStorage.getItem('image-studio.language')`),lang);
+    await tab.call('Emulation.setDeviceMetricsOverride',{width:320,height:900,deviceScaleFactor:1,mobile:true});
+    assert.equal(await evaluate(tab,'document.documentElement.scrollWidth<=innerWidth'),true,`${lang} narrow settings`);
+  }
+  await evaluate(tab,`document.querySelector('.topbar-controls>.icon-button').click()`);
+  await until(()=>evaluate(tab,`document.documentElement.dataset.theme==='dark'`),'icon dark mode');
+  assert.equal(await evaluate(tab,`document.querySelector('meta[name="theme-color"]').content===getComputedStyle(document.documentElement).getPropertyValue('--page').trim()`),true);
+  await evaluate(tab,`document.querySelector('.topbar-controls>.icon-button').click()`);
+  await until(()=>evaluate(tab,`document.documentElement.dataset.theme==='light'`),'icon light mode');
+  await evaluate(tab,`window.__manualUpdateSentinel=true;document.querySelector('.sidebar-update button').click()`);
+  await until(()=>evaluate(tab,`document.querySelector('.sidebar-update [role=status]').textContent==='No new version found.'`),'manual update check');
+  assert.equal(await evaluate(tab,'window.__manualUpdateSentinel'),true,'Checking alone never reloads');
+  await evaluate(tab,`(()=>{window.__originalUpdate=ServiceWorkerRegistration.prototype.update;window.__originalTimeout=window.setTimeout;ServiceWorkerRegistration.prototype.update=()=>new Promise(()=>{});window.setTimeout=(fn,ms,...args)=>window.__originalTimeout(fn,ms===15000?10:ms,...args);document.querySelector('.sidebar-update button').click()})()`);
+  await until(()=>evaluate(tab,`document.querySelector('.sidebar-update [role=status]').textContent==='Update check failed. Try again.'&&!document.querySelector('.sidebar-update button').disabled`),'stalled update check recovers');
+  await evaluate(tab,`ServiceWorkerRegistration.prototype.update=window.__originalUpdate;window.setTimeout=window.__originalTimeout`);
+
   await evaluate(tab,`location.hash='#/help'`);
   await until(()=>evaluate(tab,`document.querySelector('h1')?.textContent==='Upload. Get your images.'`),'Pages help route');
   for(const width of [320,375,1280]){
@@ -103,6 +126,10 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await evaluate(tab, `document.querySelector('input[type=password]').closest('form').querySelector('input[type=checkbox]').click();document.querySelector('input[type=password]').closest('form').querySelector('button').click()`);
   await until(()=>evaluate(tab,`document.body.innerText.includes('Key available in this tab')`),'browser key connected');
   assert.equal(await evaluate(tab,`document.querySelector('input[type=password]').value`),'');
+  const actionSpacing=await evaluate(tab,`(()=>{const buttons=[...document.querySelector('.session-actions').children].map(e=>e.getBoundingClientRect());return buttons.length===2 && (buttons[1].left-buttons[0].right>=10 || buttons[1].top-buttons[0].bottom>=10)})()`);
+  assert.equal(actionSpacing,true,'Clear key and upload actions have a visible gap, including when wrapped');
+  if(process.env.STUDIO_ACTIONS_SCREENSHOT){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(process.env.STUDIO_ACTIONS_SCREENSHOT,Buffer.from(shot.data,'base64'));}
+
   await evaluate(tab,`(()=>{const Original=Worker;window.Worker=class extends Original{constructor(...args){super(...args);this.addEventListener('message',e=>{if(e.data?.diagnostic)window.__matteDiagnostic=e.data.diagnostic})}}})()`);
   await evaluate(tab,`location.hash='#/'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]') && !document.querySelector('input[aria-label="Upload product image"]').disabled`),'automatic uploader');

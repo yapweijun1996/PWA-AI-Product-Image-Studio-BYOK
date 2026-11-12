@@ -4,6 +4,9 @@ import { hasUnsavedChanges, UNSAVED_CHANGES_EVENT } from './useUnsavedChanges';
 type UpdateState = 'idle' | 'waiting' | 'activating' | 'activated-elsewhere' | 'cache-limit' | 'error';
 
 export function useServiceWorker() {
+  const [checkingUpdate,setCheckingUpdate]=useState(false);
+  const [checkMessage,setCheckMessage]=useState('');
+  const manualCheck=useRef(false);
   const [state, setState] = useState<UpdateState>('idle');
   const [blockedByDraft, setBlockedByDraft] = useState(false);
   const [clearingCaches, setClearingCaches] = useState(false);
@@ -52,7 +55,7 @@ export function useServiceWorker() {
       const worker = current?.installing;
       if (!worker) return;
       const onStateChange = () => {
-        if (!disposed && worker.state === 'installed' && navigator.serviceWorker.controller) setState('waiting');
+        if (!disposed && worker.state === 'installed' && navigator.serviceWorker.controller) {setState('waiting');setCheckMessage('New version available');}
         else if (!disposed && worker.state === 'redundant' && navigator.serviceWorker.controller) {
           setState((old) => old === 'cache-limit' ? old : 'error');
         }
@@ -100,7 +103,34 @@ export function useServiceWorker() {
     };
   }, []);
 
+  async function checkNow() {
+    if(manualCheck.current || requestedUpdate.current)return;
+    if(!navigator.onLine){setCheckMessage('Connect to check for updates.');return;}
+    const current=registration.current;
+    if(!current){setCheckMessage('Updates are unavailable in this session.');return;}
+    manualCheck.current=true;setCheckingUpdate(true);setCheckMessage('Checking…');
+    try {
+      let checkTimer:number|undefined;
+      try {await Promise.race([current.update(),new Promise<never>((_,reject)=>{checkTimer=window.setTimeout(()=>reject(new Error('Update check timed out.')),15000)})]);}
+      finally {if(checkTimer!==undefined)window.clearTimeout(checkTimer);}
+      const worker=current.installing;
+      if(worker && worker.state!=='installed' && worker.state!=='redundant'){
+        setCheckMessage('Installing update…');
+        await new Promise<void>((resolve,reject)=>{
+          const done=()=>{if(worker.state==='installed'||worker.state==='redundant'){cleanup();worker.state==='installed'?resolve():reject(new Error('Update installation failed.'))}};
+          const timer=window.setTimeout(()=>{cleanup();reject(new Error('Update check timed out.'))},30000);
+          const cleanup=()=>{window.clearTimeout(timer);worker.removeEventListener('statechange',done)};
+          worker.addEventListener('statechange',done);done();
+        });
+      }
+      if(current.waiting){setState('waiting');setCheckMessage('New version available');}
+      else setCheckMessage('No new version found.');
+    }catch{setCheckMessage('Update check failed. Try again.');}
+    finally{manualCheck.current=false;setCheckingUpdate(false);}
+  }
+
   function updateNow() {
+    if(requestedUpdate.current)return;
     if (hasUnsavedChanges()) {
       setBlockedByDraft(true);
       return;
@@ -176,5 +206,5 @@ export function useServiceWorker() {
     }
   }
 
-  return { state, updateNow, blockedByDraft, clearOldCaches, clearingCaches, cacheMessage, cacheCleanupAvailable };
+  return { state, checkNow, checkingUpdate, checkMessage, updateNow, blockedByDraft, clearOldCaches, clearingCaches, cacheMessage, cacheCleanupAvailable };
 }

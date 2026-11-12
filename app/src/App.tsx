@@ -1,3 +1,5 @@
+import { t, useLanguage, translateLabels } from './ui/i18n';
+import { TopbarControls } from './ui/TopbarControls';
 import { Button, Select } from './ui/components';
 import { GuideStep, ComponentGallery } from './ui/components';
 import { useScrollChrome } from './ui/useScrollChrome';
@@ -35,11 +37,13 @@ function initialTheme(): Theme {
 
 function useAppearance() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [dark,setDark] = useState(false);
 
   useEffect(() => {
     const preference = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       const dark = theme === 'dark' || (theme === 'system' && preference.matches);
+      setDark(dark);
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--page').trim());
     };
@@ -53,7 +57,7 @@ function useAppearance() {
     return () => preference.removeEventListener('change', apply);
   }, [theme]);
 
-  return { theme, setTheme };
+  return { theme, setTheme, dark };
 }
 
 function useNetworkStatus() {
@@ -77,22 +81,22 @@ function Mark() {
 
 function Settings({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) => void }) {
   return <>
-    <div className="eyebrow">PREFERENCES</div>
-    <h1>Settings</h1>
-    <p className="lead">Adjust the workspace to suit your environment.</p>
+    <div className="eyebrow">{t("PREFERENCES")}</div>
+    <h1>{t("Settings")}</h1>
+    <p className="lead">{t("Adjust the workspace to suit your environment.")}</p>
     {import.meta.env.MODE === 'pages' && <div className="provider-settings"><ProviderSessionPanel /></div>}
     <section className="settings-card" aria-labelledby="appearance-heading">
-      <div><span className="section-kicker">DISPLAY</span><h2 id="appearance-heading">Appearance</h2><p>Choose a theme or follow your device setting.</p></div>
-      <div className="setting-control"><label htmlFor="theme">Theme</label><Select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}><option value="system">Use device setting</option><option value="light">Light</option><option value="dark">Dark</option></Select></div>
+      <div><span className="section-kicker">DISPLAY</span><h2 id="appearance-heading">{t("Appearance")}</h2><p>{t("Choose a theme or follow your device setting.")}</p></div>
+      <div className="setting-control"><label htmlFor="theme">{t("Theme")}</label><Select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}><option value="system">{t("Use device setting")}</option><option value="light">{t("Light")}</option><option value="dark">{t("Dark")}</option></Select></div>
     </section>
     {import.meta.env.MODE !== 'pages' && <div className="provider-settings"><ProviderSessionPanel /></div>}
   </>;
 }
 
 function Help() {
-  if(import.meta.env.MODE === 'pages') return <><div className="eyebrow">GUIDE</div><h1>Upload. Get your images.</h1><p className="lead">One product photo becomes seven complete looks.</p><div className="guide-list"><GuideStep number="01" title="Set up this tab"><p>Add your OpenAI key and authorize a session estimate limit. Your key stays in memory and clears on refresh or exit.</p><Link className="text-link" to="/settings">Session settings</Link></GuideStep><GuideStep number="02" title="Upload a product photo"><p>Upload starts automatic selection, scene generation and product composition. No product forms, masks, scores or approval steps. First-use selection tools may take longer to download; no image request is sent until product preparation succeeds.</p></GuideStep><GuideStep number="03" title="Download your images"><p>Results appear as they finish. Download one image or all finished images as a ZIP. Partial failures keep successful results and do not cause automatic paid retries. Automated selection and resizing may affect fine details; outputs are not human-reviewed.</p><Link className="primary-button" to="/">Upload image</Link></GuideStep></div><details><summary>Previous projects, installation and recovery</summary><p>Install this app from your browser menu, or use Share → Add to Home Screen on iPhone. After an online visit has cached the app, saved images can be viewed and downloaded offline. Generation requires a connection. Installed and browser copies may keep separate local data.</p><p>Saved uploads and originals stay in this browser. Use the homepage’s previous uploads section to reopen them. A disconnected or ambiguous paid request pauses new uploads; check billing and use the exceptional recovery consent in Settings to authorize new requests. The original outcome remains unknown.</p><Link to="/workspace">Advanced workspace and existing projects</Link></details></>;
+  if(import.meta.env.MODE === 'pages') return <><div className="eyebrow">{t("GUIDE")}</div><h1>{t("Upload. Get your images.")}</h1><p className="lead">{t("One product photo becomes seven complete looks.")}</p><div className="guide-list"><GuideStep number="01" title={t("Set up this tab")}><p>Add your OpenAI key and authorize a session estimate limit. Your key stays in memory and clears on refresh or exit.</p><Link className="text-link" to="/settings">{t("Session settings")}</Link></GuideStep><GuideStep number="02" title={t("Upload a product photo")}><p>Upload starts automatic selection, scene generation and product composition. No product forms, masks, scores or approval steps. First-use selection tools may take longer to download; no image request is sent until product preparation succeeds.</p></GuideStep><GuideStep number="03" title={t("Download your images")}><p>Results appear as they finish. Download one image or all finished images as a ZIP. Partial failures keep successful results and do not cause automatic paid retries. Automated selection and resizing may affect fine details; outputs are not human-reviewed.</p><Link className="primary-button" to="/">{t("Upload image")}</Link></GuideStep></div><details><summary>Previous projects, installation and recovery</summary><p>Install this app from your browser menu, or use Share → Add to Home Screen on iPhone. After an online visit has cached the app, saved images can be viewed and downloaded offline. Generation requires a connection. Installed and browser copies may keep separate local data.</p><p>Saved uploads and originals stay in this browser. Use the homepage’s previous uploads section to reopen them. A disconnected or ambiguous paid request pauses new uploads; check billing and use the exceptional recovery consent in Settings to authorize new requests. The original outcome remains unknown.</p><Link to="/workspace">Advanced workspace and existing projects</Link></details></>;
   return <>
-    <div className="eyebrow">GUIDE</div>
+    <div className="eyebrow">{t("GUIDE")}</div>
     <h1>Get started</h1>
     <p className="lead">Create and review a product image in your local workspace.</p>
     <section className="notice" aria-labelledby="availability-heading"><h2 id="availability-heading">Current availability</h2><p>{import.meta.env.MODE === 'pages' ? 'This Pages build supports direct OpenAI generation with your own key. Add it in Settings for this tab; requests can incur charges. Local editing works offline, while generation needs a connection. The Pi agent is not part of this browser path.' : 'This is a local development build. The Pi agent and remote mobile gateway are not available yet. The current gateway works only on the same device at its 127.0.0.1 address; use synthetic credentials until the required security review is complete.'}</p></section>
@@ -113,12 +117,14 @@ function NotFound() {
 }
 
 function pageTitle(pathname: string): string {
-  const pages: Array<[string, string]> = [['/', import.meta.env.MODE === 'pages' ? 'Create' : 'Workspace'], ['/images', 'My images'], ['/design-system', 'Design system'], ['/workspace', 'Advanced workspace'], ['/settings', 'Settings'], ['/help', 'Help & guide'], ['/import', 'Import backup'], ['/products/new', 'Create a product'], ['/products/:productId', 'Product workspace']];
+  const pages: Array<[string, string]> = [['/', import.meta.env.MODE === 'pages' ? t("Create") : 'Workspace'], ['/images', t("My images")], ['/design-system', 'Design system'], ['/workspace', t("Advanced workspace")], ['/settings', t("Settings")], ['/help', t("Help & guide")], ['/import', 'Import backup'], ['/products/new', 'Create a product'], ['/products/:productId', 'Product workspace']];
   return pages.find(([pattern]) => matchPath(pattern, pathname))?.[1] ?? 'Page not found';
 }
 
 export function App() {
-  const { theme, setTheme } = useAppearance();
+  const language=useLanguage();
+  useEffect(translateLabels,[language]);
+  const { theme, setTheme, dark } = useAppearance();
   const location = useLocation();
   const navigationType = useNavigationType();
   const previousPath = useRef(location.pathname);
@@ -131,7 +137,7 @@ export function App() {
       window.scrollTo(0, 0);
       mainContent.current?.focus({ preventScroll: true });
     }
-  }, [location.pathname, location.hash, navigationType]);
+  }, [location.pathname, location.hash, navigationType, language]);
   const online = useNetworkStatus();
   const update = useServiceWorker();
   const chrome = useScrollChrome();
@@ -140,29 +146,29 @@ export function App() {
     <aside className="sidebar">
       <Link to="/" className="brand"><Mark/><span><strong>IMAGE STUDIO</strong><small>Product workspace</small></span></Link>
       <nav className="navigation" aria-label="Main navigation">
-        <NavLink to="/" end>{import.meta.env.MODE === 'pages' ? 'Create' : 'Workspace'}</NavLink>{import.meta.env.MODE === 'pages' && <NavLink to="/images">My images</NavLink>}<NavLink to="/settings">Settings</NavLink><NavLink to="/help">Help &amp; guide</NavLink>
+        <NavLink to="/" end>{import.meta.env.MODE === 'pages' ? t("Create") : 'Workspace'}</NavLink>{import.meta.env.MODE === 'pages' && <NavLink to="/images">{t("My images")}</NavLink>}<NavLink to="/settings">{t("Settings")}</NavLink><NavLink to="/help">{t("Help & guide")}</NavLink>
       </nav>
-      <p className="sidebar-note">Made for a more<br/>considered image.</p>
+      <div className="sidebar-update"><span className="app-version">v{__APP_VERSION__} · {__APP_REVISION__}</span><Button className="secondary-button" type="button" pending={update.checkingUpdate || update.state==='activating'} onClick={()=>update.state==='waiting'||update.state==='activated-elsewhere'?update.updateNow():void update.checkNow()}>{t(update.state==='activating'?'Updating application…':update.checkingUpdate?'Checking…':update.state==='waiting'?'Update now':update.state==='activated-elsewhere'?'Reload when ready':'Check for updates')}</Button><span role="status">{t(update.checkMessage)}</span></div>
     </aside>
     <div className="content-shell">
-      <header className={`topbar ${chrome.hidden ? "topbar-hidden" : ""}`}><span>PRODUCT IMAGE STUDIO</span><span className="network" role="status"><span className={online ? 'network-dot' : 'network-dot offline'} aria-hidden="true"/>{online ? 'Browser online' : 'Browser offline'}</span></header>
+      <header className={`topbar ${chrome.hidden ? "topbar-hidden" : ""}`}><span>PRODUCT IMAGE STUDIO</span><span className="network" role="status"><span className={online ? 'network-dot' : 'network-dot offline'} aria-hidden="true"/>{online ? t("Browser online") : t("Browser offline")}</span><TopbarControls dark={dark} toggleTheme={()=>setTheme(dark?'light':'dark')}/></header>
       {update.state !== 'idle' && <section className="update-notice" aria-label="Application update" aria-live="polite">
         <div>
-          <strong>{update.state === 'activating' ? 'Updating application…' : update.state === 'cache-limit' ? 'Update paused: old app caches' : update.state === 'error' ? 'Update unavailable' : update.state === 'activated-elsewhere' ? 'New version active' : 'New version available'}</strong>
+          <strong>{update.state === 'activating' ? t("Updating application…") : update.state === 'cache-limit' ? 'Update paused: old app caches' : update.state === 'error' ? 'Update unavailable' : update.state === 'activated-elsewhere' ? 'New version active' : t("New version available")}</strong>
           <p>{update.blockedByDraft ? 'Save or discard your changes before continuing.' : update.state === 'cache-limit' ? 'Save your work and close every other app tab before clearing old application caches. Product data is not deleted. Older or still-loading tabs may stop working after cleanup.' : update.state === 'activating' ? 'Please keep this page open.' : update.state === 'error' ? 'The update could not be completed. Save your work, check your connection and reload when ready.' : update.state === 'activated-elsewhere' ? 'Save any work, then reload when ready to use the new version.' : 'Save any work before updating. This page will reload only when you choose to update.'}</p>
           {update.cacheMessage && <p role="status">{update.cacheMessage}</p>}
         </div>
         {update.state === 'activating' && <span className="update-spinner" aria-hidden="true" />}
-        {update.state === 'cache-limit' ? <div className="strict-actions"><Button type="button" disabled={update.clearingCaches || !update.cacheCleanupAvailable} onClick={() => void update.clearOldCaches()}>{update.clearingCaches ? 'Clearing old caches…' : 'Clear old app caches'}</Button><Button type="button" disabled={update.clearingCaches} onClick={update.updateNow}>Reload when ready</Button></div> :
+        {update.state === 'cache-limit' ? <div className="strict-actions"><Button type="button" disabled={update.clearingCaches || !update.cacheCleanupAvailable} onClick={() => void update.clearOldCaches()}>{update.clearingCaches ? 'Clearing old caches…' : 'Clear old app caches'}</Button><Button type="button" disabled={update.clearingCaches} onClick={update.updateNow}>{t("Reload when ready")}</Button></div> :
           update.state !== 'activating' && (update.state === 'error' || update.state === 'activated-elsewhere'
-            ? <Button type="button" onClick={update.updateNow}>Reload when ready</Button>
-            : <Button type="button" onClick={update.updateNow}>Update now</Button>)}
+            ? <Button type="button" onClick={update.updateNow}>{t("Reload when ready")}</Button>
+            : <Button type="button" onClick={update.updateNow}>{t("Update now")}</Button>)}
       </section>}
       <main id="main-content" tabIndex={-1} ref={mainContent}>
         <RouteErrorBoundary key={location.pathname}><Suspense fallback={<p role="status">Loading page…</p>}><Routes><Route path="/" element={import.meta.env.MODE === 'pages' ? <UploadStudio/> : <Workspace/>}/><Route path="/images" element={<ImageLibrary/>}/><Route path="/design-system" element={<ComponentGallery/>}/><Route path="/workspace" element={<Workspace/>}/><Route path="/import" element={<BackupImport/>}/><Route path="/products/new" element={<NewProduct/>}/><Route path="/products/:productId" element={<ProductDetails/>}/><Route path="/settings" element={<Settings theme={theme} setTheme={setTheme}/>}/><Route path="/help" element={<Help/>}/><Route path="*" element={<NotFound/>}/></Routes></Suspense></RouteErrorBoundary>
       </main>
-      <footer><span>PRODUCT IMAGE STUDIO</span><Link to="/workspace">Advanced workspace</Link><span>Local-first by design</span></footer>
-      {chrome.showTop && <Button variant="secondary" className="scroll-top" onClick={()=>window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}>Back to top ↑</Button>}
+      <footer><span>PRODUCT IMAGE STUDIO</span><Link to="/workspace">{t("Advanced workspace")}</Link><span>{t("Local-first by design")}</span></footer>
+      {chrome.showTop && <Button variant="secondary" className="scroll-top" onClick={()=>window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}>{t("Back to top ↑")}</Button>}
     </div>
   </div>;
 }
