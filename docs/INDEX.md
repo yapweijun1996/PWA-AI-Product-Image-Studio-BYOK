@@ -23,3 +23,5 @@ Every architecture diagram and interface here is **proposed** unless a future ev
 Start with repository `AGENTS.md` and [AI_AGENT_HANDOFF](08-delivery/AI_AGENT_HANDOFF.md); execute one task ID at a time, update code evidence and SSOT documents together, and do not change user-confirmed product invariants without consent.
 
 The [Bug Register](../BUG.md) records verified defects and their remediation state.
+
+- [Subject-aware workflow implementation and acceptance](09-research/SUBJECT_AWARE_WORKFLOW_2026-11-12.md) — DEC-024, T-109–T-113; design and scoped evidence distinguished from real photographic acceptance.

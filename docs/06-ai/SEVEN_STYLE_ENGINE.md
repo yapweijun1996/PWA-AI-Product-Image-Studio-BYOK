@@ -57,3 +57,11 @@ STRICT uses this prompt for scene generation/advisory only; core product remains
 ## Seven-style fixture benchmark
 
 Each category: use same source/lock/model/quality; choose seven styles, QA every result, note impossible view/style exceptions, compare costs and veto rates. Product categories: packaged food, skincare, shoes, electronics, furniture. Do not cherry-pick only visually flattering successes.
+
+## Subject-aware automatic workflow — DEC-024
+
+The automatic v2 policy is separate from the Advanced preset contract above. Stable storage IDs retain versioned provenance: `flat_lay` displays Tabletop unless authentic top-view evidence supports an overhead result; `macro` means an authentic visible Detail crop, and can be unavailable; new-policy `billboard` displays Campaign and downloads the full advertisement artwork. A display mockup is a separate local derivative. Historical outputs retain their historical meaning and label.
+
+Reference mode first extracts bounded subject/view/detail regions from normalized source images. Local validation checks coordinates, known annotation overlap and subject grouping before preparing reference bytes. The full original remains unchanged. A reference sheet is not itself a suitable product Detail; unsupported or ambiguous regions must not be promoted into a successful Detail. An ambiguous subject can require one explicit selection. STRICT has only local foreground/geometry checks, not a claimed semantic understanding of the source.
+
+Studio, Hero, Lifestyle, Tabletop, Everyday and Campaign receive distinct composition plans. Detail uses source pixels without paid generation or invented fine structure. Source or output machine confidence is advisory, not calibrated identity proof. Technical decode checks, machine visual hints, local near-duplicate hints and human approval are distinct states. Regenerating one paid style preserves prior versions and issues only one new image attempt; its new bytes do not inherit the prior output's semantic findings.

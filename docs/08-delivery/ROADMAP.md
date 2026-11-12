@@ -44,3 +44,7 @@ The automatic Pages path now has a v0.4.0 A+C implementation; the earlier milest
 4. T-104/T-105: compact progress changes exist in A+C. Full preview/comparison and versioned single-result regeneration remain optional B scope and are not selected by A+C.
 
 Task status remains owned by [TASK](TASK.md). This track does not close physical-device, security, seller-pilot or production-release gates.
+
+## Current subject-aware redesign — DEC-024
+
+T-109–T-113 implement source understanding/preparation, differentiated style planning, authentic Detail and quality hints, preview/version/regeneration UX, and integration/release verification. Dependencies follow source identity → prepared references → per-style jobs → output-specific findings → downloadable history. Preserve monthly usage, persistent permission and PWA behavior. Local synthetic release evidence and real commercial-photography/device acceptance remain separate deliverables.

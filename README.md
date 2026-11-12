@@ -1,14 +1,23 @@
 # PWA-AI-Product-Image-Studio-BYOK
 
 **Version:** 7.0.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
-**Status:** limited application shell; product workflows and release remain incomplete · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
+**Status:** automatic image workspace and Advanced project workflow implemented; subject-aware redesign locally verified; real-provider fidelity and installed-device acceptance remain open · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
 **Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
 
-> The `app/` directory provides local SKU projects, confirmed facts, immutable source-image upload, manual masks, full-project backup, an offline/update worker and a loopback-only development gateway. A default-disabled seven-style queue can produce separately authorized, unapproved scenes and locally composite selected source pixels. **Known fidelity gap:** an incorrect mask can expose background content over product labels; selected protected areas are checked, but the app cannot determine whether every required label has been selected or remains readable. See [BUG-007](BUG.md); do not treat existing approvals as proof of protected-region coverage. The displayed prompt sends the product name, category and selected confirmed facts to the provider; original images and masks remain local. Human style-specific review and a separate decision are required before conversion and output-only ZIP export; the output bundle is separate from the full project backup. Imported review and attempt history is untrusted; restored outputs require fresh local review. Synthetic tests do not establish real-SKU fidelity, production security or installed-device acceptance. The self-hosted gateway retains its isolation/security release gates. Pages browser BYOK is separately owner-authorized; real-provider acceptance is still unverified. Eligible local UNKNOWN attempts can be acknowledged without rewriting their outcome; generation and interrupted-submission review require browser Web Locks.
+## Current automatic workspace
+
+Create, My images, Settings and Help are the primary routes. Browser BYOK credentials and one-time upload permission persist locally until removal; monthly usage is a **local estimate**, with an optional monthly limit rather than a repeated session setup. The Advanced workflow described below retains its separate review/backup contracts. See DEC-021 through DEC-024 for the newer automatic-workspace decisions; the opening historical description is not the current automatic upload flow.
+
+App v0.5.0 implements the subject-aware redesign under T-109–T-113, with scoped synthetic and browser verification. It separates source preparation, image generation, local Detail and machine quality hints. STRICT keeps source image pixels local. Optional reference mode adds bounded source analysis and output review and requires the expanded transmission consent. Model hints are not product-fidelity certification. Current source, test results and the task ledger govern implementation status; a design decision alone does not establish successful deployment.
+
+## Advanced workspace scope
+
+> The Advanced workspace provides local SKU projects, confirmed facts, immutable source-image upload, manual masks, full-project backup, an offline/update worker and a loopback-only development gateway. A default-disabled seven-style queue can produce separately authorized, unapproved scenes and locally composite selected source pixels. **Known fidelity gap:** an incorrect mask can expose background content over product labels; selected protected areas are checked, but the app cannot determine whether every required label has been selected or remains readable. See [BUG-007](BUG.md); do not treat existing approvals as proof of protected-region coverage. The displayed prompt sends the product name, category and selected confirmed facts to the provider; original images and masks remain local. Human style-specific review and a separate decision are required before conversion and output-only ZIP export; the output bundle is separate from the full project backup. Imported review and attempt history is untrusted; restored outputs require fresh local review. Synthetic tests do not establish real-SKU fidelity, production security or installed-device acceptance. The self-hosted gateway retains its isolation/security release gates. Pages browser BYOK is separately owner-authorized; real-provider acceptance is still unverified. Eligible local UNKNOWN attempts can be acknowledged without rewriting their outcome; generation and interrupted-submission review require browser Web Locks.
 
 The style queue displays the number of potentially billable calls and supports estimate-only per-attempt and browser-tab session soft limits with separate one-attempt overrides. Synthetic responses can record sanitized usage and a snapshot-based estimate; these are not the provider invoice or an account-wide spending cap.
 
 Per-style retry preserves the previous attempt and uses a fresh consent, UUID and gateway approval; a reviewed UNKNOWN is not rewritten as success. The history can compare same-style scenes and saved local composites, and approved output provenance includes the immediate retry parent. A recorded rate-limit delay is enforced only within the same browser profile; it is not a provider-wide cap.
+
 
 ## Start here
 
@@ -46,7 +55,7 @@ Per-style retry preserves the previous attempt and uses a fresh consent, UUID an
 
 Root `SPEC.md`, `DESIGN.md`, `EPIC.md`, `ROADMAP.md` and `TASK.md` are **pointers**, not copies of normative content. They exist for code agents expecting conventional names.
 
-## Run the application shell
+## Run the application
 
 ```bash
 cd app

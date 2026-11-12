@@ -8,7 +8,7 @@
   "scopeNote": "The status and appTestsRun fields describe this documentation package and its validator, not the separate app/ tree. See docs/08-delivery/TASK.md for scoped application implementation and test evidence.",
   "liveProviderCalls": true,
   "deploymentDone": false,
-  "fileCountHashed": 136,
+  "fileCountHashed": 137,
   "excludedSelfReferentialMetadata": [
     "package-manifest.json",
     "SHA256SUMS.txt",
@@ -22,8 +22,8 @@
     },
     {
       "path": ".github/workflows/pages.yml",
-      "bytes": 1879,
-      "sha256": "58ad06bae00e4c3b6e3078a892bea1756aa26717e27214a07ab33e6b10a840d5"
+      "bytes": 1907,
+      "sha256": "5578ce276d910caa85513b4e83f9c6f34cc57fe336a3763c3705ebf486ff2a58"
     },
     {
       "path": ".gitignore",
@@ -32,8 +32,8 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 4223,
-      "sha256": "d20a9a35b92fb9daa8b9439ad03e8ab58daa57490c3511081c5f0c8c30ca7c4b"
+      "bytes": 4576,
+      "sha256": "76b4e36933993bccdff0328419f148da3f0bf1f201f8684299d1c09f14dacc75"
     },
     {
       "path": "BUG.md",
@@ -52,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 14406,
-      "sha256": "7674895594cd8cb8b9bc7f4b4c6cb9d231c4291a17e6636d81a02a1125840915"
+      "bytes": 15623,
+      "sha256": "61792a61339fbf2d2ea0363bf6378c69f6145aeaf788e5170f4cff0af6bcdfce"
     },
     {
       "path": "ROADMAP.md",
@@ -107,13 +107,13 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 9797,
-      "sha256": "28afbf1fd8ca83b838fd7de5f90eb79dad3accd9117aff2fed6a90b82532bc4a"
+      "bytes": 11582,
+      "sha256": "93eb0ee502696f894d33517d1c81ff39e99cc6633990b1c885aac13fb742822e"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
-      "bytes": 5393,
-      "sha256": "3de0a4d1dd8be3219f2c4970b925a0e70abf31f4d813411a5af43e78f291ad94"
+      "bytes": 6853,
+      "sha256": "cfa6ea37b5799f949ac8608970e247a32109271bc2ac051ff74110f6eeaa0694"
     },
     {
       "path": "docs/00-governance/GLOSSARY.md",
@@ -147,8 +147,8 @@
     },
     {
       "path": "docs/01-product/PRD.md",
-      "bytes": 6159,
-      "sha256": "5e4abff7a18442ab2760ee226665744da34b5e9c57b37737806cc9af9dcdda96"
+      "bytes": 7496,
+      "sha256": "a9598517efac778701d1972624f7825aec0cf9b78c69b85ca12768f3dee11593"
     },
     {
       "path": "docs/01-product/USER_FLOWS.md",
@@ -162,8 +162,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 51857,
-      "sha256": "fd51292cf8c24bda29172248eac06176d46ba47000302abc205efd93eed17e2c"
+      "bytes": 55129,
+      "sha256": "35c132e567c568df8c9e0fe462627f3104502661da15f3e6147263fce949c2cb"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -207,8 +207,8 @@
     },
     {
       "path": "docs/03-security/THREAT_MODEL.md",
-      "bytes": 7000,
-      "sha256": "0194c1635c2683035650bb7195bfac0b854c272add2e0dd299d6fe9ccd956708"
+      "bytes": 8767,
+      "sha256": "d144a16c5cb0e16876a09c5b49da65c713368b82e5fcc857c71b82571ee9777b"
     },
     {
       "path": "docs/04-data/DATA_MODEL.md",
@@ -252,8 +252,8 @@
     },
     {
       "path": "docs/06-ai/SEVEN_STYLE_ENGINE.md",
-      "bytes": 7325,
-      "sha256": "deabcf6fe539521acc0539378db2a985f2bc8a8b751e4c8fa566732f7b3fbd8c"
+      "bytes": 8938,
+      "sha256": "c3d4d9c97f57c66370cb5761707c972ca248f5ff600f215e1ce5cfc1a9298e59"
     },
     {
       "path": "docs/06-ai/VISUAL_QA.md",
@@ -282,8 +282,8 @@
     },
     {
       "path": "docs/07-quality/TEST_STRATEGY.md",
-      "bytes": 4822,
-      "sha256": "89cdf92f9e0f4746ca36aeb353f045575879adccdc3e7b9229c18bbf12566a5b"
+      "bytes": 6194,
+      "sha256": "52ae057d7c79f3d3415e76f42a6345d75ae6c5f8dd9926fb16b121b688004f02"
     },
     {
       "path": "docs/08-delivery/AI_AGENT_HANDOFF.md",
@@ -302,13 +302,13 @@
     },
     {
       "path": "docs/08-delivery/ROADMAP.md",
-      "bytes": 5123,
-      "sha256": "6e1208db0673ee12900def11bb8939f66ff6995b92cbb83c262e3a0e035dc11c"
+      "bytes": 5678,
+      "sha256": "20f44cc5f7735e370bfaa46c618e1189b6b23b8c208ea74fc0f6e76e7ace9d08"
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 342021,
-      "sha256": "5673bf1a9854f54eb4063c0fbe89e44b11a46be934d99b3ad000fd92ef9b3116"
+      "bytes": 345851,
+      "sha256": "8f51da025ba240f8b399d48915783c2481663d03a4508ae11ab405f2e1f65279"
     },
     {
       "path": "docs/09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md",
@@ -337,8 +337,8 @@
     },
     {
       "path": "docs/09-research/COST_MODEL.md",
-      "bytes": 3942,
-      "sha256": "2c19ebb076143c67be1bfd50e36b37ce75f2503ed16f05f6d0e028461f9c14bb"
+      "bytes": 5434,
+      "sha256": "264a546ac38f6d49456826867ed19b0b7448a863031c752ff0d04c5492d822d6"
     },
     {
       "path": "docs/09-research/PERSONA_REVIEW_2026-10-30.md",
@@ -362,13 +362,18 @@
     },
     {
       "path": "docs/09-research/SOURCES.md",
-      "bytes": 6348,
-      "sha256": "e7757af1f0221aabd55be52c8d026149815c5d7910595ad9e40753fa17089a17"
+      "bytes": 7215,
+      "sha256": "e99b9576885fce24f54f849c7d1dc050ec6b2d9b3e9176e3ede2775517d648c3"
     },
     {
       "path": "docs/09-research/SPIKE_TEST_PLAN.md",
       "bytes": 22003,
       "sha256": "cec2c679c0d1efeee5176c350af4169865c3e5466292f10776ecf01947e339fb"
+    },
+    {
+      "path": "docs/09-research/SUBJECT_AWARE_WORKFLOW_2026-11-12.md",
+      "bytes": 11814,
+      "sha256": "3a63d16704fb2bcea76791941dfdd53446a4185cce64831b57211da7e5b35821"
     },
     {
       "path": "docs/09-research/UI_UX_LAYOUT_RESEARCH.md",
@@ -647,8 +652,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "bytes": 2779,
-      "sha256": "f331adf1dbbf30b2e989ca1ad443744e0a07d4b1f873c3f2c355cdf785004437"
+      "bytes": 2991,
+      "sha256": "9432f7c6d306dc9dc90597e36de3a9ba079722e840bada4ed7cf691c1d420b62"
     },
     {
       "path": "fixtures/cost-scenario.json",

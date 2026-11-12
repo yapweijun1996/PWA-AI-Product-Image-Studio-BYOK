@@ -1,5 +1,7 @@
 # Evidence Status and Limitations
 
+The initial table records historical shell-era evidence. Later dated sections and the task ledger supersede it for the automatic Pages workspace; do not read historical “not implemented” entries as a current source audit. The subject-aware redesign is tracked in [its implementation report](../09-research/SUBJECT_AWARE_WORKFLOW_2026-11-12.md), with scoped local verification recorded; deployment requires the exact main-revision workflow and live-version evidence.
+
 | Subject | Current evidence | Not verified / not claimed |
 |---|---|---|
 | Repository | The React/Vite app supports local SKU creation, confirmed facts, source upload and manual mask editing; task commits and remaining acceptance are in the [task ledger](../08-delivery/TASK.md). | No complete generation workflow or deployment. Working-tree and remote state can change; recheck before work. |
@@ -30,3 +32,7 @@ Owner selection confirms DEC-022/ADR-022. App v0.4.0 implements automatic-only s
 ## 2026-11-12 — Persistent upload permission and monthly local usage
 
 DEC-023/T-108 replace repeated session-budget setup with one-time credential-bound permission and optional monthly estimate limits. Full unit suite: 324/324 PASS. Independent synthetic ledger/identity probes and actual-browser monthly flow passed; the browser review recorded 14 checks and 27 screenshots. An initial direct-Create reload readiness race was repaired and retested. Sidebar empty-status space is removed while update feedback remains outside layout flow. These checks establish local behavior, not real provider billing or account-wide monthly usage. No real credentials or paid requests were used. Physical-device and commercial-photography acceptance remain open; this UX change does not close them.
+
+## 2026-11-12 — Subject-aware workflow v0.5.0
+
+DEC-024/T-109–T-113 add bounded reference source analysis, validated subject crops, truthful Detail availability, category-aware scene plans, Campaign artwork, output-specific machine hints, duplicate warnings, preview/comparison and immutable single-item regeneration. Source/schema/transport/storage/ledger boundaries and image-first multilingual layouts have synthetic tests plus independent Chromium/security review. Full Node suite 335/335 and additional final targeted checks 22/22 passed; normal browser checks 12/12 plus bundled-model smoke 1/1 passed. Seven independent browser QA drivers, 54 final screenshots and manager inspection supply scoped interface evidence. Real-provider recognition, photographic fidelity, actual invoices and physical installed-device acceptance remain unverified. Main/Pages release status is recorded separately in the [implementation report](../09-research/SUBJECT_AWARE_WORKFLOW_2026-11-12.md).

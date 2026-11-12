@@ -64,3 +64,12 @@ Single original camera view cannot yield guaranteed true unseen surfaces. Source
 ## Exit gate
 
 Pilot must demonstrate repeatably useful approved outputs across at least five distinct product categories, with measured **cost per approved asset**, identity veto rate, time-to-approve and customer willingness to use. Define release decision after pilot rather than assuming success.
+
+
+## Owner-approved automatic workflow redesign — DEC-024
+
+The automatic Pages experience should be upload → understand the source → create distinct results → preview/download. Normal use has no product-fact form, manual mask, per-style approval or repeated budget setup. A truly ambiguous source may require one main-subject choice. Source boards and annotations must not be mistaken for product detail. STRICT remains local/image-private and cannot claim semantic verification; reference analysis requires explicit image-transmission consent and visible inclusive cost estimates.
+
+Seven canonical style slots represent Studio, Hero, Lifestyle, Tabletop, Detail, Everyday and new-policy Campaign artwork. Detail may be unavailable rather than fabricated; the result summary reports downloadable/attention/unavailable counts instead of implying seven commercially accepted images. Campaign display mockups and user-entered copy are optional local derivatives. Preview, source comparison and a user-confirmed single-item new attempt preserve old versions; no quality finding triggers paid regeneration automatically.
+
+Implementable behavior and verification are tracked under T-109–T-113. This desired product contract does not establish recognition accuracy, photographic quality, brand fidelity or real provider availability.

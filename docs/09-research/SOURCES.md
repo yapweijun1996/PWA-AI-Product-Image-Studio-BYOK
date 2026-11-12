@@ -67,3 +67,9 @@
 ## Verification policy
 
 Vendor model support, pricing, terms, API limits, rate limits and ecommerce platform image requirements are time-sensitive. Every actual release must record newly checked date and evidence. No source here promises commercial use authorization or regulatory compliance.
+
+## DEC-024 reference vision source check — 2026-11-12
+
+- [GPT-5.4 mini model documentation](https://developers.openai.com/api/docs/models/gpt-5.4-mini): image input, structured outputs, Responses and pinned snapshot `gpt-5.4-mini-2026-03-17`; Standard input USD0.75/million and output USD4.50/million. Checked for bounded source analysis/output review; no claim of account entitlement or successful authenticated request.
+- [Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs): strict schema integration. Actual installed AI SDK behavior was separately probed with fake fetch; schema declaration needs an explicit runtime validator for untrusted outputs.
+- Current image generation model remains unchanged. New source/image token allowances are local planning assumptions, not an official per-image quote or measured usage.

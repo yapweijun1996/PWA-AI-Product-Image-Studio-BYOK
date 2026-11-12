@@ -39,3 +39,11 @@ Semantic tests require a nonempty square visible Detail ROI smaller than the who
 ## Persistent upload authorization and monthly summary (DEC-023)
 
 Use dummy credentials and synthetic transport only. Verify legacy keys remain unauthorized until one opt-in, saved authorization survives reload, replacement/removal invalidates old identities across tabs, and reference transmission consent still resets. Optional cap checks and durable reservations must serialize concurrent uploads, survive interrupted outcomes and key changes, and use an explicit UTC-month boundary. Missing/corrupt storage fails closed; a disabled cap does not disable authorization or no-resend guards. Monthly summaries distinguish conservative reservations and locally recorded request-attempt estimates from provider billing. Check no mandatory budget form on ordinary repeat visits, readable summary layouts at phone/tablet/desktop widths in both themes, and no update-button position change or empty status row.
+
+## Subject-aware automatic workflow acceptance — T-109–T-113
+
+Exercise actual SDK requests with synthetic source-analysis/output-review fixtures: model/endpoint/purpose/hash/order/epoch binding; schema and geometry rejection; annotated boards, multiple products, invalid Detail and unknown camera; output-review failure and exact-output-hash binding. Confirm zero source-image egress in STRICT, all costs reserved before reference analysis, no hidden retries and one image call per regeneration.
+
+Browser acceptance must inspect the fresh built interface at 1440×900, 768×1024 and 390×844, with 320-pixel overflow checks; light/dark, six locales, keyboard focus/Escape, preview zoom/comparison, partial and unknown outcomes, persistence, immutable history and downloadable unsaved results. Test old-active-tab database upgrades, monthly usage/consent recovery, offline shell and user-driven updates. Each browser test file runs in a separate Node invocation to avoid the previously observed grouped-runner hang.
+
+Synthetic checks establish application behavior only. Real image quality, faithful brand labels, inferred regions, category suitability, production API behavior and physical iOS/Android installation require separate authorized evidence. Record these as open rather than treating a mock review score or downloaded file count as photography acceptance.
