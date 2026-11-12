@@ -235,3 +235,41 @@ test("category-aware evidence changes safe context while STRICT stays neutral", 
     /No billboard, display, frame/,
   );
 });
+
+test("outbound source schema agrees with normalized bounds, IDs and array caps; containment remains local", async () => {
+  const { visionResponseSchema } = await import("../vision-policy.mjs");
+  const { default: Ajv } = await import("ajv");
+  const schema = visionResponseSchema("source-analysis", 1),
+    validate = new Ajv({ strict: false }).compile(schema);
+  const good = source();
+  assert.equal(validate(good), true);
+  for (const mutate of [
+    (s) => (s.subjects[0].id = "shoe_0"),
+    (s) => (s.subjects[0].group = "g0"),
+    (s) => (s.subjects[0].box.x = 27),
+    (s) => (s.subjects[0].imageIndex = 1),
+    (s) => (s.confidence = 1.1),
+    (s) => (s.subjects[0].box.width = 0.001),
+    (s) =>
+      (s.subjects[0].views = Array(3).fill(
+        s.subjects[0].views[0] ?? {
+          imageIndex: 0,
+          box: s.subjects[0].box,
+          camera: "front",
+          confidence: 0.9,
+        },
+      )),
+  ]) {
+    const bad = structuredClone(good);
+    mutate(bad);
+    assert.equal(validate(bad), false);
+    assert.throws(() => validateSourceAnalysis(bad, 1));
+  }
+  const overlap = structuredClone(good);
+  overlap.subjects[0].detailBox = null;
+  overlap.subjects[0].box = { x: 0.8, y: 0.2, width: 0.3, height: 0.6 };
+  assert.equal(validate(overlap), true);
+  assert.throws(() => validateSourceAnalysis(overlap, 1));
+  assert.match(visionPrompt("source-analysis"), /NEVER pixels/);
+  assert.match(visionPrompt("source-analysis"), /s1\.\.s6/);
+});

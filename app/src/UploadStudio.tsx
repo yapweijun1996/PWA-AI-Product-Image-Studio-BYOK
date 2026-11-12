@@ -547,9 +547,12 @@ export function UploadStudio() {
               <p className="gallery-quality-note" role="status">
                 {t(
                   run.auxiliary?.find((a) => a.kind === "output-review")
-                    ?.error === "QUALITY_UNAVAILABLE"
-                    ? "QUALITY_UNAVAILABLE"
-                    : "Visual quality not assessed. Technical checks are not brand approval.",
+                    ?.error === "OUTPUT_REVIEW_INVALID"
+                    ? "OUTPUT_REVIEW_INVALID"
+                    : run.auxiliary?.find((a) => a.kind === "output-review")
+                          ?.error === "QUALITY_UNAVAILABLE"
+                      ? "QUALITY_UNAVAILABLE"
+                      : "Visual quality not assessed. Technical checks are not brand approval.",
                 )}
               </p>
             )}

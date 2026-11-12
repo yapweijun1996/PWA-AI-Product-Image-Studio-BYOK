@@ -1,5 +1,10 @@
 // Automatic results and lifecycle copy. Array order: zh, ms, ja, ko, vi.
 export const resultEnglish: Record<string, string> = {
+  SOURCE_ANALYSIS_INVALID:
+    "Analysis completed, but its subject regions could not be used. This request may be billed. No image edit was sent or automatically retried. Choose a clearer single-product photo and start a new upload.",
+  OUTPUT_REVIEW_INVALID:
+    "Visual review completed, but its findings could not be used. It may be billed. Your images are kept and remain unassessed. Compare them with the source; no automatic retry.",
+
   MONTHLY_LIMIT_REACHED:
     "This upload exceeds your optional monthly local estimate limit. Change or turn off the limit in Settings.",
   SOURCE_INVALID:
@@ -92,6 +97,21 @@ export const resultEnglish: Record<string, string> = {
     "The result could not be decoded safely and is unavailable.",
 };
 export const resultMessages: Record<string, readonly string[]> = {
+  SOURCE_ANALYSIS_INVALID: [
+    "分析已完成，但返回的商品区域无法使用。此请求仍可能计费，未发送图像编辑，也不会自动重试。请选择更清晰的单商品照片，重新上传。",
+    "Analisis selesai tetapi kawasan subjek tidak boleh digunakan. Permintaan ini mungkin dicaj. Tiada suntingan imej dihantar atau cubaan semula automatik. Pilih foto satu produk yang lebih jelas dan muat naik semula.",
+    "分析は完了しましたが、商品の領域を利用できませんでした。このリクエストは課金される場合があります。画像編集の送信や自動再試行はありません。より鮮明な単一商品の写真で新しくアップロードしてください。",
+    "분석은 완료되었지만 제품 영역을 사용할 수 없습니다. 이 요청은 청구될 수 있습니다. 이미지 편집이나 자동 재시도는 전송되지 않았습니다. 더 선명한 단일 제품 사진을 새로 업로드하세요.",
+    "Phân tích đã hoàn tất nhưng không dùng được vùng sản phẩm. Yêu cầu này vẫn có thể tính phí. Chưa gửi chỉnh sửa ảnh và không tự thử lại. Hãy chọn ảnh một sản phẩm rõ hơn rồi tải lên mới.",
+  ],
+  OUTPUT_REVIEW_INVALID: [
+    "视觉检查已完成，但返回的结果无法使用，仍可能计费。图像已保留，视觉质量仍未评估。请与原图比较，不会自动重试。",
+    "Semakan visual selesai tetapi dapatan tidak boleh digunakan dan mungkin dicaj. Imej dikekalkan tanpa penilaian. Bandingkan dengan sumber; tiada cubaan semula automatik.",
+    "視覚確認は完了しましたが、結果を利用できず、課金される場合があります。画像は保持され、未評価のままです。元画像と比較してください。自動再試行はありません。",
+    "시각 검토는 완료되었지만 결과를 사용할 수 없으며 청구될 수 있습니다. 이미지는 보존되고 미평가 상태입니다. 원본과 비교하세요. 자동 재시도는 없습니다.",
+    "Đánh giá hình ảnh đã hoàn tất nhưng không dùng được kết quả và có thể tính phí. Ảnh được giữ lại, vẫn chưa đánh giá. Hãy so với nguồn; không tự thử lại.",
+  ],
+
   "YOUR LIBRARY": [
     "我的图库",
     "PUSTAKA ANDA",

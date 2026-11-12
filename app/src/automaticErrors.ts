@@ -1,5 +1,7 @@
 // Do not expose arbitrary decoder/provider/storage exception text in product UI.
 const codes = new Set([
+  "SOURCE_ANALYSIS_INVALID",
+  "OUTPUT_REVIEW_INVALID",
   "UPGRADE_WAIT_FOR_UPLOAD",
   "UPGRADE_CLOSE_IDLE_TABS",
   "UPGRADE_CHECK_UNAVAILABLE",

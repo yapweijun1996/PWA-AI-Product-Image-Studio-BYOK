@@ -74,3 +74,9 @@ export function safeSubjectViews(
   value: SourceAnalysis,
   subject: SourceSubject,
 ): SourceView[];
+
+export function visionResponseSchema(
+  purpose: VisionPurpose,
+  imageCount: number,
+  styles?: StudioStyleId[],
+): any;

@@ -148,10 +148,16 @@ async function invoke(
   });
   if (!response.ok) {
     const result = await response.json();
-    item.status =
-      result.error?.outcome === "DEFINITIVE_FAILURE" ? "FAILED" : "UNKNOWN";
-    item.error =
-      response.status === 401
+    item.status = ["DEFINITIVE_FAILURE", "DEFINITIVE_SUCCESS"].includes(
+      result.error?.outcome,
+    )
+      ? "FAILED"
+      : "UNKNOWN";
+    item.error = ["SOURCE_ANALYSIS_INVALID", "OUTPUT_REVIEW_INVALID"].includes(
+      result.error?.code,
+    )
+      ? result.error.code
+      : response.status === 401
         ? "API_KEY_REJECTED"
         : response.status === 429
           ? "PROVIDER_LIMIT"
@@ -378,7 +384,8 @@ async function reviewOutputs(
   } catch {
     if (attempt.status === "SUBMITTED") attempt.status = "UNKNOWN";
     else if (attempt.status === "PENDING") attempt.status = "FAILED";
-    attempt.error = "QUALITY_UNAVAILABLE";
+    if (attempt.error !== "OUTPUT_REVIEW_INVALID")
+      attempt.error = "QUALITY_UNAVAILABLE";
     run.qualityStatus = "NOT_ASSESSED";
   }
 }

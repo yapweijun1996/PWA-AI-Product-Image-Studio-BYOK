@@ -4,10 +4,12 @@ import { deflateSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-test("bounded Responses uses exact images and rejects invalid results without resend", async () => {
+test("Responses distinguishes completed unusable results from genuine UNKNOWN without resend or refunds", async () => {
   const root = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, ""),
     require = createRequire(root + "/package.json"),
-    { IDBFactory } = await import(require.resolve("fake-indexeddb"));
+    { IDBFactory, IDBObjectStore } = await import(
+      require.resolve("fake-indexeddb")
+    );
   globalThis.window = new EventTarget();
   const memory = new Map();
   globalThis.localStorage = {
@@ -140,6 +142,57 @@ test("bounded Responses uses exact images and rejects invalid results without re
     },
   ];
   cases[2].output.subjects[0].box.x = 2;
+  const pixel = {
+    classification: "single-product",
+    confidence: 0.99,
+    primaryId: "shoe_0",
+    subjects: [
+      {
+        id: "shoe_0",
+        group: "g0",
+        imageIndex: 0,
+        box: { x: 27, y: 44, width: 968, height: 597 },
+        detailBox: { x: 416, y: 242, width: 86, height: 86 },
+        category: "footwear",
+        camera: "three-quarter",
+        confidence: 0.99,
+        views: [],
+      },
+    ],
+    textRegions: [],
+  };
+  cases.push({
+    ...cases[2],
+    name: "owner reported completed pixel boxes and shoe_0 IDs",
+    output: pixel,
+  });
+  const crossField = structuredClone(source);
+  crossField.subjects[0].box = { x: 0.8, y: 0.1, width: 0.4, height: 0.8 };
+  crossField.subjects[0].detailBox = null;
+  cases.push({
+    ...cases[2],
+    name: "schema-valid fields but invalid containment",
+    output: crossField,
+  });
+  for (const transport of [
+    "incomplete-valid",
+    "incomplete-invalid",
+    "malformed-json",
+    "malformed-envelope",
+    "network",
+    "interrupted",
+    "missing-error",
+    "failed-status",
+    "journal-failure",
+    "ledger-failure",
+  ])
+    cases.push({
+      ...cases[2],
+      name: transport,
+      transport,
+      output: transport === "incomplete-valid" ? source : pixel,
+      unknown: true,
+    });
   const results = [];
   try {
     for (const scenario of cases) {
@@ -204,6 +257,44 @@ test("bounded Responses uses exact images and rejects invalid results without re
         assert.ok(!b.previous_response_id && !b.conversation);
         assert.equal(b.text.format.type, "json_schema");
         assert.equal(b.text.format.strict, true);
+        if (scenario.purpose === "source-analysis") {
+          const props = b.text.format.schema.properties,
+            subject = props.subjects.items.properties;
+          assert.deepEqual(subject.id.enum, [
+            "s1",
+            "s2",
+            "s3",
+            "s4",
+            "s5",
+            "s6",
+          ]);
+          assert.deepEqual(subject.group.enum, [
+            "g1",
+            "g2",
+            "g3",
+            "g4",
+            "g5",
+            "g6",
+          ]);
+          assert.equal(subject.imageIndex.maximum, scenario.sourceCount - 1);
+          assert.equal(subject.box.properties.x.minimum, 0);
+          assert.equal(subject.box.properties.x.maximum, 1);
+          assert.equal(subject.box.properties.width.minimum, 0.01);
+          assert.equal(props.subjects.maxItems, 6);
+          assert.equal(props.textRegions.maxItems, 24);
+          assert.equal(subject.views.maxItems, 2);
+        } else {
+          assert.deepEqual(
+            b.text.format.schema.properties.findings.items.properties.styleId
+              .enum,
+            scenario.styles,
+          );
+          assert.equal(
+            b.text.format.schema.properties.findings.maxItems,
+            scenario.styles.length,
+          );
+        }
+
         const images = b.input
           .flatMap((m) => m.content ?? [])
           .filter((c) => c.type === "input_image");
@@ -211,11 +302,30 @@ test("bounded Responses uses exact images and rejects invalid results without re
           images.map((i) => i.image_url.split(",")[1]),
           scenario.refs.map((i) => i.dataBase64),
         );
+        if (scenario.transport === "network")
+          throw Error("Synthetic connection loss");
+        if (scenario.transport === "interrupted")
+          return new Response(
+            new ReadableStream({
+              start(c) {
+                c.enqueue(new TextEncoder().encode('{"status":"completed",'));
+                c.error(Error("Synthetic interruption"));
+              },
+            }),
+          );
+        if (scenario.transport === "malformed-envelope")
+          return Response.json({ status: "completed", error: null });
         return Response.json({
           id: "resp_synthetic",
           object: "response",
           created_at: 1,
-          status: "completed",
+          status: scenario.transport?.startsWith("incomplete")
+            ? "incomplete"
+            : scenario.transport === "failed-status"
+              ? "failed"
+              : "completed",
+          ...(scenario.transport === "missing-error" ? {} : { error: null }),
+          incomplete_details: null,
           model: b.model,
           output: [
             {
@@ -226,7 +336,10 @@ test("bounded Responses uses exact images and rejects invalid results without re
               content: [
                 {
                   type: "output_text",
-                  text: JSON.stringify(scenario.output),
+                  text:
+                    scenario.transport === "malformed-json"
+                      ? "{broken"
+                      : JSON.stringify(scenario.output),
                   annotations: [],
                 },
               ],
@@ -273,6 +386,34 @@ test("bounded Responses uses exact images and rejects invalid results without re
         })
       ).json();
       assert.ok(approval.approvalId);
+      const originalPut = IDBObjectStore.prototype.put,
+        originalSet = localStorage.setItem;
+      if (scenario.transport === "journal-failure")
+        localStorage.setItem = (name, value) => {
+          if (
+            name === "studio.browser-byok.attempts.v1" &&
+            JSON.parse(value)[id]?.outcome === "DEFINITIVE_SUCCESS"
+          )
+            throw new DOMException(
+              "Synthetic journal quota",
+              "QuotaExceededError",
+            );
+          originalSet(name, value);
+        };
+      if (scenario.transport === "ledger-failure")
+        IDBObjectStore.prototype.put = function (value, ...args) {
+          if (
+            this.name === "usage" &&
+            value.attempts?.some(
+              (a) => a.id === id && a.outcome === "DEFINITIVE_SUCCESS",
+            )
+          )
+            throw new DOMException(
+              "Synthetic ledger quota",
+              "QuotaExceededError",
+            );
+          return originalPut.call(this, value, ...args);
+        };
       const init = {
           method: "POST",
           body: JSON.stringify(body),
@@ -283,20 +424,69 @@ test("bounded Responses uses exact images and rejects invalid results without re
         },
         response = await api.browserStudioRequest("/images/generate", init),
         result = await response.json();
+      localStorage.setItem = originalSet;
+      IDBObjectStore.prototype.put = originalPut;
+      const unusable = scenario.invalid && !scenario.unknown;
       if (scenario.invalid) {
-        assert.equal(result.error.outcome, "UNKNOWN");
+        const outcome = unusable ? "DEFINITIVE_SUCCESS" : "UNKNOWN";
+        assert.equal(result.error.outcome, outcome, scenario.name);
+        if (unusable) {
+          assert.equal(response.status, 422);
+          assert.equal(
+            result.error.code,
+            scenario.purpose === "source-analysis"
+              ? "SOURCE_ANALYSIS_INVALID"
+              : "OUTPUT_REVIEW_INVALID",
+          );
+          assert.equal(result.analysis, undefined);
+        }
         assert.equal(
           JSON.parse(memory.get("studio.browser-byok.attempts.v1"))[id].outcome,
-          "UNKNOWN",
+          outcome,
+          scenario.name,
         );
-        assert.equal((await ledger.readMonthlyUsage()).unknownRequests, 1);
         assert.equal(
-          (await api.browserStudioRequest("/images/generate", init)).status,
-          409,
+          (await ledger.readMonthlyUsage()).unknownRequests,
+          unusable ? 0 : 1,
+          scenario.name,
         );
       } else {
         assert.equal(response.status, 200);
         assert.deepEqual(result.analysis, scenario.output);
+      }
+      const usage = await ledger.readMonthlyUsage();
+      assert.equal(usage.reservedMicros, ledger.estimateMicros(amount));
+      assert.equal(usage.recordedRequests, 1);
+      assert.equal(
+        (await api.browserStudioRequest("/images/generate", init)).status,
+        409,
+        "No completed or unknown request is resent",
+      );
+      assert.ok(
+        !JSON.stringify([...memory]).includes("shoe_0"),
+        "Raw model result is not journaled",
+      );
+      if (scenario === cases[0]) {
+        const historicId = crypto.randomUUID(),
+          journal = JSON.parse(memory.get("studio.browser-byok.attempts.v1"));
+        journal[historicId] = { outcome: "UNKNOWN" };
+        memory.set("studio.browser-byok.attempts.v1", JSON.stringify(journal));
+        const next = { ...body, clientAttemptId: crypto.randomUUID() };
+        assert.equal(
+          (
+            await api.browserStudioRequest("/images/approvals", {
+              method: "POST",
+              body: JSON.stringify(next),
+            })
+          ).status,
+          409,
+        );
+        assert.equal(
+          JSON.parse(memory.get("studio.browser-byok.attempts.v1"))[historicId]
+            .outcome,
+          "UNKNOWN",
+          "Historical UNKNOWN is never retroactively reclassified",
+        );
       }
       assert.equal(calls, 1);
       results.push({

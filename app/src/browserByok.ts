@@ -14,13 +14,19 @@ import {
   type StoredCredential,
   type UploadAuthorization,
 } from "./browserCredentialStore.ts";
-import { generateImage, generateText, Output, jsonSchema } from "ai";
+import {
+  generateImage,
+  generateText,
+  Output,
+  jsonSchema,
+  NoObjectGeneratedError,
+  TypeValidationError,
+} from "ai";
 import {
   VISION_MODEL,
   VISION_POLICY_VERSION,
   VISION_MAX_OUTPUT_TOKENS,
-  SOURCE_ANALYSIS_SCHEMA,
-  OUTPUT_REVIEW_SCHEMA,
+  visionResponseSchema,
   visionPrompt,
   visionEstimateUSD,
   validateSourceAnalysis,
@@ -366,6 +372,48 @@ function validBody(b: Record<string, unknown>) {
   );
 }
 
+// SDK-validated envelope evidence is retained only in memory, within the existing
+// bounded response limit. HTTP 200 or a stop finish reason alone is insufficient.
+function completedVisionResponse(
+  response: { id?: string; body?: unknown } | undefined,
+  text: string | undefined,
+) {
+  const body = response?.body as Record<string, unknown> | undefined;
+  if (
+    !body ||
+    body.object !== "response" ||
+    typeof body.id !== "string" ||
+    !body.id ||
+    body.id !== response?.id ||
+    body.model !== VISION_MODEL ||
+    body.status !== "completed" ||
+    body.error !== null ||
+    body.incomplete_details != null ||
+    !Array.isArray(body.output) ||
+    typeof text !== "string" ||
+    !text
+  )
+    return false;
+  const messages = body.output.filter((part: any) => part?.type === "message");
+  return (
+    messages.length > 0 &&
+    messages.every(
+      (part: any) =>
+        part.role === "assistant" &&
+        part.status === "completed" &&
+        Array.isArray(part.content) &&
+        part.content.length > 0 &&
+        part.content.every(
+          (item: any) =>
+            item.type === "output_text" && typeof item.text === "string",
+        ),
+    ) &&
+    messages
+      .flatMap((part: any) => part.content.map((item: any) => item.text))
+      .join("") === text
+  );
+}
+
 // Local transport adapter for the existing attempt workflow. These receipts are
 // browser bookkeeping, never claims of server authorization or billing proof.
 export async function browserStudioRequest(
@@ -640,44 +688,81 @@ export async function browserStudioRequest(
         });
         if (isVision) {
           const source = body.visionPurpose === "source-analysis",
-            schema = source ? SOURCE_ANALYSIS_SCHEMA : OUTPUT_REVIEW_SCHEMA;
+            schema = visionResponseSchema(
+              body.visionPurpose as never,
+              Number(body.sourceReferenceCount),
+              body.reviewStyles as never,
+            );
           const validate = (value: unknown) =>
             source
               ? validateSourceAnalysis(value, referenceBytes.length)
               : validateOutputReview(value, body.reviewStyles as never);
-          const result = await generateText({
-            model: provider.responses(VISION_MODEL),
-            messages: [
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: body.prompt as string },
-                  ...referenceBytes.map((data) => ({
-                    type: "file" as const,
-                    data,
-                    mediaType: "image/png",
-                  })),
-                ],
-              },
-            ],
-            output: Output.object({
-              schema: jsonSchema(schema, {
-                validate: async (value) => {
-                  try {
-                    return { success: true as const, value: validate(value) };
-                  } catch (error) {
-                    return { success: false as const, error: error as Error };
-                  }
+          let result;
+          try {
+            result = await generateText({
+              include: { responseBody: true },
+              model: provider.responses(VISION_MODEL),
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: body.prompt as string },
+                    ...referenceBytes.map((data) => ({
+                      type: "file" as const,
+                      data,
+                      mediaType: "image/png",
+                    })),
+                  ],
                 },
+              ],
+              output: Output.object({
+                schema: jsonSchema(schema, {
+                  validate: async (value) => {
+                    try {
+                      return { success: true as const, value: validate(value) };
+                    } catch (error) {
+                      return { success: false as const, error: error as Error };
+                    }
+                  },
+                }),
               }),
-            }),
-            maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
-            maxRetries: 0,
-            abortSignal: controller.signal,
-            providerOptions: {
-              openai: { store: false, reasoningEffort: "none" },
-            },
-          });
+              maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
+              maxRetries: 0,
+              abortSignal: controller.signal,
+              providerOptions: {
+                openai: { store: false, reasoningEffort: "none" },
+              },
+            });
+          } catch (error) {
+            if (
+              !NoObjectGeneratedError.isInstance(error) ||
+              !TypeValidationError.isInstance(error.cause) ||
+              error.finishReason !== "stop" ||
+              !completedVisionResponse(error.response, error.text)
+            )
+              throw error;
+            // The provider completed this potentially billable request, but its
+            // structured result is unusable. Persistence errors still escape to
+            // the conservative outer UNKNOWN handler.
+            markers[id] = { outcome: "DEFINITIVE_SUCCESS" };
+            writeJournal(markers);
+            if (accounted)
+              await recordStoredAttemptOutcome(
+                body.productId as string,
+                id,
+                "DEFINITIVE_SUCCESS",
+              );
+            return failure(
+              source ? "SOURCE_ANALYSIS_INVALID" : "OUTPUT_REVIEW_INVALID",
+              "DEFINITIVE_SUCCESS",
+              422,
+            );
+          }
+          if (
+            result.finishReason !== "stop" ||
+            !completedVisionResponse(result.response, result.text)
+          )
+            throw new Error("Incomplete visual response.");
           const analysis = validate(result.output);
           markers[id] = { outcome: "DEFINITIVE_SUCCESS" };
           writeJournal(markers);

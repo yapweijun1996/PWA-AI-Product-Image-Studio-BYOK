@@ -91,7 +91,7 @@ test('Pages upload produces checked downloadable composites, retains partial res
   await until(()=>evaluate(tab,'!!navigator.serviceWorker.controller'),'worker');
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'loaded key form');
   assert.equal(await evaluate(tab,`document.documentElement.lang`),'en');
-  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.5\.0 · /);
+  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.5\.1 · /);
   for(const [lang,title] of [['zh','设置'],['ms','Tetapan'],['ja','設定'],['ko','설정'],['vi','Cài đặt'],['en','Settings']]){
     await evaluate(tab,`document.querySelector('.language-control>.icon-button').click()`);
     await until(()=>evaluate(tab,`!!document.querySelector('.language-options')`),'language choices');
