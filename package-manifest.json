@@ -32,8 +32,8 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 3684,
-      "sha256": "64c7ab910b8fd8c78f68dd1ffccb015b09d246792bffde8a01b900ce696762e7"
+      "bytes": 3855,
+      "sha256": "b4d544099b084ab6b6e4756ec4ab8327a3c69562612c4a3f7bec924ec3486e42"
     },
     {
       "path": "BUG.md",
@@ -52,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 12878,
-      "sha256": "662ad743cfea65ac3deca7a7775ea451eb0521a7e111832577bad653e546e01e"
+      "bytes": 12751,
+      "sha256": "9ac620b75f2e77934d4ae70a17444fa8796ef34d6bb25ca03e70520fd4ec8c85"
     },
     {
       "path": "ROADMAP.md",
@@ -66,7 +66,7 @@
       "sha256": "f4743f2f6ce4d36f2739f063eaca1467eed3e9c14eceb7210c480d2309b8974f"
     },
     {
-      "path": "START_HERE_\u4e2d\u6587.md",
+      "path": "START_HERE_中文.md",
       "bytes": 3323,
       "sha256": "bf398d7e3af0568f5509c764cf963babd55fcb4f4e4d8f6dfb67bfcd8e6f7ef4"
     },
@@ -107,8 +107,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 7065,
-      "sha256": "c1f63ff783dd7ffca85c01f221fd10f969becd31c78d870e70665c2160c779b6"
+      "bytes": 7420,
+      "sha256": "7643e0e0510ddc3ded548d9a073cebc978f41a777b6ad6909e131419a200f71d"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -162,13 +162,13 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 43786,
-      "sha256": "6b061d4c6fc2e1e0af6f6752b99336b2708d0fbb43f871e713178e2d6ce60687"
+      "bytes": 45082,
+      "sha256": "db5c69888b1acfed28c762792850dd24ce2d8ad8d3ed8d96151b4acd9267381f"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
-      "bytes": 6082,
-      "sha256": "56492ffa4ac98645e26ddc52c32b9d9e758372cabdfd199880f5ab030f904446"
+      "bytes": 6724,
+      "sha256": "dce368e3fa9351e24018801f37889fdc746342cf9503318323ed8e3c265b9920"
     },
     {
       "path": "docs/02-architecture/IMAGE_PIPELINE.md",
@@ -197,8 +197,8 @@
     },
     {
       "path": "docs/03-security/BYOK_SECURITY.md",
-      "bytes": 6446,
-      "sha256": "a780a594f08e0afda74d95dadf235c333c84e80733422f6605435ad1f1107b25"
+      "bytes": 7088,
+      "sha256": "d5385df988e955aca36684be5e8ef5beaef1de098af72fdfe1f45f69974e1348"
     },
     {
       "path": "docs/03-security/PRIVACY_DATA_LIFECYCLE.md",
@@ -307,8 +307,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 326094,
-      "sha256": "eedd79794fac010b9e9db7d69a7221f9129b9f71918fc170169b783bdc513a1c"
+      "bytes": 328739,
+      "sha256": "0686a68074423ef88991ac35d291b148858d40dc918cf76cf5bb63ae8a096c98"
     },
     {
       "path": "docs/09-research/AUTO_CUTOUT_EXPERIMENT.md",
@@ -677,8 +677,8 @@
     },
     {
       "path": "scripts/test_validate_ssot.py",
-      "bytes": 5752,
-      "sha256": "0717874e0d04e11c06173d78cdc78414176035bf0fd4ac718d2d7d3d2aa76ffb"
+      "bytes": 6012,
+      "sha256": "1ab8f6ebf1eb1a8826882c7e98abc82ceff2b8c2e8bd32b062197799ce1d3263"
     },
     {
       "path": "scripts/validate_ssot.py",

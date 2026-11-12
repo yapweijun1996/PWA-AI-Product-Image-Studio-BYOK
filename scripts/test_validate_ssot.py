@@ -22,6 +22,10 @@ class ValidatorInventoryTests(unittest.TestCase):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, target)
 
+        # Documentation links also reference tracked application research evidence.
+        # Keep these targets in the fixture without including app runtime/dependencies.
+        shutil.copytree(ROOT / 'app/spikes', self.package / 'app/spikes')
+
     def validate(self, *arguments):
         result = subprocess.run(
             [sys.executable, str(self.package / 'scripts/validate_ssot.py'), *arguments],
@@ -37,7 +41,7 @@ class ValidatorInventoryTests(unittest.TestCase):
         (self.package / '.DS_Store').write_text('metadata', encoding='utf-8')
         secret = 'sk-' + 'A' * 40
         (self.package / '.env').write_text(secret, encoding='utf-8')
-        (self.package / 'app').mkdir()
+        (self.package / 'app').mkdir(exist_ok=True)
         (self.package / 'app/application.json').write_text('not documentation JSON', encoding='utf-8')
         report = self.package / 'validation-report.json'
         report.write_text('owner report', encoding='utf-8')

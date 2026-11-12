@@ -189,7 +189,7 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   assert.equal(await evaluate(tab,'window.__providerCalls'),8);
   assert.equal(await evaluate(tab,`JSON.stringify([localStorage,sessionStorage]).includes('sk-synthetic-browser-key-not-real')`),false);
   const persistedLeak=await evaluate(tab,`(async()=>{const needle='sk-synthetic-browser-key-not-real';for(const dbName of ['product-image-studio','image-studio-automatic']){const db=await new Promise((resolve,reject)=>{const r=indexedDB.open(dbName);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});try{for(const name of db.objectStoreNames){const rows=await new Promise((resolve,reject)=>{const r=db.transaction(name).objectStore(name).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});if(JSON.stringify(rows).includes(needle))return true}}finally{db.close()}}for(const name of await caches.keys()){const cache=await caches.open(name);for(const request of await cache.keys()){if(request.url.includes('api.openai.com')||JSON.stringify([...request.headers]).includes(needle)||(await(await cache.match(request)).text()).includes(needle))return true}}return false})()`);
-  assert.equal(persistedLeak,false,'Key and provider requests must not enter IndexedDB or caches');
+  assert.equal(persistedLeak,false,'Key and provider requests must not enter image databases or caches');
   await evaluate(tab,`location.hash='#/'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]') && !document.querySelector('input[aria-label="Upload product image"]').disabled`),'second automatic upload');
   await evaluate(tab,`(()=>{const original=window.fetch;window.fetch=(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'&&window.__providerCalls===9){window.__providerCalls++;return Promise.reject(new Error('Synthetic interrupted request'))}return original(url,options)}})()`);
@@ -228,8 +228,21 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   await until(()=>evaluate(tab,`!document.querySelector('#auto-results-heading')`),'explicit discard acknowledgement');
   await evaluate(tab,`location.hash='#/settings'`);await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'final settings');
   await tab.call('Page.reload');await until(()=>evaluate(tab,`document.readyState==='complete' && document.body.innerText.includes('Settings')`),'route reload');
-  await until(()=>evaluate(tab,`document.body.innerText.includes('No key connected')`),'reloaded key form');
-  assert.equal(await evaluate(tab,`document.body.innerText.includes('No key connected')`),true,'Reload clears key');
+  try{await until(()=>evaluate(tab,`document.body.innerText.includes('Key available in this tab') && document.body.innerText.includes('Saved on this device')`),'saved key restored');}catch(error){console.log('Restore diagnostic:',await evaluate(tab,`(async()=>({status:document.querySelector('.provider-settings')?.innerText,locks:await navigator.locks.query()}))()`));throw error;}
+  assert.equal(await evaluate(tab,`document.querySelector('input[type=password]').value`),'','Stored key is never repopulated into the DOM');
+  assert.equal(await evaluate(tab,`document.querySelector('form button[type=submit]').disabled`),true,'Restoring credentials does not restore spending consent');
+  assert.equal(await evaluate(tab,`(async()=>{const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('image-studio-credentials',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});try{return await new Promise((resolve,reject)=>{const r=db.transaction('credentials').objectStore('credentials').get('openai');r.onsuccess=()=>resolve(r.result==='sk-synthetic-browser-key-not-real');r.onerror=()=>reject(r.error)})}finally{db.close()}})()`),true,'Owner-authorized key is stored only in the credential database');
+  const secondTarget=await(await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`,{method:'PUT'})).json();
+  const secondTab=await connect(secondTarget.webSocketDebuggerUrl);
+  try{
+    await until(()=>evaluate(secondTab,`document.body.innerText.includes('Key available in this tab')`),'second tab restores credential');
+    await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Remove saved key').click()`);
+    await until(()=>evaluate(tab,`document.body.innerText.includes('No key connected')`),'local removal');
+    await until(()=>evaluate(secondTab,`document.body.innerText.includes('No key connected')`),'cross-tab removal');
+  }finally{secondTab.close();await fetch(`http://127.0.0.1:${port}/json/close/${secondTarget.id}`)}
+  await evaluate(tab,`window.__removedKeySentinel=true`);await tab.call('Page.reload');
+  await until(()=>evaluate(tab,`!window.__removedKeySentinel && document.body.innerText.includes('No key connected')`),'removed key stays removed after reload');
+
   assert.equal(requests.some(p=>p.startsWith('/api/')),false,'Preview must not call gateway');
   await tab.call('Network.enable');await tab.call('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});await tab.call('Page.reload');
   await until(()=>evaluate(tab,`document.readyState==='complete' && document.body.innerText.includes('Settings')`),'offline reload');assert.equal(tab.events.filter(e=>e.method==='Runtime.exceptionThrown').length,0);

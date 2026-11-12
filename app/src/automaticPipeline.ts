@@ -157,12 +157,12 @@ export async function runAutomatic(
                 : "UNKNOWN";
             item.error =
               response.status === 401
-                ? "OpenAI rejected the key."
+                ? "OpenAI rejected authentication (401). Replace your key in Settings before starting a new attempt."
                 : response.status === 429
                   ? "Provider rate limit reached."
                   : failure.error?.code === "RECOVERY_REQUIRED"
                     ? "Request history could not be saved. This request was not sent."
-                    : "This request did not complete. A charge may have occurred.";
+                    : "The provider response could not be read or completed. Check your key and network in Settings, and review provider billing. The outcome is unknown; no automatic retry was sent.";
             await saveAutoRun(run);
             throw new Error(item.error);
           }

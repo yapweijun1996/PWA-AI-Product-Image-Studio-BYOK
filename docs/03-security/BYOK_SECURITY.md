@@ -44,3 +44,7 @@ Missing server configuration or invalid provider authorization: refuse cloud job
 ## Pre-release security evidence
 
 Threat model; principal isolation; cross-origin and CSRF tests; key absence from browser stores, exports, agent context and logs; forced session expiry and deletion; server-key rotation/removal procedure; malicious model/URL inputs, image bombs and provider-error redaction. Any key leak is STOP-SHIP.
+
+## 2026-11-12 storage amendment — DEC-021
+
+For the Pages build, the owner explicitly requested IndexedDB persistence. This supersedes earlier memory-only statements in this document. The credential lives only in `image-studio-credentials`, separate from image/project databases and excluded from all backups/exports/caches. Same-origin scripts and browser extensions can read it; no password-based encryption is claimed. Reload restores the key, never spending authorization. Explicit removal deletes the record and invalidates open tabs. Gateway custody remains unchanged. No live paid verification was authorized by this storage change.

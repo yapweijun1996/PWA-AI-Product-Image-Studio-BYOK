@@ -1,6 +1,7 @@
+import { indexedDB } from 'fake-indexeddb';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { browserStudioRequest as request, setBrowserKey, clearBrowserKey, browserKeyStatus } from '../src/browserByok.ts';
+import { browserStudioRequest as request, setBrowserKey, clearBrowserKey, browserKeyStatus, saveBrowserKey, forgetBrowserKey } from '../src/browserByok.ts';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 const storage=new Map();globalThis.window=new EventTarget();globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)};
 Object.defineProperty(globalThis.navigator,'locks',{configurable:true,value:{request:async(_name,fn)=>fn()}});
@@ -34,4 +35,12 @@ test('401 is definitive and untrusted provider error text is not exposed',async(
 });
 test('pre-dispatch journal quota failure is definitively not sent and does not leave an unknown marker',async()=>{
  setBrowserKey(key);let calls=0;globalThis.fetch=async()=>{calls++;throw new Error('must not send')};const b=body(),init=await approved(b),original=localStorage.setItem;localStorage.setItem=()=>{throw new DOMException('quota','QuotaExceededError')};try{const result=await(await request('/images/generate',init)).json();assert.equal(result.error.code,'RECOVERY_REQUIRED');assert.equal(result.error.outcome,'DEFINITIVE_FAILURE');assert.equal(calls,0);assert.equal(storage.size,0);}finally{localStorage.setItem=original}
+});
+
+test('overlapping save and removal cannot leave the deleted key in memory',async()=>{
+ globalThis.indexedDB=indexedDB;
+ const saving=saveBrowserKey(key), removing=forgetBrowserKey();
+ await Promise.all([saving,removing]);
+ assert.equal(browserKeyStatus().connected,false);
+ assert.equal(browserKeyStatus().saved,false);
 });

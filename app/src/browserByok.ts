@@ -1,8 +1,13 @@
+import { credentialStore } from './browserCredentialStore.ts';
 import { generateImage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_MAX_PNG_BYTES, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
 
-// Credentials never cross a persistence or broadcast boundary.
+// Credentials persist only in the dedicated owner-authorized IndexedDB store.
+// Broadcast messages contain state only, never credential values.
+let saved = false;
+const credentialChannel = typeof document !== 'undefined' && typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('image-studio-credential-state') : null;
+credentialChannel?.addEventListener('message', event => { if (['saved','deleted'].includes(event.data)) { saved=event.data==='saved'; clearBrowserKey(); } });
 let key = '', expires = 0, epoch = 0;
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 const active = new Set<AbortController>();
@@ -19,7 +24,7 @@ function journal(): Record<string, Marker> {
 }
 export function browserWaitReviewNeeded() { return Object.values(journal()).some(m=>m.waitReview===true); }
 function writeJournal(value: Record<string, Marker>) { localStorage.setItem(JOURNAL, JSON.stringify(value)); }
-export function browserKeyStatus() { return { connected: Boolean(key) && expires > Date.now(), expiresAt: expires ? new Date(expires).toISOString() : null }; }
+export function browserKeyStatus() { return { saved, connected: Boolean(key) && expires > Date.now(), expiresAt: expires ? new Date(expires).toISOString() : null }; }
 export function clearBrowserKey() {
   key = ''; expires = 0; epoch++; approvals.clear(); clearTimeout(expiryTimer);
   for (const controller of active) controller.abort();
@@ -30,6 +35,25 @@ export function setBrowserKey(value: string) {
   clearBrowserKey(); key = value; expires = Date.now() + 60 * 60 * 1000;
   expiryTimer = setTimeout(clearBrowserKey, 60 * 60 * 1000);
   window.dispatchEvent(new Event(EVENT));
+}
+export async function restoreSavedBrowserKey() {
+  if(browserKeyStatus().connected)return;
+  const revision=epoch;
+  const value=await credentialStore('read');
+  if(epoch!==revision)return;
+  saved=Boolean(value);
+  if(value)setBrowserKey(value);
+  else window.dispatchEvent(new Event(EVENT));
+}
+export async function saveBrowserKey(value:string) {
+  if (!/^sk-[A-Za-z0-9_-]{10,500}$/.test(value)) throw new Error('Enter an OpenAI API key.');
+  await credentialStore('write',value);
+  saved=true;setBrowserKey(value);credentialChannel?.postMessage('saved');
+}
+export async function forgetBrowserKey() {
+  clearBrowserKey();
+  await credentialStore('delete');
+  saved=false;clearBrowserKey();credentialChannel?.postMessage('deleted');
 }
 export function onBrowserKeyChange(listener: () => void) { window.addEventListener(EVENT, listener); return () => window.removeEventListener(EVENT, listener); }
 if (typeof window !== 'undefined') window.addEventListener('pagehide', clearBrowserKey);

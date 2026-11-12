@@ -217,3 +217,12 @@ The local gateway treats an observed closed response connection as loss of autho
 **Rejected experiment:** BiRefNet-lite FP32 (224 MB) ran out of WASM memory (`std::bad_alloc`) in actual Chromium. It is not shipped or selected; there is no silent fallback that redraws products. U2NETP was verified with an opaque synthetic source through actual browser inference, followed by mocked image generation, automatic composition and ZIP download. This proves the pipeline, not arbitrary SKU accuracy. See the experiment record.
 
 **Rollback:** Redeploy the prior compatible Pages build to restore Advanced workspace as the main UI. Preserve both local databases, originals and unresolved request markers. Worker activation remains user-driven; no silent editor reload. Production fidelity, physical devices and independent security gates remain open.
+
+## ADR-021 — Owner-authorized IndexedDB BYOK persistence
+
+- Date: 2026-11-12
+- Status: Accepted by explicit owner request to save BYOK API keys in IndexedDB. Supersedes only ADR-019 memory-only credential custody for Pages.
+- Decision: Use a dedicated credential database with one OpenAI key record, separate from image data. Restore to expiring tab memory without restoring paid-request authorization. Never fill the password input from storage. Replacement and deletion invalidate approvals; deletion notifies other tabs without transmitting credentials. Storage failures must not claim success.
+- Exposure: Same-origin scripts and extensions may read the stored key. No password encryption or device isolation guarantee is claimed. Keys remain excluded from telemetry, URLs, logs, caches, backups and exports. No public server custody is introduced.
+- Verification: Dummy credentials and synthetic provider responses only; storage read/write/replacement/deletion, failure behavior, reload and cross-tab removal are tested. Saving does not verify credentials or resolve OpenAI 401 responses.
+- Rollback: Remove the saved key in Settings before deploying an older memory-only build. Reverting code alone does not delete the credential database. Preserve image databases and request journals.

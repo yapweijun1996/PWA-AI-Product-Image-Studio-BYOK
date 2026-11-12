@@ -4,16 +4,22 @@ import { Link } from "react-router-dom";
 import { useEffect, useState, type FormEvent } from "react";
 import { listAutoRuns } from "./automaticStore";
 import { automaticPlan, resolveAutomaticHolds } from "./automaticPipeline";
-import { authorizeAutomaticSession } from "./automaticSession";
+import { automaticSessionStatus, authorizeAutomaticSession } from "./automaticSession";
 import { useUnsavedChanges } from "./useUnsavedChanges";
 import {
   browserKeyStatus,
   browserWaitReviewNeeded,
-  clearBrowserKey,
+  forgetBrowserKey,
+  restoreSavedBrowserKey,
   onBrowserKeyChange,
-  setBrowserKey,
+  saveBrowserKey,
 } from "./browserByok";
 export function BrowserKeyPanel() {
+  const [authorized,setAuthorized]=useState(()=>Boolean(automaticSessionStatus()));
+  useEffect(()=>{const update=()=>setAuthorized(Boolean(automaticSessionStatus()));window.addEventListener('studio-auto-session',update);update();return()=>window.removeEventListener('studio-auto-session',update)},[]);
+  const [busy,setBusy]=useState(false);
+  const [storageReady,setStorageReady]=useState(false);
+  useEffect(()=>{restoreSavedBrowserKey().catch(()=>setError("Saved key could not be read. Enter a key to try saving again.")).finally(()=>{setStatus(browserKeyStatus());setStorageReady(true)});},[]);
   const [recovery, setRecovery] = useState(false),
     [hasHolds, setHasHolds] = useState(false);
   useEffect(() => {
@@ -41,9 +47,12 @@ export function BrowserKeyPanel() {
   useEffect(() => onBrowserKeyChange(() => setStatus(browserKeyStatus())), []);
   async function connect(event: FormEvent) {
     event.preventDefault();
+    if(busy)return;
+    setBusy(true);
     try {
       if (!consent || Number(limit) <= 0) throw new Error();
-      setBrowserKey(value.trim());
+      if(value.trim())await saveBrowserKey(value.trim());
+      if(!browserKeyStatus().connected)throw new Error();
       if (recovery) await resolveAutomaticHolds(true);
       authorizeAutomaticSession(limit, consent);
       setValue("");
@@ -51,25 +60,15 @@ export function BrowserKeyPanel() {
       setHasHolds(false);
     } catch {
       setError(
-        "Enter a valid key, estimate limit and automatic-processing consent.",
+        "Setup did not finish. Check your key, local storage, estimate limit and consent. A saved key alone does not authorize uploads.",
       );
-    }
+    }finally{setBusy(false)}
   }
   return (
     <section>
       <h2>{t("Bring your own OpenAI key")}</h2>
-      <p>{t("Set up once for this tab. Uploading then starts up to seven paid requests to your OpenAI account.")}</p>
-      <p>{t("Your key stays in memory for up to one hour and clears on refresh or exit. Browser extensions or malicious scripts can read it.")}</p>
-      <details><summary>{t("Privacy and provider billing")}</summary><p>Requests go directly to OpenAI. Original product images and masks stay local; scene prompts are sent to the provider. Advanced projects may include selected product names, categories and confirmed facts. Use a dedicated project key and set spending limits in your OpenAI account.</p></details>
-      <p role="status">
-        {status.connected
-          ? `Key available in this tab until ${status.expiresAt}. It has not been verified with OpenAI.`
-          : "No key connected. Set up your key and budget to start uploading."}
-      </p>
-      <p>
-        Each upload starts up to seven image requests automatically, estimated $
-        {automaticPlan().estimatedUSD} USD per upload. No automatic retries.
-      </p>
+      <p>{t("Your key is saved on this device until removed. Browser scripts and extensions may read it.")}</p>
+      <p role="status">{!storageReady ? 'Loading saved key…' : status.connected ? 'Key available in this tab. '+(status.saved?'Saved on this device. ':'')+(authorized?'Session ready for uploads. Key not verified with OpenAI.':'Not verified with OpenAI; authorize this session below.') : status.saved ? 'Saved key needs to be reloaded. Reopen Settings to continue.' : t('No key connected. Set up your key and budget to start uploading.')}</p>
       <form onSubmit={connect}>
         {hasHolds && (
           <label>
@@ -81,6 +80,8 @@ export function BrowserKeyPanel() {
         )}
         <label>{t("OpenAI API key")}<Input
             type="password"
+            placeholder={status.connected ? "Saved key — enter a new key to replace" : "sk-…"}
+            disabled={busy || !storageReady}
             value={value}
             autoComplete="off"
             autoCapitalize="none"
@@ -105,27 +106,27 @@ export function BrowserKeyPanel() {
           />{t("I have rights to my uploads and authorize up to seven potentially billable image requests per upload within this session estimate limit. Estimates are not a hard provider spending cap.")}</label>
         <Button
           type="submit"
-          disabled={!value.trim() || !consent || (hasHolds && !recovery)}
-        >{t("Set up session")}</Button>
+          disabled={busy || !storageReady || (!value.trim() && !status.connected) || !consent || (hasHolds && !recovery)}
+        >{busy ? t("Preparing…") : t("Set up session")}</Button>
       </form>
       <div className="session-actions">
       <Button
         type="button"
         className="secondary-button"
-        disabled={!status.connected}
+        disabled={busy || (!status.connected && !status.saved)}
         onClick={() => {
-          clearBrowserKey();
-          setValue("");
+          setBusy(true);setValue("");
+          void forgetBrowserKey().catch(()=>setError("Key cleared from this tab, but removal from device storage failed. Try removing it again.")).finally(()=>setBusy(false));
         }}
-      >{t("Clear key")}</Button>
-      {status.connected && (
+      >{t("Remove saved key")}</Button>
+      {status.connected && authorized && (
         <>
           <Link className="primary-button" to="/">{t("Upload a product")}</Link>
         </>
       )}
       </div>
       {error && <p role="alert">{error}</p>}
-      <p>{t("No automatic retries. A timeout or interrupted request may still be charged. Reconnect after a refresh, inspect saved history and provider billing before authorizing another attempt.")}</p>
+      <details><summary>{t("Privacy and provider billing")}</summary><p>Each upload starts up to seven potentially billable requests, estimated ${automaticPlan().estimatedUSD} USD. Estimates are not a spending cap. No automatic retries.</p><p>The key is stored in this browser’s IndexedDB without a separate password. It is excluded from backups, caches and exports. Remove it before sharing this browser profile. Spending authorization is not restored after reload.</p><p>Requests go directly to OpenAI. Source images stay local. A saved key is not proof of valid credentials. If OpenAI rejects authentication, replace the key; if the browser cannot read the response, check billing before authorizing a new attempt.</p></details>
     </section>
   );
 }

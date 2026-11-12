@@ -82,15 +82,15 @@ Preview URL: https://yapweijun1996.github.io/PWA-AI-Product-Image-Studio-BYOK/
 
 Local equivalent: from `app/`, run `npm ci`, `npm test`, `node --test tests/browser/pages-preview.test.mjs`, and `npm run build -- --mode pages --base /PWA-AI-Product-Image-Studio-BYOK/`. The browser test requires Chrome/Chromium. Normal `npm run build` retains root hosting and browser-history routing for the local gateway.
 
-On Pages, open Settings and enter your own OpenAI key to generate scenes directly from this tab. The key stays in memory for up to one hour and is cleared on reload/exit or Clear key. Each attempt requires cost consent. Browser extensions/scripts can read in-memory credentials; use a dedicated project key and provider spending limits. A successful preview deployment does not complete production release task T-090. To roll back, redeploy a reviewed compatible revision; preserve local backups and database compatibility, and let users activate PWA updates explicitly.
+On Pages, open Settings and enter your own OpenAI key to generate scenes directly from this tab. The key is saved in a dedicated IndexedDB database until removed (DEC-021). Reload restores the key but requires new session spending consent. Browser extensions/scripts can read stored credentials; use a dedicated project key and provider spending limits. A successful preview deployment does not complete production release task T-090. To roll back, redeploy a reviewed compatible revision; preserve local backups and database compatibility, and let users activate PWA updates explicitly.
 
 ### Browser BYOK on GitHub Pages
 
-1. Open Settings, enter your OpenAI API key and choose **Use key in this tab**. This stores it in current-tab memory; it does not test the key or make a paid request.
-2. Create a product, acknowledge source rights, upload an original and save a reviewed mask with protected regions.
-3. Select styles and confirmed facts, inspect prompt/estimate and explicitly authorize each image attempt. AI SDK (`ai` and `@ai-sdk/openai`) sends one request to `https://api.openai.com/v1/images/generations` with no automatic retries, cookies or redirects. Scenes are generated separately from the unchanged product foreground.
-4. Compose the original locally, review the result and approve before export. Usage/billing receipts are unavailable in the initial browser adapter; estimates are not charges or enforceable provider spending caps.
-5. Use **Clear key** when finished. It aborts active requests but cannot undo billing. Reload also clears the key; saved non-secret request history remains. Re-enter the key, review UNKNOWN outcomes against your provider billing, then separately authorize any new attempt. API keys cannot be recovered from backups.
+1. Open Settings, enter your OpenAI API key, choose a session estimate limit, accept the upload consent and select **Set up session**. The key is saved on this device without separate password encryption; saving does not verify credentials or make a paid request.
+2. Upload one product photo to automatically produce seven locally composed images. Download finished images individually or as a ZIP. The Advanced workspace retains the manual mask/review workflow.
+3. AI SDK sends requests only to `https://api.openai.com/v1/images/generations`, without automatic retry, cookies or redirects. Source photos stay local. Estimates are not provider spending caps.
+4. Reload restores the saved key without restoring spending authorization. Review interrupted requests before authorizing a new session.
+5. **Remove saved key** deletes the dedicated credential record and clears active keys in open tabs. It cannot undo provider billing. Keys are excluded from image databases, backups, caches and exports.
 
 CORS preflight was observed to permit the Pages origin and authorization/content-type headers. This is not a successful paid generation or Safari/iOS acceptance result. Account/model permissions, network restrictions and provider changes can still block calls. Browser bookkeeping is local and user-editable; it is not gateway authentication, server-enforced quotas or independent billing proof. Corrupt history/storage failure blocks requests; preserve it for recovery instead of deleting unresolved evidence.
 

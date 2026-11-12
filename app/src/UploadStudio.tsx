@@ -359,7 +359,7 @@ export function UploadStudio() {
           {run.state === "STOPPED" && (
             <p role="status">
               {run.message} Finished images are kept below. No request is
-              retried automatically.
+              retried automatically. <Link className="text-link" to="/settings">{t("Settings")}</Link>
             </p>
           )}
           {!busy &&
