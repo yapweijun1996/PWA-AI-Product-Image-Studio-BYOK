@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, createHashRouter, RouterProvider } from 'react-router-dom';
 import { App } from './App';
+import './ui/tokens.css';
 import './styles.css';
 import { UnsavedNavigationGuard } from './useUnsavedChanges';
 

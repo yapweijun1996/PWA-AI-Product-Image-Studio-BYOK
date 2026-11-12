@@ -33,7 +33,7 @@ export function useUnsavedChanges(dirty: boolean): () => void {
 
 export function UnsavedNavigationGuard(): null {
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    currentLocation.pathname !== nextLocation.pathname && hasUnsavedChanges());
+    (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search) && hasUnsavedChanges());
   const handled = useRef(false);
   useEffect(() => {
     if (blocker.state !== 'blocked') {

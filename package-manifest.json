@@ -307,8 +307,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 321054,
-      "sha256": "fc2e6117c7948bbe4099f60ee3f5e7892c09f5808eed10b38220c2659c901951"
+      "bytes": 323915,
+      "sha256": "9e4df4d285d78cd5d1c3d3659f8aad798ebd09932509c4b35f103dd36ca14bde"
     },
     {
       "path": "docs/09-research/AUTO_CUTOUT_EXPERIMENT.md",
@@ -372,8 +372,8 @@
     },
     {
       "path": "docs/10-design/DESIGN_SYSTEM.md",
-      "bytes": 6652,
-      "sha256": "0c9d0df11389a42844e31018a1dc686540c854cbaf644713587cc1d7760ce17e"
+      "bytes": 10010,
+      "sha256": "35310cbf6b44bcdba41b12efa28fcb532d282f24904b1bc50e95172f8a47dfdf"
     },
     {
       "path": "docs/10-design/VISUAL_ANCHORS.md",

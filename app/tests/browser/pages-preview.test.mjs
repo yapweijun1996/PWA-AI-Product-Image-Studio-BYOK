@@ -79,6 +79,24 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   }
   await evaluate(tab,`location.hash='#/settings'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'return to settings from help');
+  for(const route of ['settings','images','design-system','help']){
+    await evaluate(tab,`location.hash='#/${route}'`);
+    await until(()=>evaluate(tab,`!!document.querySelector('h1') && !document.body.innerText.includes('Loading page…')`),'redesigned route');
+    await delay(150);
+    for(const theme of ['light','dark']){
+      await evaluate(tab,`document.documentElement.dataset.theme='${theme}'`);
+      for(const width of [320,390,768,1280]){
+        await tab.call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<500});
+        assert.equal(await evaluate(tab,'document.documentElement.scrollWidth<=innerWidth'),true,`${route} ${theme} overflows at ${width}`);
+        if(route==='settings')assert.equal(await evaluate(tab,`[...document.querySelectorAll('input:not([type=checkbox])')].every(i=>parseFloat(getComputedStyle(i).fontSize)>=16)`),true,'iOS input text avoids focus zoom');
+        if(process.env.STUDIO_UI_SHOTS && (width===390||width===1280)){
+          const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(`${process.env.STUDIO_UI_SHOTS}-${route}-${theme}-${width}.png`,Buffer.from(shot.data,'base64'));
+        }
+      }
+    }
+  }
+  await evaluate(tab,`document.documentElement.dataset.theme='light';location.hash='#/settings'`);
+  await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'settings after visual checks');
   assert.equal(await evaluate(tab,'navigator.serviceWorker.ready.then(r=>new URL(r.scope).pathname)'),base);
   const manifest=JSON.parse(await readFile(join(out,'manifest.webmanifest'),'utf8'));assert.equal(new URL(manifest.start_url,`${origin}${base}manifest.webmanifest`).pathname,base);
   await evaluate(tab, `(() => {window.__providerCalls=0;const original=window.fetch;window.fetch=async(url,options)=>{if(String(url)==='https://api.openai.com/v1/images/generations'){window.__providerCalls++;const c=document.createElement('canvas');c.width=c.height=1024;c.getContext('2d').fillRect(0,0,1024,1024);return Response.json({data:[{b64_json:c.toDataURL('image/png').split(',')[1]}]})}return original(url,options)};const e=document.querySelector('input[type=password]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'sk-synthetic-browser-key-not-real');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
@@ -98,12 +116,23 @@ test('Pages upload produces seven downloadable composites, retains partial resul
   for(const width of [390,1280]){await tab.call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<500});assert.equal(await evaluate(tab,'document.documentElement.scrollWidth<=innerWidth'),true);}
   if(process.env.STUDIO_SCREENSHOT){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(process.env.STUDIO_SCREENSHOT,Buffer.from(shot.data,'base64'));}
   const downloads=join(root,'downloads');await mkdir(downloads);await tab.call('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:downloads});
-  await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Download all').click()`);
+  assert.equal(await evaluate(tab,`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent==='Download all');b.click();b.click();return true})()`),true);
+  await until(()=>evaluate(tab,`[...document.querySelectorAll('button')].some(b=>b.textContent==='Preparing download…'&&b.disabled)`),'download pending feedback');
   await until(async()=>{const files=await readdir(downloads);return files.some(n=>n.endsWith('.zip'));},'automatic ZIP download');
+  assert.equal((await readdir(downloads)).filter(n=>n.endsWith('.zip')).length,1,'Repeated download clicks prepare one archive');
   const archiveName=(await readdir(downloads)).find(n=>n.endsWith('.zip'));
   const archive=new ZipReader(new Uint8ArrayReader(new Uint8Array(await readFile(join(downloads,archiveName)))));
   const entries=await archive.getEntries();assert.equal(entries.filter(e=>e.filename.endsWith('.png')).length,7);
   const info=JSON.parse(await entries.find(e=>e.filename==='image-information.json').getData(new TextWriter()));assert.equal(info.humanApproval,false);assert.equal(info.validation,'AUTOMATIC_TECHNICAL_CHECKS_ONLY');await archive.close();
+  await evaluate(tab,`location.hash='#/images'`);
+  await until(()=>evaluate(tab,`!!document.querySelector('.library-card')`),'image library');
+  assert.equal(await evaluate(tab,`document.querySelectorAll('.library-card').length>=1`),true);
+  await evaluate(tab,`document.querySelector('.library-card').click()`);
+  await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='7 of 7 ready'`),'reopen saved results from library');
+  await evaluate(tab,`window.scrollTo(0,document.body.scrollHeight)`);
+  await until(()=>evaluate(tab,`!!document.querySelector('.scroll-top')`),'contextual back to top');
+  await evaluate(tab,`document.querySelector('.scroll-top').click()`);
+  await until(()=>evaluate(tab,`window.scrollY<5`),'back to top action');
   await evaluate(tab,`location.hash='#/workspace'`);
     await until(()=>evaluate(tab,`[...document.querySelectorAll('a')].some(a=>a.textContent==='Create product')`),'product creation link');
     await evaluate(tab,`[...document.querySelectorAll('a')].find(a=>a.textContent==='Create product').click()`);

@@ -1,3 +1,4 @@
+import { Button, Input, Textarea } from './ui/components';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { addConfirmedFact, getProduct, removeFact, type Product } from './products';
@@ -58,7 +59,7 @@ export function ProductDetails() {
     finally { setSaving(false); }
   }
 
-  if (error && product === undefined) return <><Link className="back-link" to="/">← All products</Link><p className="error-message" role="alert">{error}</p><button className="secondary-button" type="button" onClick={() => { setError(''); setLoadVersion((value) => value + 1); }}>Retry loading product</button></>;
+  if (error && product === undefined) return <><Link className="back-link" to="/">← All products</Link><p className="error-message" role="alert">{error}</p><Button className="secondary-button" type="button" onClick={() => { setError(''); setLoadVersion((value) => value + 1); }}>Retry loading product</Button></>;
   if (product === undefined) return <p className="muted" role="status">Loading product…</p>;
   if (product === null) return <><Link className="back-link" to="/">← All products</Link><h1>Product not found</h1><p className="lead">No local project matches this address.</p></>;
   return <>
@@ -72,9 +73,9 @@ export function ProductDetails() {
     <fieldset className="studio-edit-lock" disabled={studioBusy}>
     <div className="product-layout">
       <section className="product-section" aria-labelledby="facts-heading"><span className="section-kicker">PRODUCT TRUTH</span><h2 id="facts-heading">Confirmed facts</h2><p className="muted">Only record information you can verify. These entries are user-confirmed, not independently certified.</p>
-        {product.facts.length === 0 ? <p className="empty-facts">No facts added yet.</p> : <dl className="facts-list">{product.facts.map((fact) => <div key={fact.factId}><dt>{fact.name}</dt><dd>{fact.value}<span className="fact-meta">{fact.confirmed ? 'Confirmed' : 'Not confirmed'}</span><button className="remove-button" type="button" disabled={saving} onClick={() => deleteFact(fact.factId)} aria-label={`Remove fact ${fact.name}`}>Remove</button></dd></div>)}</dl>}
+        {product.facts.length === 0 ? <p className="empty-facts">No facts added yet.</p> : <dl className="facts-list">{product.facts.map((fact) => <div key={fact.factId}><dt>{fact.name}</dt><dd>{fact.value}<span className="fact-meta">{fact.confirmed ? 'Confirmed' : 'Not confirmed'}</span><Button className="remove-button" type="button" disabled={saving} onClick={() => deleteFact(fact.factId)} aria-label={`Remove fact ${fact.name}`}>Remove</Button></dd></div>)}</dl>}
       </section>
-      <form className="form-card" onSubmit={submitFact}><h2>Add a fact</h2><label htmlFor="fact-name">Fact name</label><input id="fact-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} autoComplete="off" /><label htmlFor="fact-value">Fact value</label><textarea id="fact-value" value={value} onChange={(event) => setValue(event.target.value)} required maxLength={1000} rows={3} /><label className="checkbox-label"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} required /><span>I confirm this fact is accurate.</span></label>{error && <p className="error-message" role="alert">{error}</p>}<button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add confirmed fact'}</button></form>
+      <form className="form-card" onSubmit={submitFact}><h2>Add a fact</h2><label htmlFor="fact-name">Fact name</label><Input id="fact-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} autoComplete="off" /><label htmlFor="fact-value">Fact value</label><Textarea id="fact-value" value={value} onChange={(event) => setValue(event.target.value)} required maxLength={1000} rows={3} /><label className="checkbox-label"><Input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} required /><span>I confirm this fact is accurate.</span></label>{error && <p className="error-message" role="alert">{error}</p>}<Button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add confirmed fact'}</Button></form>
     </div>
     </fieldset>
     <ApprovedExportPanel productId={product.productId} productVersion={JSON.stringify(product)} disabled={studioBusy} />

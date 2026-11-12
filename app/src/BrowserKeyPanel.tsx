@@ -1,3 +1,4 @@
+import { Button, Input } from './ui/components';
 import { Link } from "react-router-dom";
 import { useEffect, useState, type FormEvent } from "react";
 import { listAutoRuns } from "./automaticStore";
@@ -56,17 +57,9 @@ export function BrowserKeyPanel() {
   return (
     <section>
       <h2>Bring your own OpenAI key</h2>
-      <p>
-        Requests go directly from this browser to OpenAI and are billed to your
-        account. Product images and masks stay local; the selected product name,
-        category and facts are sent in scene prompts.
-      </p>
-      <p>
-        Your key is kept in this tab’s memory for up to one hour. Refreshing or
-        closing the page clears it. Browser extensions or malicious scripts can
-        still read it. Use a dedicated project key and set spending limits in
-        your OpenAI account.
-      </p>
+      <p>Set up once for this tab. Uploading then starts up to seven paid requests to your OpenAI account.</p>
+      <p>Your key stays in memory for up to one hour and clears on refresh or exit. Browser extensions or malicious scripts can read it.</p>
+      <details><summary>Privacy and provider billing</summary><p>Requests go directly to OpenAI. Original product images and masks stay local; scene prompts are sent to the provider. Advanced projects may include selected product names, categories and confirmed facts. Use a dedicated project key and set spending limits in your OpenAI account.</p></details>
       <p role="status">
         {status.connected
           ? `Key available in this tab until ${status.expiresAt}. It has not been verified with OpenAI.`
@@ -79,7 +72,7 @@ export function BrowserKeyPanel() {
       <form onSubmit={connect}>
         {hasHolds && (
           <label>
-            <input
+            <Input
               type="checkbox"
               checked={recovery}
               onChange={(e) => setRecovery(e.target.checked)}
@@ -91,7 +84,7 @@ export function BrowserKeyPanel() {
         )}
         <label>
           OpenAI API key
-          <input
+          <Input
             type="password"
             value={value}
             autoComplete="off"
@@ -102,7 +95,7 @@ export function BrowserKeyPanel() {
         </label>
         <label>
           Session estimate limit (USD)
-          <input
+          <Input
             type="number"
             min="0.01"
             max="1000"
@@ -112,7 +105,7 @@ export function BrowserKeyPanel() {
           />
         </label>
         <label>
-          <input
+          <Input
             type="checkbox"
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
@@ -121,14 +114,14 @@ export function BrowserKeyPanel() {
           billable image requests per upload within this session estimate limit.
           Estimates are not a hard provider spending cap.
         </label>
-        <button
+        <Button
           type="submit"
           disabled={!value.trim() || !consent || (hasHolds && !recovery)}
         >
           Set up session
-        </button>
+        </Button>
       </form>
-      <button
+      <Button
         type="button"
         className="secondary-button"
         disabled={!status.connected}
@@ -138,7 +131,7 @@ export function BrowserKeyPanel() {
         }}
       >
         Clear key
-      </button>
+      </Button>
       {status.connected && (
         <p>
           <Link className="primary-button" to="/">

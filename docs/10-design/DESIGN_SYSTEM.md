@@ -38,3 +38,28 @@ Built-in ImageGen, `ui-mockup` use case, with `01-desktop-product-workspace.png`
 - Resolve factual issues, unsupported features, misleading costs and design inconsistencies; establish accessible tokens and interaction specs.
 - Independently verify user tasks, focus and screen-reader behavior, color contrast, reflow, pointer alternatives, real devices, and offline/update/UNKNOWN flows when implementation exists.
 - Only approved and versioned anchors become a visual implementation reference. Update the catalog and retire superseded versions without rewriting history.
+
+## Implemented UI foundations — option A, 2026-11-12
+
+The owner authorized option A: redo the PWA experience while retaining generation and local data, with push to main. DEC-020 controls the automatic primary journey; the older visual anchors remain historical direction, not specifications for the automatic workflow.
+
+Implementation ownership:
+
+- `app/src/ui/tokens.css`: light/dark semantic colors and shared dimension scale. Dimension tokens retain existing editor geometry during migration; changing them is a cross-page change. `theme-color` reads the active page token.
+- `app/src/ui/components.tsx`: Button, Input, Select, Textarea, GuideStep, PageHeader and Progress. Native control semantics, event handlers, refs and explicit form types are preserved. Shared controls render native elements; page code does not recreate their tags.
+- `app/src/styles.css`: component presentation and page layout. Numeric media-query breakpoints are the exception to token-only dimensions because CSS custom properties do not resolve in media conditions.
+- `/design-system`: live component/state specimen. `npm run check:ui`, included in build, enforces the token/control boundary.
+
+Primary navigation is Create / My images / Settings / Help. The automatic source upload starts the existing seven-attempt pipeline; results appear independently. My images shows local source thumbnails and opens a saved run without sending a request. Legacy projects remain available through Advanced workspace. No database migration or deletion is part of this change.
+
+Interaction contracts:
+
+- Upload: disabled without a usable session or while unsaved outputs need protection. Existing cost, UNKNOWN and request guards remain authoritative.
+- Result/export: pending and failed states are visible; single and ZIP downloads prevent duplicate preparation. Export-in-progress protects navigation. Partial output is downloadable and is never described as human approval.
+- Settings: Pages prioritizes BYOK setup; privacy detail is progressively disclosed while key lifetime and extension exposure remain visible. Local gateway mode retains its separate credential contract and original control order.
+- Navigation: keyboard focus moves into the destination; query changes also respect unsaved navigation protection. Long pages expose a safe-area-aware back-to-top action. Sticky chrome hides/reveals with a movement threshold; focus and reduced-motion preferences take priority.
+- Responsive: compact wrapped navigation on mobile, sidebar on desktop; content and result cards reflow. Light and dark use opaque chrome. Input text is at least 16 CSS px.
+
+PWA Standard compatibility: KB `pwa:product-standard` registry v1.0.1 retains the v1.0 rules and adds explicit active-request/draft protection, app-scoped cleanup and separate automated versus physical-device evidence. These additions are compatible with DEC-019/020 and the existing worker protocol. This release adopts that acceptance contract; it does not claim physical iOS or assistive-technology verification.
+
+Future extension boundaries: do not duplicate controls in new pages, change the generation contracts for visual convenience, or confuse the specimen page with complete accessibility certification. Complex protected-region editors retain their specialized layout and domain controls on the shared foundations.

@@ -1,3 +1,5 @@
+import { Button, Input, Progress } from './ui/components';
+import { useSearchParams } from 'react-router-dom';
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -43,6 +45,8 @@ function ResultCard({
   onError: (s: string) => void;
 }) {
   const [url, setUrl] = useState("");
+  const [downloading,setDownloading] = useState(false);
+  const downloadLock = useRef(false);
   useEffect(() => {
     if (!item.output) return;
     const value = URL.createObjectURL(item.output);
@@ -74,19 +78,23 @@ function ResultCard({
       <div className="auto-result-caption">
         <h3>{labels[item.style]}</h3>
         {item.status === "READY" && (
-          <button
+          <Button
             type="button"
             className="secondary-button"
+            disabled={downloading}
+            aria-busy={downloading}
             onClick={() => {
+              if(downloadLock.current)return;
+              downloadLock.current=true; setDownloading(true);
               void checkedOutput(item)
                 .then((blob) => download(blob, `${item.style}.png`))
                 .catch(() =>
                   onError("This saved image failed its integrity check."),
-                );
+                ).finally(()=>{downloadLock.current=false;setDownloading(false)});
             }}
           >
-            Download
-          </button>
+            {downloading ? "Preparing…" : "Download"}
+          </Button>
         )}
       </div>
       {item.error && <p className="muted">{item.error}</p>}
@@ -94,6 +102,10 @@ function ResultCard({
   );
 }
 export function UploadStudio() {
+  const [params] = useSearchParams();
+  const selectedRun = params.get("run");
+  const [exporting, setExporting] = useState(false);
+  const exportLock = useRef(false);
   const [run, setRun] = useState<AutoRun | null>(null),
     [history, setHistory] = useState<AutoRun[]>([]),
     [busy, setBusy] = useState(false),
@@ -102,14 +114,14 @@ export function UploadStudio() {
     [connected, setConnected] = useState(browserKeyStatus().connected);
   const active = useRef<AbortController | null>(null),
     running = useRef(false);
-  useUnsavedChanges(busy || Boolean(run?.unsavedOutputs));
+  useUnsavedChanges(busy || exporting || Boolean(run?.unsavedOutputs));
   useEffect(() => {
     let mounted = true;
     void listAutoRuns()
       .then((rows) => {
         if (mounted) {
           setHistory(rows);
-          setRun(rows[0] ?? null);
+          setRun(rows.find(row=>row.id===selectedRun) ?? rows[0] ?? null);
         }
       })
       .catch(() =>
@@ -132,13 +144,19 @@ export function UploadStudio() {
       active.current?.abort();
     };
   }, []);
+  const handledSelection = useRef<string | null | undefined>(undefined);
+  useEffect(()=>{
+    if(!history.length || busy || run?.unsavedOutputs || exporting || handledSelection.current===selectedRun)return;
+    handledSelection.current=selectedRun;
+    if(selectedRun){const saved=history.find(row=>row.id===selectedRun);if(saved)setRun(saved);else setError("This saved upload is unavailable on this device.");}
+  },[selectedRun,history,busy,run?.unsavedOutputs,exporting]);
   const estimate = automaticPlan().estimatedUSD,
     ready = Boolean(
       session &&
       connected &&
       navigator.onLine &&
       navigator.locks &&
-      !run?.unsavedOutputs,
+      !run?.unsavedOutputs && !exporting,
     ),
     completed = run?.items.filter((i) => i.status === "READY") ?? [];
   async function upload(file: File) {
@@ -169,7 +187,8 @@ export function UploadStudio() {
     }
   }
   async function all() {
-    if (!run || !completed.length) return;
+    if (!run || !completed.length || exportLock.current) return;
+    exportLock.current=true; setExporting(true);
     setError("");
     try {
       const writer = new ZipWriter(new BlobWriter("application/zip"));
@@ -220,6 +239,7 @@ export function UploadStudio() {
         "The download could not be prepared. Your saved images have not been deleted.",
       );
     }
+    finally { exportLock.current=false; setExporting(false); }
   }
   return (
     <>
@@ -275,7 +295,7 @@ export function UploadStudio() {
             className={`primary-button auto-file ${!ready ? "disabled" : ""}`}
           >
             Upload image
-            <input
+            <Input
               aria-label="Upload product image"
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -310,21 +330,20 @@ export function UploadStudio() {
               <span className="section-kicker">YOUR IMAGES</span>
               <h2 id="auto-results-heading" aria-live="polite">{completed.length} of 7 ready</h2>
             </div>
-            <button
+            <Button
               className="primary-button"
               type="button"
-              disabled={!completed.length}
+              disabled={!completed.length || exporting}
               onClick={() => void all()}
             >
-              Download{" "}
-              {completed.length === 7 ? "all" : `${completed.length} images`}
-            </button>
+              {exporting ? "Preparing download…" : completed.length === 7 ? "Download all" : `Download ${completed.length} images`}
+            </Button>
           </div>
           {run.unsavedOutputs && (
             <p role="alert">
               These finished images are only in this tab’s memory. Download them
               before leaving.{" "}
-              <button
+              <Button
                 type="button"
                 className="secondary-button"
                 onClick={() => {
@@ -337,7 +356,7 @@ export function UploadStudio() {
                 }}
               >
                 Start another upload
-              </button>
+              </Button>
             </p>
           )}
           {run.state === "STOPPED" && (
@@ -355,6 +374,7 @@ export function UploadStudio() {
                 paused; completed images remain available.
               </p>
             )}
+          {busy && <Progress value={completed.length} label={`${completed.length} of 7 images ready`}/>}
           <div className="auto-results-grid">
             {run.items.map((item) => (
               <ResultCard key={item.id} item={item} processing={busy} onError={setError} />
@@ -371,25 +391,25 @@ export function UploadStudio() {
       <details className="auto-secondary">
         <summary>Previous uploads &amp; image information</summary>
         {history.map((row) => (
-          <button
+          <Button
             key={row.id}
             type="button"
             className="secondary-button"
-            disabled={busy || Boolean(run?.unsavedOutputs)}
+            disabled={busy || exporting || Boolean(run?.unsavedOutputs)}
             onClick={() => setRun(row)}
           >
             {new Date(row.createdAt).toLocaleString()} ·{" "}
             {row.items.filter((i) => i.status === "READY").length}/7
-          </button>
+          </Button>
         ))}
         {run && (
-          <button
+          <Button
             type="button"
             className="secondary-button"
             onClick={() => download(run.source, run.filename)}
           >
             Download original
-          </button>
+          </Button>
         )}
         <p>
           Automatic image tools are bundled with the app. Processing stays on
