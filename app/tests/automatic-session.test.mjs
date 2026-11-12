@@ -1,7 +1,9 @@
+import {indexedDB} from "fake-indexeddb";
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "vite";
-globalThis.window = new EventTarget();
+globalThis.window = new EventTarget();globalThis.indexedDB=indexedDB;
+Object.defineProperty(globalThis.navigator,"locks",{configurable:true,value:{request:async(name,fn)=>fn()}});
 const server = await createServer({
   root: new URL("..", import.meta.url).pathname,
   server: { middlewareMode: true },
@@ -11,18 +13,19 @@ after(() => server.close());
 const keys = await server.ssrLoadModule("/src/browserByok.ts"),
   sessions = await server.ssrLoadModule("/src/automaticSession.ts"),
   imaging = await server.ssrLoadModule("/src/autoImaging.ts");
-test("automatic uploads require key and explicit session spending consent", () => {
-  assert.throws(() => sessions.authorizeAutomaticSession("1.00", true));
-  keys.setBrowserKey("sk-synthetic-auto-session-test");
-  assert.throws(() => sessions.authorizeAutomaticSession("1.00", false));
-  assert.throws(() => sessions.authorizeAutomaticSession("NaN", true));
-  sessions.authorizeAutomaticSession("0.10", true);
-  assert.ok(sessions.reserveAutomaticRun("0.059000"));
-  assert.throws(() => sessions.reserveAutomaticRun("0.059000"));
-  assert.equal(sessions.automaticSessionStatus().reserved, 59000);
-  keys.clearBrowserKey();
-  assert.equal(sessions.automaticSessionStatus(), null);
-  assert.throws(() => sessions.reserveAutomaticRun("0.001000"));
+test("automatic uploads restore one-time permission and retain an optional monthly estimate limit", async () => {
+  assert.equal(sessions.automaticSessionStatus(),null);
+  await keys.saveBrowserKey("sk-synthetic-auto-session-test");
+  assert.equal(sessions.automaticSessionStatus(),null);
+  await assert.rejects(()=>keys.saveUploadAuthorization(false));
+  await keys.saveUploadAuthorization(true,"0.10");
+  const run=()=>({id:crypto.randomUUID(),items:[{id:crypto.randomUUID(),estimatedUSD:"0.059000"}]});
+  assert.ok(await sessions.reserveAutomaticRun(run()));
+  await assert.rejects(()=>sessions.reserveAutomaticRun(run()),/monthly/);
+  keys.clearBrowserKey();assert.equal(sessions.automaticSessionStatus(),null);
+  await keys.restoreSavedBrowserKey();assert.ok(sessions.automaticSessionStatus());
+  assert.equal((await sessions.monthlyAutomaticUsage()).reservedMicros,59000);
+  await keys.forgetBrowserKey();assert.equal(sessions.automaticSessionStatus(),null);
 });
 test("automatic foreground checks reject empty, invalid or tiny selections", () => {
   assert.throws(() => imaging.matteBounds(new Float32Array(16), 4, 4));

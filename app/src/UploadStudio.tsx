@@ -13,6 +13,7 @@ import {
   ZipWriter,
 } from "@zip.js/zip.js/lib/zip-core-native.js";
 import { automaticPlan, runAutomatic } from "./automaticPipeline";
+import { AutomaticUsage } from "./AutomaticUsage";
 import { automaticSessionStatus } from "./automaticSession";
 import { browserKeyStatus, onBrowserKeyChange, referenceTransmissionAllowed, setReferenceTransmissionConsent, onReferenceConsentChange } from "./browserByok";
 import {
@@ -141,12 +142,14 @@ export function UploadStudio() {
     };
     const stop = onBrowserKeyChange(refresh);
     const stopReference = onReferenceConsentChange(refresh);
-    window.addEventListener("studio-auto-session", refresh);
+    // Restore can finish between initial render and effect subscription.
+    refresh();
+    window.addEventListener("studio-auto-usage", refresh);
     window.addEventListener("online", refresh);window.addEventListener("offline", refresh);
     return () => {
       mounted = false;
       stop(); stopReference();
-      window.removeEventListener("studio-auto-session", refresh);
+      window.removeEventListener("studio-auto-usage", refresh);
       window.removeEventListener("online", refresh);window.removeEventListener("offline", refresh);
       active.current?.abort();
     };
@@ -262,23 +265,15 @@ export function UploadStudio() {
           <p className="lead">{t("Upload your product photo. Get complete images, ready to download.")}</p>
         </div>
       </div>
+      <AutomaticUsage/>
       {!connected || !session ? (
         <section className="auto-setup">
-          <h2>{t("Set up this session")}</h2>
-          <p>
-            Add your OpenAI key and set a spending estimate limit once for this
-            tab. Then uploading a photo starts processing automatically.
-          </p>
-          <Link className="primary-button" to="/settings">
-            Set up key &amp; budget
-          </Link>
+          <h2>{t("Connect once, then upload")}</h2>
+          <p>{t("Save your OpenAI key and allow future uploads once. An optional monthly limit is available in Settings.")}</p>
+          <Link className="primary-button" to="/settings">{t("Set up key")}</Link>
         </section>
       ) : (
-        <p className="muted">
-          Seven outputs · six paid requests + one local detail crop · estimated ${estimate} USD · session estimate
-          remaining ${((session.limit - session.reserved) / 1e6).toFixed(6)} ·{" "}
-          <Link to="/settings">{t("Session settings")}</Link>
-        </p>
+        <p className="muted">{t("Six paid requests + one local detail crop · estimated ${amount} USD per upload",{amount:estimate})} · <Link to="/settings">{t("Usage & key settings")}</Link></p>
       )}
       {!busy && <section className="automatic-options" aria-label="Image mode">
         <div className="automatic-mode-options">

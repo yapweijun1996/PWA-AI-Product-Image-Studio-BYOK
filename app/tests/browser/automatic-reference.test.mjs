@@ -89,10 +89,10 @@ test('Reference mode requires transmission consent, normalizes ordered views, pr
   await tab.call('Page.enable');await tab.call('Runtime.enable');await tab.call('Page.navigate',{url});
 
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')&&!document.querySelector('input[type=password]').disabled`),'key settings');
-  await evaluate(tab,`(()=>{const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [selector,value] of [['input[type=password]','sk-synthetic-reference-browser-only'],['input[type=number]','5.00']]){const e=document.querySelector(selector);set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('form input[type=checkbox]').click()})()`);
+  await evaluate(tab,`(()=>{const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;for(const [selector,value] of [['input[type=password]','sk-synthetic-reference-browser-only']]){const e=document.querySelector(selector);set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}))}document.querySelector('form input[type=checkbox]').click()})()`);
   await until(()=>evaluate(tab,`!document.querySelector('form button[type=submit]').disabled`),'authorized setup form');
   await evaluate(tab,`document.querySelector('form button[type=submit]').click()`);
-  await until(()=>evaluate(tab,`document.body.innerText.includes('Key available in this tab')`),'key/session set');
+  await until(()=>evaluate(tab,`document.body.innerText.includes('Ready to create.')`),'key/session set');
   await evaluate(tab,`location.hash='#/'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[name=automatic-mode]')`),'mode control');
   assert.equal(await evaluate(tab,`document.querySelector('input[name=automatic-mode]').checked`),true,'STRICT stays default');
@@ -130,6 +130,7 @@ test('Reference mode requires transmission consent, normalizes ordered views, pr
   await delay(150);assert.equal(await evaluate(tab,`window.__unknownCalls`),1,'Unknown reference attempt is never retried');
   await tab.call('Page.reload');await until(()=>evaluate(tab,`!!document.querySelector('input[name=automatic-mode]')`),'reload mode');
   assert.equal(await evaluate(tab,`document.querySelector('input[name=automatic-mode]').checked`),true);
+  await until(()=>evaluate(tab,`!!document.querySelector('input[aria-label="Upload product image"]')`),'saved uploader restored');
   await evaluate(tab,`document.querySelectorAll('input[name=automatic-mode]')[1].click()`);
   assert.equal(await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').checked`),false,'Reload never restores photo-transmission consent');
   assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),true);

@@ -119,7 +119,7 @@ export async function runAutomatic(
           throw new Error("The original changed during preparation.");
         run.capabilities = run.foreground?.capabilities;
         // Reserve the entire upload estimate once, before the first paid send.
-        run.sessionId = reserveAutomaticRun(plan.estimatedUSD);
+        run.sessionId = await reserveAutomaticRun(run);
         run.state = "RUNNING";
         run.message = undefined;
         await saveAutoRun(run);

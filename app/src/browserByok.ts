@@ -1,6 +1,6 @@
 import { automaticPrompt, automaticEstimateUSD, AUTOMATIC_PROMPT_VERSION } from '../automatic-policy.mjs';
 import { validateAutomaticReferences } from './automaticReference.ts';
-import { credentialStore } from './browserCredentialStore.ts';
+import { credentialStore, readStoredCredential, writeStoredCredential, authorizeStoredCredential, markStoredUploadAttempt, recordStoredAttemptOutcome, type StoredCredential, type UploadAuthorization } from './browserCredentialStore.ts';
 import { generateImage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE, STUDIO_MAX_PNG_BYTES, studioBuildPrompt, studioEstimateUSD } from '../studio-policy.mjs';
@@ -11,6 +11,7 @@ let saved = false;
 const credentialChannel = typeof document !== 'undefined' && typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('image-studio-credential-state') : null;
 credentialChannel?.addEventListener('message', event => { if (['saved','deleted'].includes(event.data)) { saved=event.data==='saved'; clearBrowserKey(); } });
 let key = '', expires = 0, epoch = 0;
+let credentialId = '', uploadAuthorization: UploadAuthorization | null = null;
 let referenceConsent = false, referenceEpoch = 0;
 const referenceActive = new Set<AbortController>();
 export function referenceTransmissionAllowed() { return referenceConsent; }
@@ -35,9 +36,9 @@ function journal(): Record<string, Marker> {
 }
 export function browserWaitReviewNeeded() { return Object.values(journal()).some(m=>m.waitReview===true); }
 function writeJournal(value: Record<string, Marker>) { localStorage.setItem(JOURNAL, JSON.stringify(value)); }
-export function browserKeyStatus() { return { saved, connected: Boolean(key) && expires > Date.now(), expiresAt: expires ? new Date(expires).toISOString() : null }; }
+export function browserKeyStatus() { return { saved, credentialId, uploadAuthorization: uploadAuthorization ? { ...uploadAuthorization } : null, connected: Boolean(key) && expires > Date.now(), expiresAt: expires ? new Date(expires).toISOString() : null }; }
 export function clearBrowserKey() {
-  key = ''; expires = 0; epoch++; setReferenceTransmissionConsent(false); approvals.clear(); clearTimeout(expiryTimer);
+  key = ''; expires = 0; credentialId = ''; uploadAuthorization = null; epoch++; setReferenceTransmissionConsent(false); approvals.clear(); clearTimeout(expiryTimer);
   for (const controller of active) controller.abort();
   window.dispatchEvent(new Event(EVENT));
 }
@@ -49,20 +50,32 @@ export function setBrowserKey(value: string) {
   expiryTimer = setTimeout(clearBrowserKey, 60 * 60 * 1000);
   window.dispatchEvent(new Event(EVENT));
 }
+function activateStoredCredential(record: StoredCredential) {
+  setBrowserKey(record.key); credentialId = record.id; uploadAuthorization = record.authorization; saved = true;
+  window.dispatchEvent(new Event(EVENT));
+}
 export async function restoreSavedBrowserKey() {
   if(browserKeyStatus().connected)return;
-  const revision=epoch;
-  const value=await credentialStore('read');
+  const revision=epoch, record=await readStoredCredential();
   if(epoch!==revision)return;
-  saved=Boolean(value);
-  if(value)setBrowserKey(value);
+  saved=Boolean(record);
+  if(record)activateStoredCredential(record);
   else window.dispatchEvent(new Event(EVENT));
 }
-export async function saveBrowserKey(value:string) {
+export async function saveBrowserKey(value:string, consent=false, monthlyCap='') {
   if(value.startsWith('sk-or-'))throw new Error(providerKeyMismatch);
   if (!/^sk-[A-Za-z0-9_-]{10,500}$/.test(value)) throw new Error('Enter an OpenAI API key.');
-  await credentialStore('write',value);
-  saved=true;setBrowserKey(value);credentialChannel?.postMessage('saved');
+  clearBrowserKey(); const revision=epoch;
+  const record=await writeStoredCredential(value,consent,monthlyCap);
+  if(epoch===revision)activateStoredCredential(record);
+  credentialChannel?.postMessage('saved');
+}
+export async function saveUploadAuthorization(consent:boolean,monthlyCap='') {
+  if(!browserKeyStatus().connected)throw new Error('Reload your saved key before saving upload settings.');
+  const revision=epoch, expectedId=credentialId;
+  const record=await authorizeStoredCredential(expectedId,consent,monthlyCap);
+  if(epoch!==revision)throw new Error('The key changed while saving upload settings.');
+  activateStoredCredential(record);credentialChannel?.postMessage('saved');
 }
 export async function forgetBrowserKey() {
   clearBrowserKey();
@@ -122,6 +135,9 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
   }
   if (!['/images/approvals','/images/generate'].includes(path) || init.method !== 'POST') return failure('INVALID_INPUT');
   const validationEpoch = epoch, consentEpoch = referenceEpoch;
+  const automatic = body.automaticMode !== undefined;
+  const authorization = uploadAuthorization ? { ...uploadAuthorization } : null, dispatchCredentialId = credentialId;
+  if (automatic && (!authorization || !dispatchCredentialId)) return failure('UPLOAD_AUTHORIZATION_REQUIRED');
   const isReference = body.automaticMode === 'REFERENCE';
   let referenceBytes: Uint8Array[] = [];
   try {
@@ -150,11 +166,16 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 300_000);
     active.add(controller);
     if (isReference) referenceActive.add(controller);
-    let httpStatus: number | undefined, waitSeconds: number | undefined, sent = false;
+    let httpStatus: number | undefined, waitSeconds: number | undefined, sent = false, accounted = false;
     try {
       const provider = createOpenAI({ apiKey: key, baseURL: 'https://api.openai.com/v1', fetch: async (url, options) => {
         const endpoint = isReference ? 'https://api.openai.com/v1/images/edits' : 'https://api.openai.com/v1/images/generations';
         if (String(url) !== endpoint || sent || controller.signal.aborted || !browserKeyStatus().connected || validationEpoch !== epoch || (isReference && (!referenceConsent || consentEpoch !== referenceEpoch))) throw new Error('Request blocked.');
+        if (automatic) {
+          await markStoredUploadAttempt(body.productId as string, id, body.estimatedUSD as string, dispatchCredentialId, authorization!.id);
+          accounted = true;
+          if (controller.signal.aborted || !browserKeyStatus().connected || validationEpoch !== epoch || (isReference && (!referenceConsent || consentEpoch !== referenceEpoch))) throw new Error('Request blocked.');
+        }
         sent = true;
         const result = await fetch(url, { ...options, credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer' });
         httpStatus = result.status;
@@ -182,6 +203,7 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
       const image = result.image;
       if (image.mediaType !== 'image/png' || image.uint8Array.byteLength > STUDIO_MAX_PNG_BYTES) throw new Error('Invalid image');
       markers[id] = { outcome: 'DEFINITIVE_SUCCESS' }; writeJournal(markers);
+      if (accounted) await recordStoredAttemptOutcome(body.productId as string, id, 'DEFINITIVE_SUCCESS');
       return response({ clientAttemptId: id, outcome: 'DEFINITIVE_SUCCESS', model: STUDIO_MODEL,
         image: { mimeType: 'image/png', width: 1024, height: 1024, dataBase64: image.base64 }, usage: null, observedUSD: null });
     } catch {
@@ -189,8 +211,9 @@ export async function browserStudioRequest(path: string, init: RequestInit = {})
       markers[id] = { outcome: definitive ? 'DEFINITIVE_FAILURE' : 'UNKNOWN',
         ...(httpStatus === 429 ? waitSeconds === undefined ? { waitReview: true as const } : { waitUntil: Date.now() + waitSeconds * 1000 } : {}) };
       writeJournal(markers);
+      if (accounted) await recordStoredAttemptOutcome(body.productId as string, id, definitive ? 'DEFINITIVE_FAILURE' : 'UNKNOWN');
       if (httpStatus === 429) return response({ error: { code: 'PROVIDER_LIMIT', outcome: 'DEFINITIVE_FAILURE', ...(waitSeconds === undefined ? {} : { retryAfterSeconds: waitSeconds }) } },429);
       return failure(definitive ? 'PROVIDER_REJECTED' : 'UNKNOWN', definitive ? 'DEFINITIVE_FAILURE' : 'UNKNOWN', httpStatus === 401 ? 401 : 502);
-    } finally { clearTimeout(timer); active.delete(controller); referenceActive.delete(controller); }
+    } finally { clearTimeout(timer); active.delete(controller); referenceActive.delete(controller); window.dispatchEvent(new Event('studio-auto-usage'));  }
   });
 }
