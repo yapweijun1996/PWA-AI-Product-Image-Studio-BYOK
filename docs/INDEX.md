@@ -25,3 +25,5 @@ Start with repository `AGENTS.md` and [AI_AGENT_HANDOFF](08-delivery/AI_AGENT_HA
 The [Bug Register](../BUG.md) records verified defects and their remediation state.
 
 - [Subject-aware workflow implementation and acceptance](09-research/SUBJECT_AWARE_WORKFLOW_2026-11-12.md) — DEC-024, T-109–T-113; design and scoped evidence distinguished from real photographic acceptance.
+
+- [Completed analysis response contract fix](09-research/RESPONSE_CONTRACT_FIX_2026-11-12.md) — T-114, v0.5.1; wire/runtime alignment and completion versus usability.
