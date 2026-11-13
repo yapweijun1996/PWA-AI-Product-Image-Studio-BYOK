@@ -52,8 +52,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 10082,
-      "sha256": "f0e032fa0695e44d18452946a792234bdde6342f9076973d4e1a6e714d36a9b9"
+      "bytes": 10379,
+      "sha256": "745131019efc83061489404595b388a5201c3a4f11285fe771a15a55d0fa7051"
     },
     {
       "path": "ROADMAP.md",
@@ -107,8 +107,8 @@
     },
     {
       "path": "docs/00-governance/DECISION_REGISTER.md",
-      "bytes": 12534,
-      "sha256": "959a7367e176af34749a390cb3fcda3a7dadc91b9eb3e511e1f07c94c7bdd9ac"
+      "bytes": 13322,
+      "sha256": "41c7f8825296d31a0f89a69accd3d51f9ada6d5de9ed1d474f1dc0cf3d889e7e"
     },
     {
       "path": "docs/00-governance/EVIDENCE_STATUS.md",
@@ -162,8 +162,8 @@
     },
     {
       "path": "docs/02-architecture/ADR.md",
-      "bytes": 57606,
-      "sha256": "31af3b0cb753297ab1c11d45a4ca7800186c01b499503fadeac3a6112833d9c8"
+      "bytes": 58625,
+      "sha256": "a527cf7c47113734cb4ba47862eff4452766a3f5901d351d3557b46d5ec4b0c2"
     },
     {
       "path": "docs/02-architecture/DEPLOYMENT.md",
@@ -207,8 +207,8 @@
     },
     {
       "path": "docs/03-security/THREAT_MODEL.md",
-      "bytes": 8939,
-      "sha256": "1af10117690e4678d9677af99b655d65b324b1bed63abf587cc16fc02b7a4c15"
+      "bytes": 9364,
+      "sha256": "16079fa682dbc8051aaffc8037e64e7b4dc4d4cae46f37ba7cf8251e6e49215b"
     },
     {
       "path": "docs/04-data/DATA_MODEL.md",
@@ -307,8 +307,8 @@
     },
     {
       "path": "docs/08-delivery/TASK.md",
-      "bytes": 350124,
-      "sha256": "8ebe4f8b36809ab0d41d2302a67592ee16c1b1322b1b2723055f4140c8ef3dcf"
+      "bytes": 351411,
+      "sha256": "047a07c043690e17f5d67f465258b3c91e2a495e547a4a578392caef9c48ee9c"
     },
     {
       "path": "docs/09-research/AUTOMATIC_OUTPUT_REVIEW_2026-11-12.md",

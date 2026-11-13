@@ -20,7 +20,7 @@ The interface supports English, Simplified Chinese, Malay, Japanese, Korean, and
 | | STRICT (default) | Reference-guided |
 |---|---|---|
 | **How it works** | Selects the product locally and composites its foreground over generated scenes. | Analyzes the source, prepares product reference crops, and generates concepts using those references. |
-| **Image sharing** | Source images stay on the device. Scene instructions go to OpenAI. | Normalized source images, selected reference crops, and generated outputs are sent to OpenAI for analysis, edits, and review after separate tab consent. |
+| **Image sharing** | Source images stay on the device. Scene instructions go to OpenAI. | When you select this mode, the image-sharing option is preselected. With it enabled, uploads send normalized source images, selected reference crops, and generated outputs to OpenAI for analysis, edits, and review. |
 | **Product fidelity** | Uses locally selected original pixels, subject to selection and resizing. | Generative edits can change labels, logos, geometry, and other details. |
 | **Calls per upload** | Up to six image requests; Detail is a local crop when reliable. | Up to six image requests, one source-analysis request, and one batch-review request; Detail is local when reliable. |
 
@@ -32,7 +32,7 @@ Machine visual hints and technical checks are **not human approval or a guarante
 
 - Image generation and reference analysis/review can incur OpenAI charges. The app shows estimates before upload; monthly totals and optional limits are **local estimates**, not invoices or provider-enforced spending caps. See the [cost model](docs/09-research/COST_MODEL.md).
 - Your key and upload authorization are stored in a dedicated IndexedDB database on this device until removed. The active in-memory key expires after one hour; a saved key can be restored. Browser scripts and extensions can access stored credentials, which are not protected by a separate password. Use **Settings → Remove saved key** to delete the stored key and clear it from open tabs.
-- Reference transmission consent is separate and lasts for the current tab. Normalized source copies are sent for analysis; selected crops are retained locally for future versions. The primary original remains local and unchanged. Uploaded originals may contain EXIF metadata.
+- The Reference-guided image-sharing checkbox is checked by default when you select the mode; uncheck it to prevent reference uploads. Selecting the mode alone sends nothing. An explicit opt-out is respected when switching modes in the same tab; after a page reload, selecting the mode preselects the option again. The primary original remains local and unchanged; normalized copies are sent for analysis and selected crops are retained locally for future versions. Uploaded originals may contain EXIF metadata.
 - Requests are not retried automatically. An interrupted request may still have been charged. Its outcome remains unknown in history; you can choose to start a new upload, which is a new potentially billable request. Existing results remain available. Provider rate-limit waits and any optional monthly estimate limit still apply.
 - Browser storage can be cleared or evicted. Download images and originals you need. An automatic output ZIP is not a project backup; [full Advanced-workspace backups](docs/04-data/EXPORT_IMPORT.md) are unencrypted and can contain sensitive project data.
 
