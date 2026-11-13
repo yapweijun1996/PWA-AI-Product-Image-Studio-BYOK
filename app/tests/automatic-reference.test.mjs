@@ -55,8 +55,18 @@ test('key clear during asynchronous reference hash validation cannot regain auth
 test('consent revoked while waiting on dispatch lock prevents SDK transmission',async()=>{
  await saveBrowserKey(key,true);setReferenceTransmissionConsent(true);const b=await body(),init=await approved(b);let enter,waiting;const acquired=new Promise(r=>waiting=r);locks.request=async(name,fn)=>{if(name==='studio-browser-byok-dispatch-v1'){waiting();await new Promise(r=>enter=r)}return fn()};let calls=0;globalThis.fetch=async()=>{calls++;throw Error()};const pending=request('/images/generate',init);await acquired;setReferenceTransmissionConsent(false);setReferenceTransmissionConsent(true);enter();assert.equal((await pending).status,409);assert.equal(calls,0);
 });
-test('reference request ambiguous network failure is UNKNOWN with no retry or resend',async()=>{
- await saveBrowserKey(key,true);setReferenceTransmissionConsent(true);let calls=0;globalThis.fetch=async()=>{calls++;throw Error(key)};const b=await body(),init=await approved(b);const result=await(await request('/images/generate',init)).json();assert.equal(result.error.outcome,'UNKNOWN');assert.equal(calls,1);assert.equal((await request('/images/generate',init)).status,409);assert.equal((await approve(await body())).status,409);assert.equal(calls,1);assert.ok(!JSON.stringify(result).includes(key));
+test('an UNKNOWN attempt remains non-replayable while a new explicit request can proceed',async()=>{
+ await saveBrowserKey(key,true);setReferenceTransmissionConsent(true);let calls=0;globalThis.fetch=async()=>{calls++;throw Error(key)};
+ const b=await body(),init=await approved(b);const result=await(await request('/images/generate',init)).json();assert.equal(result.error.outcome,'UNKNOWN');assert.equal(calls,1);assert.equal((await request('/images/generate',init)).status,409);assert.equal((await approve(b)).status,409,'The same attempt ID cannot be reapproved');
+ const next=await body(), nextInit=await approved(next);assert.equal(calls,1,'A new approval alone sends nothing');assert.equal(JSON.parse(storage.get('studio.browser-byok.attempts.v1'))[b.clientAttemptId].outcome,'UNKNOWN');
+ globalThis.fetch=async()=>{calls++;return Response.json({data:[{b64_json:Buffer.from(png).toString('base64')}]})};assert.equal((await request('/images/generate',nextInit)).status,200);assert.equal(calls,2,'Only the explicit new attempt was sent');assert.equal(JSON.parse(storage.get('studio.browser-byok.attempts.v1'))[b.clientAttemptId].outcome,'UNKNOWN');assert.ok(!JSON.stringify(result).includes(key));
+});
+test('strict automatic requests allow an old IN_FLIGHT marker but retain provider wait and replay guards',async()=>{
+ await saveBrowserKey(key,true);let calls=0;globalThis.fetch=async()=>{calls++;return Response.json({data:[{b64_json:Buffer.from(png).toString('base64')}]})};
+ const oldId=crypto.randomUUID();storage.set('studio.browser-byok.attempts.v1',JSON.stringify({[oldId]:{outcome:'IN_FLIGHT'}}));
+ const next=await body(1,'STRICT'), init=await approved(next);assert.equal(calls,0);assert.equal((await request('/images/generate',init)).status,200);assert.equal(calls,1);
+ const saved=JSON.parse(storage.get('studio.browser-byok.attempts.v1'));assert.equal(saved[oldId].outcome,'IN_FLIGHT');saved[oldId].waitUntil=Date.now()+60000;storage.set('studio.browser-byok.attempts.v1',JSON.stringify(saved));
+ assert.equal((await approve(await body(1,'STRICT'))).status,409,'Provider wait remains enforced');assert.equal(calls,1);
 });
 test('revoking reference consent aborts in-flight image request and preserves unknown charge',async()=>{
  await saveBrowserKey(key,true);setReferenceTransmissionConsent(true);let started;const sent=new Promise(r=>started=r);globalThis.fetch=async(_url,options)=>{started();return new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('stopped')),{once:true}))};const b=await body(),pending=request('/images/generate',await approved(b));await sent;setReferenceTransmissionConsent(false);assert.equal((await(await pending).json()).error.outcome,'UNKNOWN');assert.equal(referenceTransmissionAllowed(),false);

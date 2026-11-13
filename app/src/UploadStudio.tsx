@@ -98,10 +98,7 @@ export function UploadStudio() {
       if (saved) setRun(saved);
     }
   }, [selected, history]);
-  const unresolved = [...history, ...(run ? [run] : [])].some(
-      runHasUnreviewedCharge,
-    ),
-    estimate = automaticPlan(mode).estimatedUSD,
+  const estimate = automaticPlan(mode).estimatedUSD,
     ready = Boolean(
       session &&
       connected &&
@@ -109,7 +106,6 @@ export function UploadStudio() {
       navigator.locks &&
       !run?.unsavedOutputs &&
       !exporting &&
-      !unresolved &&
       (mode === "STRICT" || referenceConsent),
     );
   const completed = run?.items.filter(usableItem) ?? [],
@@ -385,9 +381,7 @@ export function UploadStudio() {
             {t(
               busy
                 ? (run?.message ?? "PROCESSING_OUTPUTS")
-                : unresolved
-                  ? "BILLING_REVIEW_REQUIRED"
-                  : "PNG, JPEG or WebP · up to 20 MiB",
+                : "PNG, JPEG or WebP · up to 20 MiB",
             )}
           </p>
           {!busy && (
@@ -509,20 +503,20 @@ export function UploadStudio() {
             <ErrorNotice
               title={t(
                 runHasUnreviewedCharge(run)
-                  ? "Billing review needed"
+                  ? "Request interrupted"
                   : "Generation stopped",
               )}
             >
-              <p>{t(run.message ?? "REQUEST_UNKNOWN")}</p>
               <p>
                 {t(
-                  "Available images are kept. No request is retried automatically.",
+                  runHasUnreviewedCharge(run) ||
+                    run.message === "BILLING_REVIEW_REQUIRED"
+                    ? "REQUEST_UNKNOWN"
+                    : (run.message ?? "REQUEST_UNKNOWN"),
                 )}
               </p>
-              {runHasUnreviewedCharge(run) && (
-                <Link className="secondary-button" to="/settings">
-                  {t("Open Settings")}
-                </Link>
+              {completed.length > 0 && (
+                <p>{t("Available images are kept.")}</p>
               )}
             </ErrorNotice>
           )}
@@ -573,7 +567,6 @@ export function UploadStudio() {
           <AutomaticResults
             run={run}
             busy={busy}
-            globalHold={unresolved}
             onError={setError}
             onRegenerate={regenerate}
             regenerating={regenerating}

@@ -391,8 +391,16 @@ test(
       );
       await evaluate(
         tab,
-        `[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click();window.__qaAnalysisOverride=null`,
+        `[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click();window.__qaAnalysisOverride=null;window.__qaFailPurpose='source-analysis'`,
       );
+      await until(() => evaluate(tab, `!!document.querySelector('input[aria-label="Upload product image"]')&&!document.querySelector('input[aria-label="Upload product image"]').disabled`), "explicit unknown-source upload ready");
+      await evaluate(tab, boardScript());
+      await until(() => evaluate(tab, `window.__qaRequests.length===2&&!document.querySelector('.auto-upload.processing')&&document.querySelector('.auto-results')?.innerText.includes('Request interrupted')`), "unknown source outcome visible");
+      assert.equal(await evaluate(tab, `document.querySelector('#auto-results-heading').textContent`), "0 downloadable");
+      await delay(250);
+      assert.equal(await evaluate(tab, `window.__qaRequests.length`), 2, "UNKNOWN is never automatically retried");
+      assert.equal(await evaluate(tab, `(async()=>{const q=indexedDB.open('image-studio-automatic',3),db=await new Promise(r=>q.onsuccess=()=>r(q.result));try{return await new Promise(r=>{const q=db.transaction('runs').objectStore('runs').getAll();q.onsuccess=()=>r(q.result.some(run=>run.auxiliary.some(a=>a.kind==='source-analysis'&&a.status==='UNKNOWN'&&!a.reviewedAt)))})}finally{db.close()}})()`),true,"UNKNOWN history stays unreviewed and unchanged");
+      await evaluate(tab, `[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);
       await until(
         () =>
           evaluate(
@@ -406,7 +414,7 @@ test(
         () =>
           evaluate(
             tab,
-            `window.__qaRequests.length===9&&!document.querySelector('.auto-upload.processing')`,
+            `window.__qaRequests.length===10&&!document.querySelector('.auto-upload.processing')`,
           ),
         "normalized analysis succeeds on new explicit upload",
       );
@@ -434,7 +442,7 @@ test(
         () =>
           evaluate(
             tab,
-            `window.__qaRequests.length===17&&!document.querySelector('.auto-upload.processing')`,
+            `window.__qaRequests.length===18&&!document.querySelector('.auto-upload.processing')`,
           ),
         "completed invalid review preserves outputs",
       );
@@ -460,7 +468,7 @@ test(
         false,
       );
       await delay(250);
-      assert.equal(await evaluate(tab, `window.__qaRequests.length`), 17);
+      assert.equal(await evaluate(tab, `window.__qaRequests.length`), 18);
     } finally {
       tab?.close();
       await stopBrowser(browser);

@@ -149,9 +149,7 @@ export function AutomaticResults({
   onError,
   onRegenerate,
   regenerating,
-  globalHold = false,
 }: {
-  globalHold?: boolean;
   run: AutoRun;
   busy: boolean;
   onError: (message: string) => void;
@@ -181,7 +179,6 @@ export function AutomaticResults({
           onRegenerate={onRegenerate}
           busy={busy || Boolean(regenerating)}
           regenerating={regenerating === item.style}
-          globalHold={globalHold}
         />
       )}
     </>
@@ -194,9 +191,7 @@ function ImagePreview({
   onRegenerate,
   busy,
   regenerating,
-  globalHold,
 }: {
-  globalHold: boolean;
   run: AutoRun;
   item: AutoItem;
   onClose: () => void;
@@ -257,7 +252,7 @@ function ImagePreview({
     run.pipelineVersion === "2.0.0" &&
     (run.mode !== "REFERENCE" || Boolean(run.preparedReferences?.length)) &&
     (item.style !== "macro" || Boolean(run.detail?.blob));
-  const chargeHold = globalHold || runHasUnreviewedCharge(run);
+  const hasUncertainAttempt = !busy && runHasUnreviewedCharge(run);
   const cost = automaticEstimateUSD(
     item.style,
     run.mode,
@@ -412,17 +407,14 @@ function ImagePreview({
             </figure>
           )}
         </div>
-        {chargeHold && (
-          <ErrorNotice title={t("Billing review needed")}>
+        {hasUncertainAttempt && (
+          <ErrorNotice title={t("Request interrupted")}>
             <p>{t("REQUEST_UNKNOWN")}</p>
             <p>
               {t(
-                "Available images are kept. No request is retried automatically.",
+                "Available images are kept.",
               )}
             </p>
-            <a className="secondary-button" href="#/settings" onClick={onClose}>
-              {t("Open Settings")}
-            </a>
           </ErrorNotice>
         )}
         {error && (
@@ -595,7 +587,6 @@ function ImagePreview({
                   className="secondary-button"
                   disabled={
                     busy ||
-                    (item.style !== "macro" && chargeHold) ||
                     (run.mode === "REFERENCE" &&
                       item.style !== "macro" &&
                       !referenceAllowed)
@@ -608,7 +599,7 @@ function ImagePreview({
                 <div className="preview-toolbar">
                   <Button
                     type="button"
-                    disabled={busy || (item.style !== "macro" && chargeHold)}
+                    disabled={busy}
                     onClick={() => {
                       setConfirm(false);
                       void onRegenerate(item.style).catch((e) =>

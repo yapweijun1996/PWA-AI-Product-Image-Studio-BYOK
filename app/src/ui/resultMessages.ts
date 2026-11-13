@@ -59,7 +59,7 @@ export const resultEnglish: Record<string, string> = {
   QUALITY_UNAVAILABLE:
     "The machine review is unavailable. Inspect the saved images against the source.",
   REQUEST_UNKNOWN:
-    "A request may have been charged, but its outcome is unknown. Check billing in Settings; it will not be retried.",
+    "The request outcome is unknown and may have been charged. It will not be retried automatically. You can upload again; new requests may incur charges.",
   REQUEST_NOT_SENT:
     "Authorization or local request records changed. No further request was sent.",
   REQUEST_STOPPED:
@@ -899,12 +899,40 @@ export const resultMessages: Record<string, readonly string[]> = {
     "사용 가능한 이미지는 유지됩니다. 자동으로 재시도하지 않습니다.",
     "Ảnh khả dụng được giữ lại. Không tự động thử lại yêu cầu.",
   ],
+  "Available images are kept.": [
+    "可用图片会保留。",
+    "Imej yang tersedia dikekalkan.",
+    "利用可能な画像は保持されます。",
+    "사용 가능한 이미지는 유지됩니다.",
+    "Ảnh khả dụng vẫn được giữ lại.",
+  ],
   "Billing review needed": [
     "请核对计费情况",
     "Perlu semakan bil",
     "請求状況の確認が必要",
     "청구 확인 필요",
     "Cần kiểm tra hóa đơn",
+  ],
+  "Request interrupted": [
+    "请求已中断",
+    "Permintaan terganggu",
+    "リクエストが中断されました",
+    "요청이 중단되었습니다",
+    "Yêu cầu bị gián đoạn",
+  ],
+  "Review the provider's rate-limit waiting period before continuing.": [
+    "继续前请确认服务商的限流等待时间。",
+    "Semak tempoh menunggu had kadar penyedia sebelum meneruskan.",
+    "続行する前に、プロバイダーのレート制限の待機時間を確認してください。",
+    "계속하기 전에 제공업체의 속도 제한 대기 시간을 확인하세요.",
+    "Hãy kiểm tra thời gian chờ giới hạn của nhà cung cấp trước khi tiếp tục.",
+  ],
+  "I checked the provider's rate-limit waiting period and want to continue with new uploads.": [
+    "我已确认服务商的限流等待时间，希望继续上传。",
+    "Saya telah menyemak tempoh menunggu had kadar dan ingin meneruskan muat naik baharu.",
+    "プロバイダーのレート制限の待機時間を確認し、新しいアップロードを続けます。",
+    "제공업체의 속도 제한 대기 시간을 확인했으며 새 업로드를 계속합니다.",
+    "Tôi đã kiểm tra thời gian chờ giới hạn và muốn tiếp tục tải ảnh mới lên.",
   ],
   "Reference concepts can change product details. Machine hints are not human approval. Inspect the source comparison.":
     [
@@ -1162,11 +1190,11 @@ export const resultMessages: Record<string, readonly string[]> = {
     "Chưa có kiểm tra từ máy. Hãy so sánh ảnh đã lưu với ảnh gốc.",
   ],
   REQUEST_UNKNOWN: [
-    "请求可能已计费，但结果未知。请在设置中核对账单，不会自动重试。",
-    "Permintaan mungkin dicaj tetapi hasil tidak diketahui. Semak bil dalam Tetapan; tiada cubaan semula.",
-    "課金された可能性がありますが結果は不明です。設定で請求を確認してください。自動再試行しません。",
-    "요금이 발생했을 수 있지만 결과는 불명입니다. 설정에서 청구를 확인하세요. 자동 재시도하지 않습니다.",
-    "Yêu cầu có thể đã tính phí nhưng chưa rõ kết quả. Kiểm tra hóa đơn trong Cài đặt; không tự thử lại.",
+    "请求结果未知，可能已经计费。系统不会自动重试。你可以重新上传，新请求可能另行收费。",
+    "Hasil permintaan tidak diketahui dan mungkin dicaj. Ia tidak dicuba semula secara automatik. Anda boleh memuat naik semula; permintaan baharu mungkin dicaj.",
+    "リクエストの結果は不明で、課金された可能性があります。自動再試行はされません。再アップロードできますが、新しいリクエストには料金が発生する場合があります。",
+    "요청 결과를 알 수 없으며 요금이 발생했을 수 있습니다. 자동 재시도는 없습니다. 다시 업로드할 수 있지만 새 요청에 요금이 발생할 수 있습니다.",
+    "Chưa rõ kết quả yêu cầu và có thể đã bị tính phí. Hệ thống không tự thử lại. Bạn có thể tải lên lại; yêu cầu mới có thể phát sinh phí.",
   ],
   REQUEST_NOT_SENT: [
     "授权或本地请求记录发生变化，未继续发送请求。",

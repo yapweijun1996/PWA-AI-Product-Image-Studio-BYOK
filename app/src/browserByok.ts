@@ -227,10 +227,12 @@ const response = (body: unknown, status = 200) =>
   Response.json(body, { status });
 const failure = (code: string, outcome = "DEFINITIVE_FAILURE", status = 409) =>
   response({ error: { code, outcome } }, status);
-function blocked(markers: Record<string, Marker>) {
+function blocked(markers: Record<string, Marker>, automatic: boolean) {
   return Object.values(markers).some(
     (m) =>
-      (!m.reviewed && ["IN_FLIGHT", "UNKNOWN"].includes(m.outcome)) ||
+      (!automatic &&
+        !m.reviewed &&
+        ["IN_FLIGHT", "UNKNOWN"].includes(m.outcome)) ||
       m.waitReview ||
       (m.waitUntil ?? 0) > Date.now(),
   );
@@ -540,7 +542,8 @@ export async function browserStudioRequest(
         return failure("APPROVAL_STALE");
       const markers = journal(),
         id = body.clientAttemptId as string;
-      if (blocked(markers) || markers[id]) return failure("ATTEMPT_BUSY");
+      if (blocked(markers, automatic) || markers[id])
+        return failure("ATTEMPT_BUSY");
       if (path === "/images/approvals") {
         approvals.clear();
         const approvalId = crypto.randomUUID(),

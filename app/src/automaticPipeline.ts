@@ -49,8 +49,6 @@ import {
 import {
   listAutoRuns,
   saveAutoRun,
-  allRunAttempts,
-  runHasUnreviewedCharge,
   type AutoRun,
   type AutoItem,
   type AuxiliaryAttempt,
@@ -100,10 +98,6 @@ export function automaticPlan(
       ) / 1e6
     ).toFixed(6),
   };
-}
-async function noChargeHolds() {
-  if ((await listAutoRuns()).some(runHasUnreviewedCharge))
-    throw new Error("BILLING_REVIEW_REQUIRED");
 }
 async function invoke(
   run: AutoRun,
@@ -421,7 +415,9 @@ export async function runAutomatic(
     { ifAvailable: true },
     async (lock) => {
       if (!lock) throw new Error("UPLOAD_ALREADY_ACTIVE");
-      await noChargeHolds();
+      // Validate saved history without treating an older uncertain attempt as a
+      // prohibition on a new, independently authorized upload.
+      await listAutoRuns();
       const plan = automaticPlan(mode);
       const run: AutoRun = {
         version: 1,
@@ -629,7 +625,6 @@ export async function regenerateAutomatic(
     { ifAvailable: true },
     async (lock) => {
       if (!lock) throw new Error("UPLOAD_ALREADY_ACTIVE");
-      if (style !== "macro") await noChargeHolds();
       const run = (await listAutoRuns()).find((r) => r.id === runId);
       if (!run || run.pipelineVersion !== "2.0.0")
         throw new Error("LEGACY_REGEN_UNAVAILABLE");
@@ -740,10 +735,10 @@ export async function regenerateAutomatic(
 }
 
 // Exceptional recovery is explicit; it never changes the original outcome or resends.
-export async function resolveAutomaticHolds(confirmed: boolean) {
+export async function reviewProviderWaits(confirmed: boolean) {
   if (!confirmed || !navigator.locks)
     throw new Error(
-      "Confirm that you checked provider billing and waiting periods.",
+      "Confirm that you checked the provider waiting period.",
     );
   await navigator.locks.request(
     "studio-automatic-upload-v1",
@@ -751,31 +746,6 @@ export async function resolveAutomaticHolds(confirmed: boolean) {
     async (lock) => {
       if (!lock)
         throw new Error("An upload is still active. Wait until it stops.");
-      const runs = await listAutoRuns();
-      for (const run of runs) {
-        let changed = false;
-        for (const item of allRunAttempts(run)) {
-          if (
-            (item.status === "UNKNOWN" || item.status === "SUBMITTED") &&
-            !item.reviewedAt
-          ) {
-            const receipt = await browserStudioRequest(
-              `/images/attempts/${item.id}/acknowledgement`,
-              {
-                method: "POST",
-                body: JSON.stringify({ acknowledgePossibleCharge: true }),
-              },
-            );
-            if (!receipt.ok)
-              throw new Error(
-                "The request history could not be reconciled. Preserve your local data.",
-              );
-            item.reviewedAt = (await receipt.json()).acknowledgedAt;
-            changed = true;
-          }
-        }
-        if (changed) await saveAutoRun(run);
-      }
       const waits = await (
         await browserStudioRequest("/images/legacy-waits")
       ).json();

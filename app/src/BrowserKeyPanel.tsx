@@ -8,8 +8,8 @@ import {
 import { t } from "./ui/i18n";
 import { Link } from "react-router-dom";
 import { useEffect, useState, type FormEvent } from "react";
-import { listAutoRuns, runHasUnreviewedCharge } from "./automaticStore";
-import { resolveAutomaticHolds } from "./automaticPipeline";
+import { listAutoRuns } from "./automaticStore";
+import { reviewProviderWaits } from "./automaticPipeline";
 import { automaticSessionStatus } from "./automaticSession";
 import { AutomaticUsage } from "./AutomaticUsage";
 import { monthlyCapMicros } from "./browserCredentialStore";
@@ -32,7 +32,7 @@ export function BrowserKeyPanel() {
   const [value, setValue] = useState(""),
     [consent, setConsent] = useState(false),
     [limit, setLimit] = useState(""),
-    [hasHolds, setHasHolds] = useState(false),
+    [hasProviderWait, setHasProviderWait] = useState(false),
     [recovery, setRecovery] = useState(false);
   useUnsavedChanges(Boolean(value));
   const authorized = Boolean(status.connected && status.uploadAuthorization),
@@ -84,11 +84,7 @@ export function BrowserKeyPanel() {
   }, []);
   useEffect(() => {
     void listAutoRuns()
-      .then((rows) =>
-        setHasHolds(
-          browserWaitReviewNeeded() || rows.some(runHasUnreviewedCharge),
-        ),
-      )
+      .then(() => setHasProviderWait(browserWaitReviewNeeded()))
       .catch((error) =>
         setError(
           error instanceof Error &&
@@ -116,11 +112,11 @@ export function BrowserKeyPanel() {
             : "")
       )
         await saveUploadAuthorization(needsConsent ? consent : true, limit);
-      if (hasHolds) {
+      if (hasProviderWait) {
         if (!recovery)
-          throw new Error("Review interrupted requests before continuing.");
-        await resolveAutomaticHolds(true);
-        setHasHolds(false);
+          throw new Error("Review the provider's rate-limit waiting period before continuing.");
+        await reviewProviderWaits(true);
+        setHasProviderWait(false);
         setRecovery(false);
       }
       setValue("");
@@ -155,8 +151,8 @@ export function BrowserKeyPanel() {
         {!storageReady
           ? t("Loading saved key…")
           : status.connected
-            ? hasHolds
-              ? t("Review interrupted requests before uploading again.")
+            ? hasProviderWait
+              ? t("Review the provider's rate-limit waiting period before continuing.")
               : authorized
                 ? t(
                     "Ready to create. Your key and upload permission are saved.",
@@ -196,10 +192,10 @@ export function BrowserKeyPanel() {
           {t("Reload saved key")}
         </Button>
       )}
-      <Disclosure className="key-management" open={!authorized || hasHolds}>
+      <Disclosure className="key-management" open={!authorized || hasProviderWait}>
         <DisclosureSummary>{t("Manage key & limits")}</DisclosureSummary>
         <form onSubmit={save}>
-          {hasHolds && (
+          {hasProviderWait && (
             <label>
               <Input
                 type="checkbox"
@@ -207,7 +203,7 @@ export function BrowserKeyPanel() {
                 onChange={(e) => setRecovery(e.target.checked)}
               />
               {t(
-                "I checked provider billing and waiting periods for interrupted requests and authorize new uploads. Previous outcomes remain unknown and will not be retried.",
+                "I checked the provider's rate-limit waiting period and want to continue with new uploads.",
               )}
             </label>
           )}
@@ -287,14 +283,14 @@ export function BrowserKeyPanel() {
               capInvalid ||
               (!value.trim() && !status.connected) ||
               (needsConsent && !consent) ||
-              (hasHolds && !recovery)
+              (hasProviderWait && !recovery)
             }
           >
             {busy
               ? t("Preparing…")
               : needsConsent
                 ? t("Save key & allow uploads")
-                : hasHolds
+                : hasProviderWait
                   ? t("Resume new uploads")
                   : t("Save upload settings")}
           </Button>
@@ -319,7 +315,7 @@ export function BrowserKeyPanel() {
         >
           {t("Remove saved key")}
         </Button>
-        {authorized && !hasHolds && !busy && (
+        {authorized && !hasProviderWait && !busy && (
           <Link className="primary-button" to="/">
             {t("Upload a product")}
           </Link>

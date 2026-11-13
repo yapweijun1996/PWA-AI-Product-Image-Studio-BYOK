@@ -91,7 +91,7 @@ test('Pages upload produces checked downloadable composites, retains partial res
   await until(()=>evaluate(tab,'!!navigator.serviceWorker.controller'),'worker');
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'loaded key form');
   assert.equal(await evaluate(tab,`document.documentElement.lang`),'en');
-  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.5\.1 · /);
+  assert.match(await evaluate(tab,`document.querySelector('.app-version').textContent`),/^v0\.5\.2 · /);
   for(const [lang,title] of [['zh','设置'],['ms','Tetapan'],['ja','設定'],['ko','설정'],['vi','Cài đặt'],['en','Settings']]){
     await evaluate(tab,`document.querySelector('.language-control>.icon-button').click()`);
     await until(()=>evaluate(tab,`!!document.querySelector('.language-options')`),'language choices');
@@ -269,10 +269,10 @@ test('Pages upload produces checked downloadable composites, retains partial res
   await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='1 downloadable' && document.querySelector('.auto-results')?.innerText.includes('Available images are kept')`),'partial results retained');
   assert.equal(await evaluate(tab,'window.__providerCalls'),9,'UNKNOWN must not resend or send remaining styles');
   await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);
-  assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),true,'Unresolved billing hold is reflected before selecting another file');
+  assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),false,'An earlier UNKNOWN does not block a new manual upload');
   assert.equal(await evaluate(tab,`document.querySelectorAll('.image-placeholder[data-active=true]').length`),0,'Interrupted run stops every placeholder');
-  assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-badge').textContent`),'Billing review needed');
-  assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-notice a').getAttribute('href')`),'#/settings');
+  assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-badge').textContent`),'Request interrupted');
+  assert.equal(await evaluate(tab,`document.querySelector('.auto-results .error-notice').innerText.includes('may have been charged')`),true);
   if(process.env.STUDIO_UI_SHOTS){const shot=await tab.call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(`${process.env.STUDIO_UI_SHOTS}-generation-error.png`,Buffer.from(shot.data,'base64'));}
 
   assert.equal(await evaluate(tab,`document.querySelectorAll('.auto-result img').length`),1);
@@ -286,12 +286,14 @@ test('Pages upload produces checked downloadable composites, retains partial res
 
   await evaluate(tab,`location.hash='#/settings'`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'return to settings');
-  async function recoverSession(){
+  async function recoverSession(rateLimit=false){
+    if(rateLimit){
     await until(()=>evaluate(tab,`document.querySelectorAll('form input[type=checkbox]').length===1`),'recovery checkbox');
     await evaluate(tab,`for(const box of document.querySelectorAll('form input[type=checkbox]'))if(!box.checked)box.click()`);
     await until(()=>evaluate(tab,`!document.querySelector('form button[type=submit]').disabled`),'recovery ready');
     await evaluate(tab,`document.querySelector('form button[type=submit]').click()`);
     await until(()=>evaluate(tab,`document.querySelector('input[type=password]').value==='' && document.querySelectorAll('form input[type=checkbox]').length===0 && document.body?.innerText.includes('Ready to create.')`),'recovered session');
+    } else { await until(()=>evaluate(tab,`document.body?.innerText.includes('Ready to create.')`),'unknown does not require review'); }
     await evaluate(tab,`location.hash='#/'`);
     await until(()=>evaluate(tab,`[...document.querySelectorAll('button')].some(b=>b.textContent==='Upload another')`),'recovered saved result');
     await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);
@@ -304,7 +306,8 @@ test('Pages upload produces checked downloadable composites, retains partial res
   await until(()=>evaluate(tab,`document.querySelector('.auto-results')?.innerText.includes('Provider rate limit reached')`),'rate hold without header');
   assert.equal(await evaluate(tab,'window.__providerCalls'),10);
   await evaluate(tab,`location.hash='#/settings'`);await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'rate recovery settings');
-  await recoverSession();
+  await recoverSession(true);
+  assert.equal(await evaluate(tab,`(async()=>{const db=await new Promise(r=>{const q=indexedDB.open('image-studio-automatic',3);q.onsuccess=()=>r(q.result)});try{return await new Promise(r=>{const q=db.transaction('runs').objectStore('runs').getAll();q.onsuccess=()=>r(q.result.some(run=>run.items.some(i=>i.status==='SUBMITTED'&&!i.reviewedAt)))})}finally{db.close()}})()`),true,'Reviewing a provider wait does not mark unrelated interrupted attempts as reviewed');
   await evaluate(tab,`(()=>{const original=IDBObjectStore.prototype.put;window.__restorePut=()=>IDBObjectStore.prototype.put=original;IDBObjectStore.prototype.put=function(value,...args){if(this.transaction.db.name==='image-studio-automatic'&&value.items?.some(i=>i.status==='READY')){this.transaction.abort();throw new DOMException('synthetic quota','QuotaExceededError')}return original.call(this,value,...args)}})()`);
   await uploadAnother();
   await until(()=>evaluate(tab,`document.querySelector('#auto-results-heading')?.textContent==='1 downloadable' && document.querySelector('.auto-results')?.innerText.includes('Keep this tab open')`),'quota partial image retained');
@@ -317,10 +320,7 @@ test('Pages upload produces checked downloadable composites, retains partial res
   await until(()=>evaluate(tab,`!document.querySelector('#auto-results-heading')`),'explicit discard acknowledgement');
   await evaluate(tab,`location.hash='#/settings'`);await until(()=>evaluate(tab,`!!document.querySelector('input[type=password]')`),'final settings');
   await tab.call('Page.reload');await until(()=>evaluate(tab,`document.readyState==='complete' && document.body?.innerText.includes('Settings')`),'route reload');
-  await until(()=>evaluate(tab,`document.querySelectorAll('form input[type=checkbox]').length===1`),'unsaved submitted history conservatively requires exceptional review');
-  await evaluate(tab,`document.querySelector('form input[type=checkbox]').click()`);
-  await until(()=>evaluate(tab,`!document.querySelector('form button[type=submit]').disabled`),'explicit exceptional review ready');
-  await evaluate(tab,`document.querySelector('form button[type=submit]').click()`);
+  assert.equal(await evaluate(tab,`(async()=>{const db=await new Promise(r=>{const q=indexedDB.open('image-studio-automatic',3);q.onsuccess=()=>r(q.result)});try{return await new Promise(r=>{const q=db.transaction('runs').objectStore('runs').getAll();q.onsuccess=()=>r(q.result.some(run=>run.items.some(i=>['SUBMITTED','UNKNOWN'].includes(i.status)&&!i.reviewedAt)))})}finally{db.close()}})()`),true,'Interrupted history remains unchanged without requiring acknowledgement');
   try{await until(()=>evaluate(tab,`document.body?.innerText.includes('Ready to create.')`),'saved key restored');}catch(error){console.log('Restore diagnostic:',await evaluate(tab,`(async()=>({status:document.querySelector('.provider-settings')?.innerText,locks:await navigator.locks.query()}))()`));throw error;}
   assert.equal(await evaluate(tab,`document.querySelector('input[type=password]').value`),'','Stored key is never repopulated into the DOM');
   assert.equal(await evaluate(tab,`document.querySelectorAll('form input[type=checkbox]').length`),0,'One-time upload authorization survives reload without another consent form');

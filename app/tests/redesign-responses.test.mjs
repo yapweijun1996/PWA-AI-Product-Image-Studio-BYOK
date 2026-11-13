@@ -479,7 +479,8 @@ test("Responses distinguishes completed unusable results from genuine UNKNOWN wi
               body: JSON.stringify(next),
             })
           ).status,
-          409,
+          200,
+          "A new authorized attempt is not blocked by an unrelated UNKNOWN",
         );
         assert.equal(
           JSON.parse(memory.get("studio.browser-byok.attempts.v1"))[historicId]

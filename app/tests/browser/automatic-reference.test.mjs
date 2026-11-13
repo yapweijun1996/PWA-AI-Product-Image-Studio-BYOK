@@ -675,7 +675,7 @@ test(
           ),
         "completed retry ready for explicit next action",
       );
-      // Unknown retry keeps the old successful result visible and pauses paid work in this modal.
+      // An unknown retry preserves the old output and still allows a new explicit attempt.
       await evaluate(
         tab,
         `window.__qaFailPurpose='image';[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Regenerate this look').click()`,
@@ -696,16 +696,18 @@ test(
         () =>
           evaluate(
             tab,
-            `document.querySelector('dialog')?.innerText.includes('Billing review needed')`,
+            `document.querySelector('dialog')?.innerText.includes('Request interrupted')`,
           ),
         "unknown retry explained inside modal",
       );
+      await until(
+        () => evaluate(tab, `(()=>{const b=[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Regenerate this look');return b&&!b.disabled})()`),
+        "new explicit attempt enabled after the failed request settles",
+      );
       assert.equal(
-        await evaluate(
-          tab,
-          `[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Regenerate this look').disabled`,
-        ),
-        true,
+        await evaluate(tab, `[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Regenerate this look').disabled`),
+        false,
+        "A new explicit attempt is available while the old outcome remains unknown",
       );
       assert.equal(
         await evaluate(tab, `!!document.querySelector('.preview-images img')`),
