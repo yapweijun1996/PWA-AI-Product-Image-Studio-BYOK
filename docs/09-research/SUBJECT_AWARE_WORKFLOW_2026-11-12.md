@@ -1,5 +1,7 @@
 # Subject-aware workflow redesign — 2026-11-12
 
+> This is the v0.5.0 historical evidence. DEC-025 / v0.5.2 later removed the global automatic-workflow hold for older UNKNOWN attempts, while retaining their records, provider waits and no-auto-retry behavior.
+
 Status: implementation and scoped local verification complete. Deployment status is tracked by the exact main revision in GitHub Actions, not inferred from this static report. This report distinguishes design, synthetic checks and photographic acceptance.
 
 ## Authority and baseline

@@ -1,5 +1,7 @@
 # Vision response contract and error classification fix
 
+> Historical v0.5.1 behavior is described below. DEC-025 / v0.5.2 removes the requirement to acknowledge an older UNKNOWN before starting new automatic work; the original outcome and reservations remain unchanged.
+
 Status: patch implemented and scoped local verification passed; delivery is verified against the matching main-revision workflow. Baseline main `cb83094`, app v0.5.0.
 
 ## Observed failure
