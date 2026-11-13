@@ -107,7 +107,10 @@ test('Saved upload authorization survives reload, monthly history persists, and 
   assert.equal(await evaluate(tab,`document.querySelector('.automatic-usage').title.includes('not your OpenAI bill')`),true);
   await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);
   await until(()=>evaluate(tab,`!!document.querySelector('input[name=automatic-mode]')`),'mode controls after upload');
-  await evaluate(tab,`document.querySelectorAll('input[name=automatic-mode]')[1].click()`);await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').click()`);
+  await evaluate(tab,`document.querySelectorAll('input[name=automatic-mode]')[1].click()`);
+  assert.equal(await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').checked`),true,'Reference transmission is preselected');
+  await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').click();document.querySelectorAll('input[name=automatic-mode]')[0].click();document.querySelectorAll('input[name=automatic-mode]')[1].click()`);
+  assert.equal(await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').checked`),false,'Explicit opt-out survives mode switches');
   await tab.call('Page.reload');
   await until(()=>evaluate(tab,`[...document.querySelectorAll('button')].some(b=>b.textContent==='Upload another')`),'restored compact result');
   await evaluate(tab,`[...document.querySelectorAll('button')].find(b=>b.textContent==='Upload another').click()`);
@@ -115,8 +118,8 @@ test('Saved upload authorization survives reload, monthly history persists, and 
   assert.equal(await evaluate(tab,`!!document.querySelector('.auto-setup')`),false,'No repeated setup after reload');
   await until(()=>evaluate(tab,`/6 (?:recorded )?requests/.test(document.querySelector('.automatic-usage').innerText)`),'monthly usage survives reload');
   await evaluate(tab,`document.querySelectorAll('input[name=automatic-mode]')[1].click()`);
-  assert.equal(await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').checked`),false,'Reference transmission stays tab-only');
-  assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),true);
+  assert.equal(await evaluate(tab,`document.querySelector('.automatic-options input[type=checkbox]').checked`),true,'Selecting Reference after reload preselects consent');
+  assert.equal(await evaluate(tab,`document.querySelector('input[aria-label="Upload product image"]').disabled`),false);
   await evaluate(tab,`document.querySelectorAll('input[name=automatic-mode]')[0].click();location.hash='#/settings'`);
   await until(()=>evaluate(tab,`document.body.innerText.includes('Ready to create.')`),'returning settings ready');
   assert.equal(await evaluate(tab,`document.querySelector('.key-management').open`),false);

@@ -321,15 +321,20 @@ test(
         tab,
         `document.querySelectorAll('input[name=automatic-mode]')[1].click()`,
       );
+      assert.equal(await evaluate(tab, `document.querySelector('.automatic-options input[type=checkbox]').checked`), true, 'Reference consent is preselected');
+      await evaluate(tab, makeRedesignMock());
+      assert.equal(await evaluate(tab, `window.__qaRequests.length`), 0, 'Selecting the mode sends no requests');
+      await evaluate(tab, `document.querySelector('.automatic-options input[type=checkbox]').click()`);
       assert.equal(
         await evaluate(
           tab,
           `document.querySelector('input[aria-label="Upload product image"]').disabled`,
         ),
         true,
-        "Separate tab transmission consent is required",
+        "Unchecking prevents reference uploads",
       );
-      await evaluate(tab, makeRedesignMock());
+      await evaluate(tab, `document.querySelectorAll('input[name=automatic-mode]')[0].click();document.querySelectorAll('input[name=automatic-mode]')[1].click()`);
+      assert.equal(await evaluate(tab, `document.querySelector('.automatic-options input[type=checkbox]').checked`), false, 'Mode switches respect the explicit opt-out');
       await evaluate(tab, boardScript());
       await delay(100);
       assert.equal(
@@ -757,15 +762,15 @@ test(
           tab,
           `document.querySelector('.automatic-options input[type=checkbox]').checked`,
         ),
-        false,
-        "Reload does not restore transmission consent",
+        true,
+        "Selecting Reference after reload preselects the visible control",
       );
       assert.equal(
         await evaluate(
           tab,
           `document.querySelector('input[aria-label="Upload product image"]').disabled`,
         ),
-        true,
+        false,
       );
       // A different valid PNG with the old digest cannot be resealed through local variants.
       await evaluate(

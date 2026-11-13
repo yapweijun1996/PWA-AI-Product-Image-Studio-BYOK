@@ -3,7 +3,7 @@ import {reserveStoredUpload,readStoredCredential,utcUsageMonth,estimateMicros} f
 import {deflateSync} from 'node:zlib';
 import test, {afterEach} from 'node:test';
 import assert from 'node:assert/strict';
-import {browserStudioRequest as request, setBrowserKey, saveBrowserKey, clearBrowserKey, referenceTransmissionAllowed, setReferenceTransmissionConsent} from '../src/browserByok.ts';
+import {browserStudioRequest as request, setBrowserKey, saveBrowserKey, clearBrowserKey, referenceTransmissionAllowed, setReferenceTransmissionConsent, applyDefaultReferenceConsent, suspendReferenceConsent} from '../src/browserByok.ts';
 import {stripPngMetadata, validateAutomaticReferences} from '../src/automaticReference.ts';
 import {automaticPrompt, automaticEstimateUSD, AUTOMATIC_PROMPT_VERSION, AUTOMATIC_LAYOUTS} from '../automatic-policy.mjs';
 import {STUDIO_MODEL, STUDIO_QUALITY, STUDIO_SIZE} from '../studio-policy.mjs';
@@ -25,6 +25,13 @@ async function body(count=1,mode='REFERENCE'){return {clientAttemptId:crypto.ran
 async function approve(b){b.reviewRevision=(await(await request('/images/revision')).json()).reviewRevision;return request('/images/approvals',{method:'POST',body:JSON.stringify(b)})}
 async function approved(b){const current=await readStoredCredential();await reserveStoredUpload({id:b.productId,month:utcUsageMonth(),createdAt:new Date().toISOString(),credentialId:current.id,authorizationId:current.authorization.id,attempts:[{id:b.clientAttemptId,estimatedMicros:estimateMicros(b.estimatedUSD),outcome:'RESERVED'}]},current.id,current.authorization.id);const a=await(await approve(b)).json();return {method:'POST',body:JSON.stringify(b),headers:{'X-Client-Request-Id':b.clientAttemptId,'X-Attempt-Approval':a.approvalId}}}
 afterEach(()=>{clearBrowserKey();storage.clear();globalThis.fetch=originalFetch;locks.request=async(name,options,callback)=>(typeof options==='function'?options:callback)({name})});
+test('reference default sends nothing and respects a user opt-out across mode switches',async()=>{
+ await saveBrowserKey(key,true);let calls=0;globalThis.fetch=async()=>{calls++;throw Error('unexpected')};
+ applyDefaultReferenceConsent();assert.equal(referenceTransmissionAllowed(),true);assert.equal(calls,0);
+ setReferenceTransmissionConsent(false);suspendReferenceConsent();applyDefaultReferenceConsent();assert.equal(referenceTransmissionAllowed(),false);
+ setReferenceTransmissionConsent(true);suspendReferenceConsent();assert.equal(referenceTransmissionAllowed(),false);applyDefaultReferenceConsent();assert.equal(referenceTransmissionAllowed(),true);
+ clearBrowserKey();assert.equal(referenceTransmissionAllowed(),false);assert.equal(calls,0);
+});
 test('reference mode denies missing tab consent before any provider transmission',async()=>{
  await saveBrowserKey(key,true);let calls=0;globalThis.fetch=async()=>{calls++;throw Error('not allowed')};const b=await body();assert.equal((await approve(b)).status,409);assert.equal(calls,0);assert.equal(referenceTransmissionAllowed(),false);
 });

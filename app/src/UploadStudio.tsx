@@ -25,6 +25,8 @@ import {
   onBrowserKeyChange,
   referenceTransmissionAllowed,
   setReferenceTransmissionConsent,
+  applyDefaultReferenceConsent,
+  suspendReferenceConsent,
   onReferenceConsentChange,
 } from "./browserByok";
 import {
@@ -98,6 +100,9 @@ export function UploadStudio() {
       if (saved) setRun(saved);
     }
   }, [selected, history]);
+  useEffect(() => {
+    if (mode === "REFERENCE" && connected) applyDefaultReferenceConsent();
+  }, [mode, connected]);
   const estimate = automaticPlan(mode).estimatedUSD,
     ready = Boolean(
       session &&
@@ -247,7 +252,7 @@ export function UploadStudio() {
                 checked={mode === "STRICT"}
                 onChange={() => {
                   setMode("STRICT");
-                  setReferenceTransmissionConsent(false);
+                  suspendReferenceConsent();
                   setAdditional([]);
                 }}
               />
@@ -258,7 +263,10 @@ export function UploadStudio() {
                 type="radio"
                 name="automatic-mode"
                 checked={mode === "REFERENCE"}
-                onChange={() => setMode("REFERENCE")}
+                onChange={() => {
+                  setMode("REFERENCE");
+                  applyDefaultReferenceConsent();
+                }}
               />
               <span>{t("Reference-guided · analyzed source")}</span>
             </label>

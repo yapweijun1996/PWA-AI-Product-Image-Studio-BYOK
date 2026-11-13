@@ -63,12 +63,13 @@ let key = "",
 let credentialId = "",
   uploadAuthorization: UploadAuthorization | null = null;
 let referenceConsent = false,
-  referenceEpoch = 0;
+  referenceEpoch = 0,
+  referenceDeclined = false;
 const referenceActive = new Set<AbortController>();
 export function referenceTransmissionAllowed() {
   return referenceConsent;
 }
-export function setReferenceTransmissionConsent(consent: boolean) {
+function updateReferenceTransmissionConsent(consent: boolean) {
   referenceConsent = consent === true;
   referenceEpoch++;
   approvals.clear();
@@ -76,6 +77,19 @@ export function setReferenceTransmissionConsent(consent: boolean) {
     for (const controller of referenceActive) controller.abort();
   if (typeof window !== "undefined")
     window.dispatchEvent(new Event("studio-reference-consent"));
+}
+export function setReferenceTransmissionConsent(consent: boolean) {
+  referenceDeclined = !consent;
+  updateReferenceTransmissionConsent(consent);
+}
+// Preselect the visible control only until the user explicitly opts out.
+export function applyDefaultReferenceConsent() {
+  if (!referenceDeclined && !referenceConsent)
+    updateReferenceTransmissionConsent(true);
+}
+// Suspending a mode or clearing a key is not a user checkbox decision.
+export function suspendReferenceConsent() {
+  updateReferenceTransmissionConsent(false);
 }
 export function onReferenceConsentChange(listener: () => void) {
   window.addEventListener("studio-reference-consent", listener);
@@ -144,7 +158,7 @@ export function clearBrowserKey() {
   credentialId = "";
   uploadAuthorization = null;
   epoch++;
-  setReferenceTransmissionConsent(false);
+  suspendReferenceConsent();
   approvals.clear();
   clearTimeout(expiryTimer);
   for (const controller of active) controller.abort();

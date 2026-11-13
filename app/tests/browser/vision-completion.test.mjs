@@ -321,13 +321,15 @@ test(
         tab,
         `document.querySelectorAll('input[name=automatic-mode]')[1].click()`,
       );
+      assert.equal(await evaluate(tab, `document.querySelector('.automatic-options input[type=checkbox]').checked`), true, 'Reference consent is preselected');
+      await evaluate(tab, `document.querySelector('.automatic-options input[type=checkbox]').click()`);
       assert.equal(
         await evaluate(
           tab,
           `document.querySelector('input[aria-label="Upload product image"]').disabled`,
         ),
         true,
-        "Separate tab transmission consent is required",
+        "Unchecking prevents reference uploads",
       );
       await evaluate(tab, makeRedesignMock());
       const pixel = {
