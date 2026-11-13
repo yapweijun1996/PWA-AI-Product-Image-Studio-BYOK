@@ -1,112 +1,125 @@
-# PWA-AI-Product-Image-Studio-BYOK
+# Product Image Studio
 
-**Version:** 7.0.0 (documentation baseline) · **Date:** 2026-10-30 (Asia/Singapore)
-**Status:** automatic image workspace and Advanced project workflow implemented; subject-aware redesign locally verified; real-provider fidelity and installed-device acceptance remain open · **Repository:** `yapweijun1996/PWA-AI-Product-Image-Studio-BYOK`
-**Product:** Local-first, BYOK AI product photography PWA with seven category-adaptive styles and truthful product identity protection.
+Create product images from a photo in a local-first progressive web app. Bring your own OpenAI API key, upload a product, and download the available looks as they finish.
 
-## Current automatic workspace
+[Open the app](https://yapweijun1996.github.io/PWA-AI-Product-Image-Studio-BYOK/) · [使用说明（中文）](START_HERE_中文.md) · [Documentation](docs/INDEX.md) · [Tasks and evidence](docs/08-delivery/TASK.md)
 
-Create, My images, Settings and Help are the primary routes. Browser BYOK credentials and one-time upload permission persist locally until removal; monthly usage is a **local estimate**, with an optional monthly limit rather than a repeated session setup. The Advanced workflow described below retains its separate review/backup contracts. See DEC-021 through DEC-024 for the newer automatic-workspace decisions; the opening historical description is not the current automatic upload flow.
+The automatic workspace is designed for a short flow: set up your key once, upload an image, and inspect or download the results. It offers seven result slots: **Studio, Hero, Lifestyle, Tabletop, Detail, Everyday, and Campaign**. Results are not guaranteed to be available or visually accurate; an unreliable Detail crop is marked unavailable.
 
-App v0.5.1 implements the subject-aware redesign under T-109–T-113, with scoped synthetic and browser verification. It separates source preparation, image generation, local Detail and machine quality hints. STRICT keeps source image pixels local. Optional reference mode adds bounded source analysis and output review and requires the expanded transmission consent. Model hints are not product-fidelity certification. The v0.5.1 patch aligns structured-response constraints and distinguishes completed-but-unusable analysis from uncertain transport; see [T-114 evidence](docs/09-research/RESPONSE_CONTRACT_FIX_2026-11-12.md). Current source, test results and the task ledger govern implementation status; a design decision alone does not establish successful deployment.
+## Get started
 
-## Advanced workspace scope
+1. Open the [hosted app](https://yapweijun1996.github.io/PWA-AI-Product-Image-Studio-BYOK/) in a supported browser and go to **Settings**.
+2. Save your own OpenAI API key and authorize future uploads. A monthly estimate limit is optional; saving a key does not verify it or initiate a paid request.
+3. Under **Create**, choose a mode and upload a PNG, JPEG, or WebP product image up to 20 MiB. Use an image you have rights to use.
+4. Preview the results, compare them with the source, and download individual images or the available images as a ZIP. You can explicitly regenerate one look; its previous versions are retained.
 
-> The Advanced workspace provides local SKU projects, confirmed facts, immutable source-image upload, manual masks, full-project backup, an offline/update worker and a loopback-only development gateway. A default-disabled seven-style queue can produce separately authorized, unapproved scenes and locally composite selected source pixels. **Known fidelity gap:** an incorrect mask can expose background content over product labels; selected protected areas are checked, but the app cannot determine whether every required label has been selected or remains readable. See [BUG-007](BUG.md); do not treat existing approvals as proof of protected-region coverage. The displayed prompt sends the product name, category and selected confirmed facts to the provider; original images and masks remain local. Human style-specific review and a separate decision are required before conversion and output-only ZIP export; the output bundle is separate from the full project backup. Imported review and attempt history is untrusted; restored outputs require fresh local review. Synthetic tests do not establish real-SKU fidelity, production security or installed-device acceptance. The self-hosted gateway retains its isolation/security release gates. Pages browser BYOK is separately owner-authorized; real-provider acceptance is still unverified. Eligible local UNKNOWN attempts can be acknowledged without rewriting their outcome; generation and interrupted-submission review require browser Web Locks.
+The interface supports English, Simplified Chinese, Malay, Japanese, Korean, and Vietnamese, plus light and dark themes. An ambiguous reference image may require you to select the intended product before edits begin.
 
-The style queue displays the number of potentially billable calls and supports estimate-only per-attempt and browser-tab session soft limits with separate one-attempt overrides. Synthetic responses can record sanitized usage and a snapshot-based estimate; these are not the provider invoice or an account-wide spending cap.
+## Choose how images are made
 
-Per-style retry preserves the previous attempt and uses a fresh consent, UUID and gateway approval; a reviewed UNKNOWN is not rewritten as success. The history can compare same-style scenes and saved local composites, and approved output provenance includes the immediate retry parent. A recorded rate-limit delay is enforced only within the same browser profile; it is not a provider-wide cap.
+| | STRICT (default) | Reference-guided |
+|---|---|---|
+| **How it works** | Selects the product locally and composites its foreground over generated scenes. | Analyzes the source, prepares product reference crops, and generates concepts using those references. |
+| **Image sharing** | Source images stay on the device. Scene instructions go to OpenAI. | Normalized source images, selected reference crops, and generated outputs are sent to OpenAI for analysis, edits, and review after separate tab consent. |
+| **Product fidelity** | Uses locally selected original pixels, subject to selection and resizing. | Generative edits can change labels, logos, geometry, and other details. |
+| **Calls per upload** | Up to six image requests; Detail is a local crop when reliable. | Up to six image requests, one source-analysis request, and one batch-review request; Detail is local when reliable. |
 
+Both modes retain the supplied viewpoint; Tabletop does not promise a true overhead photo. Detail uses visible source pixels and cannot add authentic detail. Campaign is the complete ad artwork; optional user-supplied copy and a billboard display preview are created locally as separate variants.
 
-## Start here
+Machine visual hints and technical checks are **not human approval or a guarantee of brand fidelity**. Compare outputs with your original, especially labels, colors, edges, and product shape. See the [style engine](docs/06-ai/SEVEN_STYLE_ENGINE.md) and [subject-aware workflow evidence](docs/09-research/SUBJECT_AWARE_WORKFLOW_2026-11-12.md).
 
-1. [中文使用说明](START_HERE_中文.md)
-2. [SSOT index](docs/INDEX.md) and [governance / precedence](docs/00-governance/SSOT_POLICY.md)
-3. [Decisions and unresolved choices](docs/00-governance/DECISION_REGISTER.md)
-4. [Product requirements](docs/01-product/PRD.md) + [traceable requirement IDs](docs/00-governance/REQUIREMENTS_TRACEABILITY.md)
-5. [Architecture](docs/02-architecture/SYSTEM_ARCHITECTURE.md), [BYOK security](docs/03-security/BYOK_SECURITY.md), [OpenAPI contract](contracts/openapi.yaml)
-6. [Seven style engine](docs/06-ai/SEVEN_STYLE_ENGINE.md), [Brand Lock](docs/06-ai/BRAND_LOCK_ENGINE.md), [QA](docs/06-ai/VISUAL_QA.md)
-7. [E2E test cases](docs/07-quality/E2E_ACCEPTANCE.md), [release gate](docs/07-quality/RELEASE_GATES.md), [task backlog](docs/08-delivery/TASK.md)
-8. Validate the documentation pack using [scripts/README.md](scripts/README.md).
+## Costs, privacy, and recovery
 
-## Normative status tags
+- Image generation and reference analysis/review can incur OpenAI charges. The app shows estimates before upload; monthly totals and optional limits are **local estimates**, not invoices or provider-enforced spending caps. See the [cost model](docs/09-research/COST_MODEL.md).
+- Your key and upload authorization are stored in a dedicated IndexedDB database on this device until removed. The active in-memory key expires after one hour; a saved key can be restored. Browser scripts and extensions can access stored credentials, which are not protected by a separate password. Use **Settings → Remove saved key** to delete the stored key and clear it from open tabs.
+- Reference transmission consent is separate and lasts for the current tab. Normalized source copies are sent for analysis; selected crops are retained locally for future versions. The primary original remains local and unchanged. Uploaded originals may contain EXIF metadata.
+- Requests are not retried automatically. An interrupted request may still have been charged. If its outcome is unknown, check provider billing and waiting periods, then use the recovery control in Settings to authorize new uploads. Existing results remain available.
+- Browser storage can be cleared or evicted. Download images and originals you need. An automatic output ZIP is not a project backup; [full Advanced-workspace backups](docs/04-data/EXPORT_IMPORT.md) are unencrypted and can contain sensitive project data.
 
-- **CONFIRMED:** user-specified naming, BYOK direction, seven-style integration, KB-PWA standard adoption; not proof of implementation.
-- **PROPOSED:** recommended implementation design, technology choices, interfaces, targets. Change only through ADR / explicit approval.
-- **REQUIRES VERIFICATION:** vendor-specific API/limits/rates and behavior may change; verify prior to coding/live use.
-- **NOT IMPLEMENTED / NOT TESTED:** product workflows without corresponding code and test evidence.
+## Install and update
 
-## SSOT owner map
+Use your browser's install option, or **Share → Add to Home Screen** on iPhone. After a successful online visit caches the app, the shell and saved local work can be accessed offline; generating images requires a network connection. Browser and installed copies may have separate storage.
 
-| Concern | Only canonical owner |
-|---|---|
-| Vision, use cases, FR/NFR | `docs/01-product/PRD.md` and `docs/00-governance/REQUIREMENTS_TRACEABILITY.md` |
-| Decision status | `docs/00-governance/DECISION_REGISTER.md` |
-| Architecture and state diagrams | `docs/02-architecture/` |
-| BYOK threat controls | `docs/03-security/` |
-| API shapes | `contracts/openapi.yaml` (proposed versioned interface) |
-| JSON entities | `contracts/schemas/` |
-| 7 preset IDs | `contracts/style-presets.json` |
-| Prompt methodology | `docs/06-ai/SEVEN_STYLE_ENGINE.md` |
-| Visual QA formula | `docs/06-ai/VISUAL_QA.md` |
-| Milestones, executable tasks | `docs/08-delivery/ROADMAP.md`, `docs/08-delivery/TASK.md` |
-| Vendor facts and effective date | `docs/09-research/SOURCES.md` |
+The sidebar shows the app version and provides **Check for updates**. Activate an available update when ready; the app guards active work against an unintended reload. Physical-device and assistive-technology acceptance remain open.
 
-Root `SPEC.md`, `DESIGN.md`, `EPIC.md`, `ROADMAP.md` and `TASK.md` are **pointers**, not copies of normative content. They exist for code agents expecting conventional names.
+## Run locally
 
-## Run the application
+Requirements: **Node.js 22.12 or newer** and npm. From the repository root:
 
 ```bash
 cd app
 npm ci
-npm run dev
+npm run dev -- --mode pages
 ```
 
-`npm run build` type-checks and builds the shell and workers; `npm test` runs image-header, mask, backup, gateway and Studio-attempt regression tests on Node 22.12 or newer (Node 22/23 may warn that type stripping is experimental). Static hosting needs HTTPS (or localhost), an `index.html` fallback for application routes, and revalidation of `/sw.js` and HTML rather than immutable caching. The shell can load offline only after a successful online installation. Browser data may be evicted: export supported backups to a trusted location. Backups are unencrypted and can include confidential photos and EXIF; see the [backup contract](docs/04-data/EXPORT_IMPORT.md) for supported data and limits.
+Open the URL printed by Vite. Pages mode uses browser BYOK and hash routes, like the hosted app. A normal `npm run dev` uses the local gateway-oriented workspace instead.
 
-For a **local synthetic-data development gateway**, first build the app. The following command generates a random app access token and its SHA-256 digest. Its output is sensitive: do not copy the token into source, logs, URLs, shell history or provider-key fields. This token is not an OpenAI API key. The command avoids the `sk-` prefix so it is not mistaken for one.
+Build the GitHub Pages version with the repository path as its base:
 
 ```bash
+npm run build -- --mode pages --base /PWA-AI-Product-Image-Studio-BYOK/
+npm run preview
+```
+
+The Pages build is static and does not require the development gateway. `.github/workflows/pages.yml` runs tests, builds `app/dist`, and deploys it to GitHub Pages on pushes to `main`; Pages must use **GitHub Actions** as its publishing source. See the [workflow](.github/workflows/pages.yml) for the exact checks.
+
+### Advanced workspace and local gateway
+
+The Advanced workspace supports product projects, confirmed facts, manual masks, separate review/approval, and full-project backup. Its loopback-only development gateway uses a **server-configured** provider key and a separate local app access token. It is not production authentication and must not be exposed publicly. Billable image generation is disabled by default. Setup, security boundaries, and synthetic-provider instructions are in the [gateway contract](docs/05-api/API_CONTRACT.md) and [browser test guide](https://github.com/yapweijun1996/PWA-AI-Product-Image-Studio-BYOK/blob/main/app/tests/browser/README.md).
+
+<details>
+<summary>Start the local gateway with a synthetic provider configuration</summary>
+
+From `app/`, build the non-Pages app and generate a local access token with its SHA-256 digest. The token is sensitive; do not share it or save it in the repository. It is separate from an OpenAI API key.
+
+```bash
+npm run build
 node -e 'const c=require("node:crypto");let t;do{t=c.randomBytes(32).toString("base64url")}while(t.toLowerCase().startsWith("sk-"));console.log("Local app access token:",t);console.log("SHA-256:",c.createHash("sha256").update(t).digest("hex"))'
-read -r -p 'SHA-256 digest: ' STUDIO_ACCESS_TOKEN_SHA256
+printf 'SHA-256 digest: '
+IFS= read -r STUDIO_ACCESS_TOKEN_SHA256
 export STUDIO_ACCESS_TOKEN_SHA256
 OPENAI_API_KEY=synthetic-local-only npm run gateway
 ```
 
-Open `http://127.0.0.1:4173/settings`, sign in with the local app access token, and connect the synthetic provider session. Do not enter a provider API key in the browser. `STUDIO_PORT` may select another loopback port. The gateway does not load `.env` files. Billable generation is disabled by default; explicitly enabling it with a configured provider key can send real requests and incur charges. Do not enable it or use real keys until the required isolation and security reviews have passed. See the [gateway contract](docs/05-api/API_CONTRACT.md). Never expose this development gateway to a LAN or public network, or treat it as a production authentication or key-management system. Sessions are invalidated on restart. The development gateway is reachable only from the same device at its `127.0.0.1` origin; on a phone that address refers to the phone itself. Remote mobile gateway access is not yet implemented. Projects are stored separately in each browser.
+Open `http://127.0.0.1:4173/settings`, sign in using the generated local access token, and connect the synthetic provider session. The gateway does not load `.env` files; `STUDIO_PORT` changes its loopback port. This configuration does not enable billable generation or accept a provider key from the browser. Restarting the gateway invalidates its sessions.
 
+</details>
 
-## Machine-readable content
+## Verify changes
 
-`contracts/openapi.yaml`, `contracts/schemas/*.json`, `contracts/style-presets.json`, `fixtures/*.json`, `package-manifest.json`, `SHA256SUMS.txt`, `validation-report.json`, `scripts/validate_ssot.py`.
+From `app/`:
 
-**Documentation package scope:** docs, contracts, fixtures and validators only; executable application source lives separately in `app/`. Neither the documentation checks nor the shell establish production security, real image fidelity or release readiness.
+```bash
+npm test
+npm run check:ui
+node --test tests/browser/pages-preview.test.mjs
+node --test tests/browser/automatic-reference.test.mjs
+node --test tests/browser/monthly-upload.test.mjs
+node --test tests/browser/vision-completion.test.mjs
+```
 
-## GitHub Pages static preview
+Browser tests require Chrome or Chromium; set `CHROME_BIN` if it is not found automatically. Run browser files separately. They use synthetic images and provider responses, not real API calls. Additional gateway, update-lifecycle, and bundled-cutout tests are documented in the [browser test guide](https://github.com/yapweijun1996/PWA-AI-Product-Image-Studio-BYOK/blob/main/app/tests/browser/README.md).
 
-`.github/workflows/pages.yml` tests, builds and deploys the static preview on pushes to `main` or manual dispatch on `main`. Pages must use the GitHub Actions publishing source. Only `app/dist` is uploaded; no provider credentials are needed. The preview uses `#/` routes because Pages has no SPA fallback. The `pages` build uses browser BYOK through AI SDK and does not contact the development gateway.
+For the documentation package, install the optional validation dependencies and run:
 
-Preview URL: https://yapweijun1996.github.io/PWA-AI-Product-Image-Studio-BYOK/
+```bash
+python3 -m pip install -r scripts/requirements-doc-validation.txt
+python3 scripts/validate_ssot.py
+python3 scripts/test_validate_ssot.py -v
+```
 
-Local equivalent: from `app/`, run `npm ci`, `npm test`, `node --test tests/browser/pages-preview.test.mjs`, and `npm run build -- --mode pages --base /PWA-AI-Product-Image-Studio-BYOK/`. The browser test requires Chrome/Chromium. Normal `npm run build` retains root hosting and browser-history routing for the local gateway.
+The documentation validator checks links, checksums, schemas, and other static contracts; it does not test the app or establish photographic quality. See [validation instructions](scripts/README.md).
 
-On Pages, open Settings and enter your own OpenAI key to generate scenes directly from this tab. The key is saved in a dedicated IndexedDB database until removed (DEC-021). Reload restores the key and its once-saved upload authorization (DEC-023); existing keys without that authorization need one opt-in. Browser extensions/scripts can read stored credentials; use a dedicated project key and provider spending limits. A successful preview deployment does not complete production release task T-090. To roll back, redeploy a reviewed compatible revision; preserve local backups and database compatibility, and let users activate PWA updates explicitly.
+## Repository guide
 
-### Browser BYOK on GitHub Pages
+| Path | Purpose |
+|---|---|
+| [`app/`](app/) | React/TypeScript PWA, browser BYOK, local storage, and development gateway |
+| [`docs/01-product/PRD.md`](docs/01-product/PRD.md) | Product requirements |
+| [`docs/00-governance/DECISION_REGISTER.md`](docs/00-governance/DECISION_REGISTER.md) | Accepted and proposed decisions |
+| [`docs/08-delivery/TASK.md`](docs/08-delivery/TASK.md) | Task status and verification evidence |
+| [`docs/03-security/`](docs/03-security/) | Security and privacy boundaries |
+| [`contracts/`](contracts/) and [`fixtures/`](fixtures/) | Machine-readable contracts and synthetic fixtures |
+| [`scripts/`](scripts/) | Documentation validation tools |
 
-1. Open Settings, enter your OpenAI API key and confirm upload authorization once. No budget amount is required; a monthly local estimate limit is optional. The key is saved on this device without separate password encryption; saving does not verify credentials or make a paid request.
-2. Upload one product photo to produce six generated looks and one local visible detail crop. STRICT is the default; optional Reference-guided supports the main photo plus up to two additional views with separate transmission consent. Download finished images individually or as a ZIP. The Advanced workspace retains the manual mask/review workflow.
-3. AI SDK sends STRICT requests only to `https://api.openai.com/v1/images/generations`; optional Reference-guided sends normalized PNG copies only to `https://api.openai.com/v1/images/edits`. No automatic retry, cookies or redirects. STRICT photos stay local; reference edits can change branding and geometry and are labeled concepts. Estimates include reference-input allowances and are not provider spending caps.
-4. Reload restores the saved key and upload authorization; reference-image transmission consent remains tab-only. Settings shows monthly local usage and estimates. Review interrupted requests before starting new paid uploads.
-5. **Remove saved key** deletes the dedicated credential record and clears active keys in open tabs. It cannot undo provider billing. Keys are excluded from image databases, backups, caches and exports.
-
-CORS preflight was observed to permit the Pages origin and authorization/content-type headers. This is not a successful paid generation or Safari/iOS acceptance result. Account/model permissions, network restrictions and provider changes can still block calls. Browser bookkeeping is local and user-editable; it is not gateway authentication, server-enforced quotas or independent billing proof. Corrupt history/storage failure blocks requests; preserve it for recovery instead of deleting unresolved evidence.
-
-## Upload-only Pages studio
-
-Open the Pages homepage. In Settings, save your key and automatic-processing authorization once for this device. View local monthly usage there; setting a monthly estimate limit is optional. Then upload one product photo: automatic cutout, six independent background requests and a free local detail crop run without product forms, mask editing or approval steps. Each complete PNG appears immediately; download one or a ZIP of finished images. The lightweight cutout model is bundled and verified locally; STRICT source photos are not sent for cutout or scene generation. Reference-guided instead sends up to three metadata-stripped PNG copies, bounded to 1024 px per edge, after explicit tab-only consent. The original files remain local; reference generation can alter product details. No unseen product facts or faithful overhead views are inferred.
-
-Automatically checked outputs are distinct from human-approved Advanced workspace exports. They carry machine-check evidence and are not a brand-fidelity certificate. Partial failures keep completed images; UNKNOWN pauses later paid requests and is never retried automatically. Exceptional billing/wait recovery is in Settings. The homepage's previous-uploads section retains originals and saved results. Existing projects and full legacy backups remain under Advanced workspace; automatic output ZIPs are not editable-project backups. Local storage may be evicted, so download results and originals you need.
-
-The automatic studio uses its own local IndexedDB database; version 2 preserves old automatic runs and blocks older v1 clients from mislabeling new reference concepts. Advanced projects are unchanged. Downgrade requires a reviewed compatibility plan; never delete history to reopen an old client. The optional monthly estimate limit uses a durable UTC-month ledger that reserves all six paid estimates, including each reference-input allowance, before the first send and retains reservations for requests not sent after a failure. The ledger persists across key changes. Sent-attempt estimates are displayed separately from conservative upload reservations. It is not a provider charge or hard billing cap. The square Detail crop uses measured visible source pixels; enlargement adds no detail. Tabletop retains the source angle. Billboard places a full text-free ad into a local display mockup; photographic placement and lighting are not automatically assessed. See [A+C evidence and limits](docs/09-research/QUALITY_REFERENCE_IMPLEMENTATION_2026-11-12.md). A real-model browser check runs with `STUDIO_MATTE_SMOKE=1 node --test tests/browser/pages-preview.test.mjs` from `app/`; provider calls in that check are synthetic. See the [cutout experiment](docs/09-research/AUTO_CUTOUT_EXPERIMENT.md) for the rejected large-model result, selected model identity and verification limits.
+The source code and current task evidence establish implemented behavior; design proposals and historical documentation are not proof of a production release. Real-provider recognition and photographic fidelity, physical installed-device behavior, and full accessibility acceptance remain separate verification gates. See the [evidence status](docs/00-governance/EVIDENCE_STATUS.md).
